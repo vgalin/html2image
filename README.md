@@ -1,6 +1,5 @@
 # HTML 2 Image
 
-## About
 **HTML2Image** ("HTML to Image") is (a soon to be) **Python** package that acts as a wrapper around the **headless mode** of existing web browsers to *generate images from URLs and from HTML+CSS strings or files*.
 
 HTML2Image is a **work in progress** and has only be used/tested on Windows for now.
@@ -62,7 +61,7 @@ The following code generates an image from two given strings, an HTML one and a 
 ```python 
 ...
 
-# minimal html : quite unconventionnal but browsers can read it anyway
+# minimal html : quite unconventional but browsers can read it anyway
 my_html_string = """\
 <link rel="stylesheet" href="red_background.css">
 <h1> An interesting title </h1>
