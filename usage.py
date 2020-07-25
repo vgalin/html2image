@@ -1,6 +1,6 @@
 from html2image import HtmlToImage
 
-# minimal html : quite unconventionnal but browsers can read it anyway
+# minimal html : quite unconventional but browsers can read it anyway
 my_html_string = """\
 <link rel="stylesheet" href="red_background.css">
 <h1> An interesting title </h1>
