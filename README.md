@@ -125,7 +125,6 @@ Result (using `size=(500, 200)`):
 ![blue_screenshot](/readme_assets/blue.png)
 
 ## TODO List
-- LICENSE
 - Clean the main directory by moving the examples in their own directory
 - Support for OSX and UNIX systems
 - CLI
