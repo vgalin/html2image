@@ -33,11 +33,11 @@ htmi = HtmlToImage()
 ```
 
 Possible arguments for the constructor :
--  `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
--  `chrome_path` and  `firefox_path` : The path or the command that can be used to find the `.exe` of a specific browser. For now, `start chrome` is the default value of `chrome_path`.
--  `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
--  `size` : 2-Tuple reprensenting the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
--  `temp_path` : Path that will be used by HTML2Image put together the different resources . Default value is the path in the `%TEMP%` user variable on windows (type `echo %TEMP%` in a command prompt to see it).
+-   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
+-   `chrome_path` and  `firefox_path` : The path or the command that can be used to find the `.exe` of a specific browser. For now, `start chrome` is the default value of `chrome_path`.
+-   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
+-   `size` : 2-Tuple reprensenting the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
+-   `temp_path` : Path that will be used by HTML2Image put together the different resources . Default value is the path in the `%TEMP%` user variable on windows (type `echo %TEMP%` in a command prompt to see it).
 
 You can also modify these values afterward by accessing the attribute of the same name : 
 
@@ -130,9 +130,9 @@ Result (using `size=(500, 200)`):
 ![blue_screenshot](/readme_assets/blue.png)
 
 ## TODO List
--  Clean the main directory by moving the examples in their own directory
--  Support for OSX and UNIX systems
--  CLI
--  Suport of other browsers, such as Firefox
--  More extensive doc + comments
--  Check if the lib can find the browsers .EXEs
+-   Clean the main directory by moving the examples in their own directory
+-   Support for OSX and UNIX systems
+-   CLI
+-   Suport of other browsers, such as Firefox
+-   More extensive doc + comments
+-   Check if the lib can find the browsers .EXEs
