@@ -1,5 +1,4 @@
 import os
-import codecs
 from shutil import copyfile
 
 # default_chrome_path = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'

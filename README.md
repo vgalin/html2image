@@ -1,6 +1,6 @@
 # HTML 2 Image
 
-**HTML2Image** ("HTML to Image") is (a soon to be) **Python** package that acts as a wrapper around the **headless mode** of existing web browsers to *generate images from URLs and from HTML+CSS strings or files*.
+**HTML2Image** ("HTML to Image") is **Python** package that acts as a wrapper around the **headless mode** of existing web browsers to *generate images from URLs and from HTML+CSS strings or files*.
 
 HTML2Image is a **work in progress** and has only be used/tested on Windows for now.
 
@@ -15,7 +15,9 @@ For more informations about headless modes :
 - (Firefox) https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode
 
 ## Installation
-For now, this project is not packaged and cannot be installed through, for instance, pip. To use it in its actual form, you can clone or download the repository and place it in your project.
+html2image is published on PyPI and can be obtained through pip or your favorite package manager :
+
+```pip install html2image```
 
 ## Usage
 
