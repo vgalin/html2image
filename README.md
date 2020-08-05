@@ -1,4 +1,7 @@
 # HTML 2 Image
+
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/bb31a23498d44ab3bdb173f998d87412)](https://app.codacy.com/manual/vgalin/html2image?utm_source=github.com&utm_medium=referral&utm_content=vgalin/html2image&utm_campaign=Badge_Grade_Dashboard)
+
 [
 ![PyPI](https://img.shields.io/pypi/v/html2image.svg)
 ![PyPI](https://img.shields.io/pypi/pyversions/html2image.svg)
