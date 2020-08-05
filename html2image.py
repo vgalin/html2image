@@ -2,11 +2,28 @@ import os
 from shutil import copyfile
 
 # default_chrome_path = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-default_chrome_path = 'start chrome'
-default_firefox_path = 'start firefox'
+
+if os.name == 'nt':
+    # current os is Windows
+    default_chrome_path = 'start chrome'
+    default_firefox_path = 'start firefox'
+    tmp_dir = os.environ['TMP']
+
+else:
+    default_chrome_path = 'chromium-browser' # on headless servers
+    default_firefox_path = ''
+    tmp_dir = '/tmp'
+
+default_temp_path = os.path.join(tmp_dir, 'html2image')
+
+try:
+    os.mkdir(default_temp_path)
+except FileExistsError:
+    # html2image temporary directory already exists but that is ok
+    pass
 
 class HtmlToImage():
-    
+
     # todo : check if output path exists on init or on attribute change
 
     def __init__(
@@ -16,7 +33,7 @@ class HtmlToImage():
         firefox_path=default_firefox_path,
         output_path=os.getcwd(),
         size=(1920, 1080),
-        temp_path=os.path.join(os.environ['TEMP'], 'html2image'),
+        temp_path=default_temp_path,
     ):
         """
         """
