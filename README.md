@@ -11,7 +11,7 @@ HTML2Image is currently in a **work in progress** stage.
 
 ## Principle
 
-Most web browsers have a **Headless Mode**, which is a way to run them without displaying any graphical interface. Headless mode is mainly used for automated testings but also comes in handy in our case, because it can be used to take screenshots of web pages that are exact replicas of what you would see on your screen if you were using the browser yourself.
+Most web browsers have a **Headless Mode**, which is a way to run them without displaying any graphical interface. Headless mode is mainly used for automated testings but also comes in handy if you want to take screenshots of web pages that are exact replicas of what you would see on your screen if you were using the browser yourself.
 
 However, for the sake of taking screenshots, headless mode is not very convenient to use. HTML2Image aims to hide the inconveniences of the browsers' headless modes while adding useful features such as allowing to create an image from as little as a string.
 
