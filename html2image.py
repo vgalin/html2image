@@ -135,9 +135,9 @@ class HtmlToImage():
 
         """
         html_file = os.path.join(self.temp_path, html_file)
-        self._render(output_file=image_name, input=html_file)
+        self._render(output_file=image_name, input_file=html_file)
 
-    def _chrome_render(self, output_file='render.png', input=''):
+    def _chrome_render(self, output_file='render.png', input_file=''):
         """
 
         """
@@ -150,18 +150,18 @@ class HtmlToImage():
             f'--screenshot={os.path.join(self.output_path, output_file)} '
             f'--window-size={self._size} '
             f'--default-background-color=0 '
-            f'{input}'
+            f'{input_file}'
         )
         # print(command)
         os.system(command)
 
-    def _firefox_render(self, output_file='render.png', input=''):
+    def _firefox_render(self, output_file='render.png', input_file=''):
         """
         """
         raise NotImplementedError
 
     def url_to_img(self, url, output_file='render.png'):
-        self._render(input=url, output_file=output_file)
+        self._render(input_file=url, output_file=output_file)
 
     def load_str(self, css_content, as_filename):
         with open(os.path.join(self.temp_path, as_filename), 'w') as f:
