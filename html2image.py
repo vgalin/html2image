@@ -60,21 +60,20 @@ class HtmlToImage():
         """
         """
         self.browser = browser
-        self.chrome_path = chrome_path
-        self.firefox_path = firefox_path
         self.output_path = output_path
         self.size = size
-        self.temp_path = temp_path # calls the setter
+        self.temp_path = temp_path
 
         if self.browser == "chrome":
             self._render = self._chrome_render
-            self.chrome_path = chrome_path # calls the setter
+            self.chrome_path = chrome_path
 
         elif self.browser == "firefox":
             raise NotImplementedError
         else:
             raise NotImplementedError
     
+
     @property
     def chrome_path(self):
         return self._chrome_path
@@ -82,6 +81,7 @@ class HtmlToImage():
     @chrome_path.setter
     def chrome_path(self, value):
         self._chrome_path = _find_chrome(value)
+
 
     @property
     def temp_path(self):
@@ -100,6 +100,22 @@ class HtmlToImage():
 
         self._temp_path = temp_dir
     
+
+    @property
+    def output_path(self):
+        return self._output_path
+
+    @output_path.setter
+    def output_path(self, value):
+        # output_path should always be an absolute path
+        value = os.path.abspath(value) 
+
+        # create the directory if it does not exist
+        os.makedirs(value, exist_ok=True)
+
+        self._output_path = value
+
+
     @property
     def size(self):
         return tuple(int(i) for i in self._size.split(','))
