@@ -1,26 +1,43 @@
 import os
-from shutil import copyfile
+import shutil
 
-# default_chrome_path = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+def _find_chrome(user_given_path=None):
+    """
+    Checks the validity of a given path.
+    If no path fiven, try to find a valid path.
+    """
 
-if os.name == 'nt':
-    # current os is Windows
-    default_chrome_path = 'start chrome'
-    default_firefox_path = 'start firefox'
-    tmp_dir = os.environ['TMP']
+    if user_given_path is not None:
+        if os.path.isfile(user_given_path):
+            return user_given_path
+        else:
+            print('Could not find chrome in the given path.')
+            exit(1)
 
-else:
-    default_chrome_path = 'chromium-browser' # on headless servers
-    default_firefox_path = ''
-    tmp_dir = '/tmp'
+    if os.name == 'nt':
+        prefixes = [
+            os.getenv('PROGRAMFILES(X86)'),
+            os.getenv('PROGRAMFILES'),
+            os.getenv('LOCALAPPDATA'),
+        ]
 
-default_temp_path = os.path.join(tmp_dir, 'html2image')
+        suffix = "Google\\Chrome\\Application\\chrome.exe"
 
-try:
-    os.mkdir(default_temp_path)
-except FileExistsError:
-    # html2image temporary directory already exists but that is ok
-    pass
+        for prefix in prefixes:
+            test = os.path.join(prefix, suffix)
+            if os.path.isfile(test):
+                return test
+
+    else:
+        if os.path.isfile("/usr/bin/chromium-browser"):
+            return "/usr/bin/chromium-browser"
+
+        which_result = shutil.which('chromium-browser')
+        if os.path.isfile(which_result):
+            return which_result
+
+    print('Could not find a Chrome executable on this machine, please specify it yourself.')
+    exit(1)
 
 class HtmlToImage():
 
@@ -29,11 +46,11 @@ class HtmlToImage():
     def __init__(
         self,
         browser='chrome',
-        chrome_path=default_chrome_path,
-        firefox_path=default_firefox_path,
+        chrome_path=None,
+        firefox_path=None,
         output_path=os.getcwd(),
         size=(1920, 1080),
-        temp_path=default_temp_path,
+        temp_path=None,
     ):
         """
         """
@@ -42,14 +59,41 @@ class HtmlToImage():
         self.firefox_path = firefox_path
         self.output_path = output_path
         self.size = size
-        self.temp_path = temp_path
+        self.temp_path = temp_path # calls the setter
 
         if self.browser == "chrome":
             self._render = self._chrome_render
+            self.chrome_path = chrome_path # calls the setter
+
         elif self.browser == "firefox":
-            self._render = self._firefox_render
+            raise NotImplementedError
         else:
             raise NotImplementedError
+    
+    @property
+    def chrome_path(self):
+        return self._chrome_path
+
+    @chrome_path.setter
+    def chrome_path(self, value):
+        self._chrome_path = _find_chrome(value)
+
+    @property
+    def temp_path(self):
+        return self._temp_path
+
+    @temp_path.setter
+    def temp_path(self, value):
+        if value is None:
+            temp_dir = os.environ['TMP'] if os.name == 'nt' else '/tmp'
+            temp_dir = os.path.join(temp_dir, 'html2image')
+        else:
+            temp_dir = value
+        
+        # create the directory if it does not exist
+        os.makedirs(temp_dir, exist_ok=True)
+
+        self._temp_path = temp_dir
     
     @property
     def size(self):
@@ -102,7 +146,7 @@ class HtmlToImage():
             as_filename = os.path.basename(src)
 
         dest = os.path.join(self.temp_path, as_filename)
-        copyfile(src, dest)
+        shutil.copyfile(src, dest)
 
 
 if __name__ == '__main__':
