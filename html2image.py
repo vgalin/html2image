@@ -1,5 +1,14 @@
+"""
+Main file of the html2image package.
+
+html2image ia a package acting as a wrapper around the
+headless modeof existing web browsers to generate images
+from URLs and from HTML+CSS strings or files.
+"""
+
 import os
 import shutil
+
 
 def _find_chrome(user_given_path=None):
     """
@@ -44,6 +53,7 @@ def _find_chrome(user_given_path=None):
     print('Could not find a Chrome executable on this machine, please specify it yourself.')
     exit(1)
 
+
 class HtmlToImage():
 
     # todo : check if output path exists on init or on attribute change
@@ -72,7 +82,6 @@ class HtmlToImage():
             raise NotImplementedError
         else:
             raise NotImplementedError
-    
 
     @property
     def chrome_path(self):
@@ -81,7 +90,6 @@ class HtmlToImage():
     @chrome_path.setter
     def chrome_path(self, value):
         self._chrome_path = _find_chrome(value)
-
 
     @property
     def temp_path(self):
@@ -94,12 +102,11 @@ class HtmlToImage():
             temp_dir = os.path.join(temp_dir, 'html2image')
         else:
             temp_dir = value
-        
+
         # create the directory if it does not exist
         os.makedirs(temp_dir, exist_ok=True)
 
         self._temp_path = temp_dir
-    
 
     @property
     def output_path(self):
@@ -108,18 +115,17 @@ class HtmlToImage():
     @output_path.setter
     def output_path(self, value):
         # output_path should always be an absolute path
-        value = os.path.abspath(value) 
+        value = os.path.abspath(value)
 
         # create the directory if it does not exist
         os.makedirs(value, exist_ok=True)
 
         self._output_path = value
 
-
     @property
     def size(self):
         return tuple(int(i) for i in self._size.split(','))
-    
+
     @size.setter
     def size(self, value):
         self._size = f'{value[0]},{value[1]}'
@@ -151,7 +157,6 @@ class HtmlToImage():
 
     def _firefox_render(self, output_file='render.png', input=''):
         """
-        
         """
         raise NotImplementedError
 
