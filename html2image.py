@@ -30,7 +30,7 @@ def _find_chrome(user_given_path=None):
                 return path_candidate
 
     else:
-        # Other system (not Windows)
+        # Other systems (not Windows)
 
         # test for the most common directory first
         if os.path.isfile("/usr/bin/chromium-browser"):
