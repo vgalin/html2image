@@ -15,6 +15,7 @@ def _find_chrome(user_given_path=None):
             exit(1)
 
     if os.name == 'nt':
+        # Winwows system
         prefixes = [
             os.getenv('PROGRAMFILES(X86)'),
             os.getenv('PROGRAMFILES'),
@@ -24,14 +25,18 @@ def _find_chrome(user_given_path=None):
         suffix = "Google\\Chrome\\Application\\chrome.exe"
 
         for prefix in prefixes:
-            test = os.path.join(prefix, suffix)
-            if os.path.isfile(test):
-                return test
+            path_candidate = os.path.join(prefix, suffix)
+            if os.path.isfile(path_candidate):
+                return path_candidate
 
     else:
+        # Other system (not Windows)
+
+        # test for the most common directory first
         if os.path.isfile("/usr/bin/chromium-browser"):
             return "/usr/bin/chromium-browser"
 
+        # search for chromium-browser with a python equivalent of the `which` command
         which_result = shutil.which('chromium-browser')
         if os.path.isfile(which_result):
             return which_result
