@@ -4,7 +4,7 @@ import shutil
 def _find_chrome(user_given_path=None):
     """
     Checks the validity of a given path.
-    If no path fiven, try to find a valid path.
+    If no path given, try to find chrome on a Windows or Unix system.
     """
 
     if user_given_path is not None:
