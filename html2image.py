@@ -249,6 +249,14 @@ class HtmlToImage():
         """
 
         file = os.path.join(self.temp_path, file)
+
+        if os.path.dirname(output_file) != '':
+            raise ValueError(
+                "the output_file parameter should be a filename "
+                "and not a path.\n Change the output path by "
+                "modifying the output_path attribute."
+            )
+
         self._render(output_file=output_file, input_file=file)
 
     def screenshot_url(self, url, output_file='screenshot.png'):
@@ -270,6 +278,13 @@ class HtmlToImage():
                     File extension (e.g. .png) has to be included.
                     Default is screenshot.png
         """
+
+        if os.path.dirname(output_file) != '':
+            raise ValueError(
+                "output_file should be a filename and not a path.\n",
+                "Change the output path by modifying the output_path",
+                "attribute.",
+            )
 
         self._render(input_file=url, output_file=output_file)
 
