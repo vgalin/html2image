@@ -29,7 +29,7 @@ html2image is published on PyPI and can be obtained through pip or your favorite
 ### Import the library and instantiate it
 ```python
 from html2image import HtmlToImage
-htmi = HtmlToImage()
+hti = HtmlToImage()
 ```
 
 Possible arguments for the constructor :
@@ -42,18 +42,13 @@ Possible arguments for the constructor :
 You can also modify these values afterward by accessing the attribute of the same name : 
 
 ``` python
-htmi.size = (500, 200)
-```
-
-**Nota Bene :** If typing `start chrome` in a command prompt (or only `chrome` if you want to do this via Win+R) does not launch chrome, you will have to change this value by your chrome path, for instance by doing :
-```python 
-htmi.chrome_path = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+hti.size = (500, 200)
 ```
 
 ### Image from an URL
 The following code takes a screenshot of the [python.org](https://www.python.org/) webpage and save it in the current working directory as `python_org.png` :
 ```python
-htmi.url_to_img(url='https://www.python.org/', output_file='python_org.png')
+hti.screenshot_url('https://www.python.org/', 'python_org.png')
 ```
 
 Result (using `size=(800, 550)`): 
@@ -74,17 +69,13 @@ my_html_string = """\
 This page will be red
 """
 
-my_css_string = """\
-body {
-    background: red;
-}
-"""
+my_css_string = "body { background: red; }"
 
 # image from html & css string
-htmi.load_str(my_html_string, as_filename='red_page.html')
-htmi.load_str(my_css_string, as_filename='red_background.css')
+hti.load_str(my_html_string, 'red_page.html')
+hti.load_str(my_css_string, 'red_background.css')
 
-htmi.render('red_page.html', 'red.png')
+hti.screenshot('red_page.html', 'red.png')
 ```
 
 Result (using `size=(500, 200)`): 
@@ -119,10 +110,10 @@ body {
 ...
 
 # image from html & css files
-htmi.load_file('blue_page.html')
-htmi.load_file('blue_background.css')
+hti.load_file('blue_page.html')
+hti.load_file('blue_background.css')
 
-htmi.render('blue_page.html', 'blue.png')
+hti.screenshot('blue_page.html', 'blue.png')
 ```
 
 Result (using `size=(500, 200)`): 
