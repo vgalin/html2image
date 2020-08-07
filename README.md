@@ -121,8 +121,8 @@ Result (using `size=(500, 200)`):
 ![blue_screenshot](/readme_assets/blue.png)
 
 ## TODO List
--   Carry tests on OSX and UNIX systems
--   CLI
+-   A nice CLI
 -   Suport of other browsers, such as Firefox
 -   More extensive doc + comments
--   Check if the lib can find the browsers .EXEs
+-   Deep search for the browsers executables?
+-   PDF generation?
