@@ -281,9 +281,9 @@ class HtmlToImage():
 
         if os.path.dirname(output_file) != '':
             raise ValueError(
-                "output_file should be a filename and not a path.\n",
-                "Change the output path by modifying the output_path",
-                "attribute.",
+                "the output_file parameter should be a filename "
+                "and not a path.\nChange the output path by "
+                "modifying the output_path attribute."
             )
 
         self._render(input_file=url, output_file=output_file)
