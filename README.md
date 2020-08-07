@@ -130,7 +130,6 @@ Result (using `size=(500, 200)`):
 ![blue_screenshot](/readme_assets/blue.png)
 
 ## TODO List
--   Clean the main directory by moving the examples in their own directory
 -   Carry tests on OSX and UNIX systems
 -   CLI
 -   Suport of other browsers, such as Firefox
