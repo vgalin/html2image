@@ -253,7 +253,7 @@ class HtmlToImage():
         if os.path.dirname(output_file) != '':
             raise ValueError(
                 "the output_file parameter should be a filename "
-                "and not a path.\n Change the output path by "
+                "and not a path.\nChange the output path by "
                 "modifying the output_path attribute."
             )
 
