@@ -39,4 +39,4 @@ hti.screenshot('blue_page.html', 'blue.png')
 # hti.output_path += "\\images"
 # for i in range (25, 300, 25):
 #     hti.size = i, i
-#     hti.render('blue_page.html', f'loop_{i}.png')
+#     hti.screenshot('blue_page.html', f'loop_{i}.png')
