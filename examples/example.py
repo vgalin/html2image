@@ -33,9 +33,6 @@ hti.load_file('blue_background.css')
 
 hti.screenshot('blue_page.html', 'blue.png')
 
-
-
-
 # hti.output_path += "\\images"
 # for i in range (25, 300, 25):
 #     hti.size = i, i
