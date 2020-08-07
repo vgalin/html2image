@@ -2,26 +2,34 @@
 Main file of the html2image package.
 
 html2image ia a package acting as a wrapper around the
-headless modeof existing web browsers to generate images
+headless mode of existing web browsers to generate images
 from URLs and from HTML+CSS strings or files.
 """
+
+# Docstring format used in this file : NumPy Style
+# https://numpydoc.readthedocs.io/en/latest/format.html#overview
 
 import os
 import shutil
 
 
 def _find_chrome(user_given_path=None):
-    """
-    Checks the validity of a given path.
+    """Find a Chrome executable.
+
+    Search chrome on a given path.
     If no path given, try to find chrome on a Windows or Unix system.
+
+    Raises
+    ------
+        FileNotFoundError
+            If a suitable chrome executable could not be found.
     """
 
     if user_given_path is not None:
         if os.path.isfile(user_given_path):
             return user_given_path
         else:
-            print('Could not find chrome in the given path.')
-            exit(1)
+            raise FileNotFoundError('Could not find chrome in the given path.')
 
     if os.name == 'nt':
         # Windows system
@@ -45,18 +53,53 @@ def _find_chrome(user_given_path=None):
         if os.path.isfile("/usr/bin/chromium-browser"):
             return "/usr/bin/chromium-browser"
 
-        # search for chromium-browser with a python equivalent of the `which` command
+        # search for chromium-browser with a python
+        # equivalent of the `which` command
         which_result = shutil.which('chromium-browser')
         if os.path.isfile(which_result):
             return which_result
 
-    print('Could not find a Chrome executable on this machine, please specify it yourself.')
-    exit(1)
+    raise FileNotFoundError(
+        'Could not find a Chrome executable on this '
+        'machine, please specify it yourself.'
+    )
 
 
 class HtmlToImage():
+    """
+        Allows the generation of images from
+        URLs and HTML/CSS files or strings.
 
-    # todo : check if output path exists on init or on attribute change
+        Parameters
+        ----------
+            browser : str , optional
+                Type of the browser that will be used to take screenshots.
+                Default is Chrome.
+
+            chrome_path : str, optional
+                Path to a Chrome/Chromium executable
+
+            firefox_path: str, optional
+                Path to a Firefox executable
+
+            output_path: str, optional
+                Path to a directory in which the taken screenshots
+                will be saved.
+                Default is the current working directory.
+
+            size : (int, int), optional
+                Size of the screenshots.
+                Default is (1920, 1080).
+
+            temp_path : str, optional
+                Path to a directory that will be used to store temporary files.
+
+        Raises
+        ------
+            FileNotFoundError:
+                If an executable of the browser specified in the `browser`
+                parameter was not found.
+    """
 
     def __init__(
         self,
@@ -67,8 +110,7 @@ class HtmlToImage():
         size=(1920, 1080),
         temp_path=None,
     ):
-        """
-        """
+
         self.browser = browser
         self.output_path = output_path
         self.size = size
@@ -120,14 +162,7 @@ class HtmlToImage():
         # create the directory if it does not exist
         os.makedirs(value, exist_ok=True)
 
-        self._output_path = value
-
-    def render(self, html_file, image_name):
-        """
-
-        """
-        html_file = os.path.join(self.temp_path, html_file)
-        self._render(output_file=image_name, input_file=html_file)
+        self._output_path = value  
 
     def _chrome_render(self, output_file='render.png', input_file=''):
         """
@@ -153,19 +188,88 @@ class HtmlToImage():
         """
         raise NotImplementedError
 
-    def url_to_img(self, url, output_file='render.png'):
-        self._render(input_file=url, output_file=output_file)
+    def load_str(self, content, as_filename):
+        """
+        Loads a string containing HTML or CSS so that html2image can use it
+        later to take a screenshot.
 
-    def load_str(self, css_content, as_filename):
+        Behind the scenes the string (that can really contain anything) is
+        written into a file that is saved in the directory defined in the
+        `temp_dir` attribute.
+
+        Parameters
+        ----------
+            content: str
+                HTML/CSS formatted text.
+
+            as_filename: str
+                Filename as which the given string will be saved.
+
+        """
         with open(os.path.join(self.temp_path, as_filename), 'w') as f:
-            f.writelines(css_content)
+            f.writelines(content)
 
     def load_file(self, src, as_filename=None):
+        """
+        Loads a file so that html2image can use it later to take a screenshot.
+
+        Behind the scenes the file is eventually renamed, if the `as_filename`
+        parameter is specified, and it is then sent to the directory defined
+        in the  `temp_dir` attribute.
+
+        Parameters
+        ----------
+            src: str
+                Path to the file to load.
+
+            as_filename: str
+                Filename as which the given file will renamed.
+                If None or not specified, the given file will keep
+                its original name.
+        """
         if as_filename is None:
             as_filename = os.path.basename(src)
 
         dest = os.path.join(self.temp_path, as_filename)
         shutil.copyfile(src, dest)
+
+    def screenshot(self, file, output_file='screenshot.png'):
+        """Takes a screenshot of a _previously loaded_ file or string.
+
+        Parameters
+        ----------
+            file: str
+                HTML file that will be screenshotted.
+
+            output_file: str
+                Name as which the screenshot will be saved.
+                File extension (e.g. .png) has to be included.
+                Default is screenshot.png
+        """
+
+        file = os.path.join(self.temp_path, file)
+        self._render(output_file=image_name, input_file=file)
+
+    def screenshot_url(self, url, output_file='screenshot.png'):
+        """Takes a screenshot of a given URL.
+        The given URL should be well formed or it may result in undefined
+        behaviors when an headless browser will open it.
+        Please do include the protocol in the URL (http, https).
+        E.g. url = 'https://www.python.org/'
+
+        Parameters
+        ----------
+            url: str
+                URL of the page that will be screenshotted.
+                Do not ommit the protocol.
+
+            output_file: str, optional
+                    Name as which the screenshot will be saved.
+                    File extension (e.g. .png) has to be included.
+                    Default is screenshot.png
+        """
+
+        self._render(input_file=url, output_file=output_file)
 
 
 if __name__ == '__main__':

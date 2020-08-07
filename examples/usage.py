@@ -19,19 +19,19 @@ hti = HtmlToImage()
 hti.size = (800, 550)
 
 # image from an url
-hti.url_to_img(url='https://www.python.org/', output_file='python_org.png')
+hti.screenshot(url='https://www.python.org/', output_file='python_org.png')
 
 # image from html & css string
 hti.load_str(my_html_string, as_filename='red_page.html')
 hti.load_str(my_css_string, as_filename='red_background.css')
 
-hti.render('red_page.html', 'red.png')
+hti.render(file='red_page.html', output_file='red.png')
 
 # image from html & css files
 hti.load_file('blue_page.html')
 hti.load_file('blue_background.css')
 
-hti.render('blue_page.html', 'blue.png')
+hti.render(file='blue_page.html', output_file='blue.png')
 
 
 
