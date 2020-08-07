@@ -122,14 +122,6 @@ class HtmlToImage():
 
         self._output_path = value
 
-    @property
-    def size(self):
-        return tuple(int(i) for i in self._size.split(','))
-
-    @size.setter
-    def size(self, value):
-        self._size = f'{value[0]},{value[1]}'
-
     def render(self, html_file, image_name):
         """
 
@@ -148,8 +140,9 @@ class HtmlToImage():
             f'"{self.chrome_path}" '
             f'--headless '
             f'--screenshot={os.path.join(self.output_path, output_file)} '
-            f'--window-size={self._size} '
+            f'--window-size={self.size[0]},{self.size[1]} '
             f'--default-background-color=0 '
+            f'--hide-scrollbars ' # TODO : make it possible to choose to display it or not
             f'{input_file}'
         )
         # print(command)
