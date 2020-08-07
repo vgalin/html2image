@@ -24,7 +24,7 @@ def _find_chrome(user_given_path=None):
             exit(1)
 
     if os.name == 'nt':
-        # Winwows system
+        # Windows system
         prefixes = [
             os.getenv('PROGRAMFILES(X86)'),
             os.getenv('PROGRAMFILES'),
