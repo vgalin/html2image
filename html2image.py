@@ -162,7 +162,7 @@ class HtmlToImage():
         # create the directory if it does not exist
         os.makedirs(value, exist_ok=True)
 
-        self._output_path = value  
+        self._output_path = value
 
     def _chrome_render(self, output_file='render.png', input_file=''):
         """
@@ -177,7 +177,8 @@ class HtmlToImage():
             f'--screenshot={os.path.join(self.output_path, output_file)} '
             f'--window-size={self.size[0]},{self.size[1]} '
             f'--default-background-color=0 '
-            f'--hide-scrollbars ' # TODO : make it possible to choose to display it or not
+            f'--hide-scrollbars '
+            # TODO : make it possible to choose to display the scrollbar or not
             f'{input_file}'
         )
         # print(command)
@@ -252,6 +253,7 @@ class HtmlToImage():
 
     def screenshot_url(self, url, output_file='screenshot.png'):
         """Takes a screenshot of a given URL.
+
         The given URL should be well formed or it may result in undefined
         behaviors when an headless browser will open it.
         Please do include the protocol in the URL (http, https).
