@@ -249,7 +249,7 @@ class HtmlToImage():
         """
 
         file = os.path.join(self.temp_path, file)
-        self._render(output_file=image_name, input_file=file)
+        self._render(output_file=output_file, input_file=file)
 
     def screenshot_url(self, url, output_file='screenshot.png'):
         """Takes a screenshot of a given URL.
