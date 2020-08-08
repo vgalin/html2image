@@ -235,7 +235,7 @@ class HtmlToImage():
         dest = os.path.join(self.temp_path, as_filename)
         shutil.copyfile(src, dest)
 
-    def screenshot(self, file, output_file='screenshot.png'):
+    def screenshot(self, file, output_file='screenshot.png', size=None):
         """Takes a screenshot of a _previously loaded_ file or string.
 
         Parameters
@@ -247,7 +247,14 @@ class HtmlToImage():
                 Name as which the screenshot will be saved.
                 File extension (e.g. .png) has to be included.
                 Default is screenshot.png
+
+            size: str, optional
+                Size of the screenshot that will be taken when the
+                method is called. Also changes the size for future screenshots.
         """
+
+        if size is not None:
+            self.size = size
 
         file = os.path.join(self.temp_path, file)
 
@@ -260,7 +267,7 @@ class HtmlToImage():
 
         self._render(output_file=output_file, input_file=file)
 
-    def screenshot_url(self, url, output_file='screenshot.png'):
+    def screenshot_url(self, url, output_file='screenshot.png', size=None):
         """Takes a screenshot of a given URL.
 
         The given URL should be well formed or it may result in undefined
@@ -278,7 +285,14 @@ class HtmlToImage():
                     Name as which the screenshot will be saved.
                     File extension (e.g. .png) has to be included.
                     Default is screenshot.png
+
+            size: str, optional
+                Size of the screenshot that will be taken when the
+                method is called. Also changes the size for future screenshots.
         """
+
+        if size is not None:
+            self.size = size
 
         if os.path.dirname(output_file) != '':
             raise ValueError(

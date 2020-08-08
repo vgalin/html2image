@@ -50,12 +50,17 @@ hti.size = (500, 200)
 ```
 
 ### Image from an URL
-The following code takes a screenshot of the [python.org](https://www.python.org/) webpage and save it in the current working directory as `python_org.png` :
+The following code takes a screenshot (with a size of 800 * 400 ) of the [python.org](https://www.python.org/) webpage and save it in the current working directory as `python_org.png` :
 ```python
-hti.screenshot_url('https://www.python.org/', 'python_org.png')
+hti.size = (800, 400)
+hti.screenshot_url('https://www.python.org', 'python_org.png')
+
+# one line alternative :
+hti.screenshot_url('https://www.python.org', 'python_org.png', size=(800, 400))
+
 ```
 
-Result (using `size=(800, 550)`): 
+Result : 
 
 ![blue_screenshot](/readme_assets/python_org.png)
 

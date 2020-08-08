@@ -15,11 +15,11 @@ body {
 
 hti = HtmlToImage()
 
-# change output image size for the next images (default size was 1920 * 1080)
-hti.size = (800, 550)
-
 # image from an url
-hti.screenshot_url('https://www.python.org/', 'python_org.png')
+hti.screenshot_url('https://www.python.org', 'python_org.png', size=(800, 400))
+
+# change output image size for the next images
+hti.size = (500, 200)
 
 # image from html & css string
 hti.load_str(my_html_string, as_filename='red_page.html')
