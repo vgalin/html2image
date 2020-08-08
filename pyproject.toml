@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "html2image"
-version = "0.1.0"
+version = "0.1.1"
 description = "Package acting as a wrapper around the headless mode of existing web browsers to generate images from URLs and from HTML+CSS strings or files."
 authors = ["vgalin"]
 license = "MIT"
@@ -25,7 +25,7 @@ include = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.6"
 
 [tool.poetry.dev-dependencies]
 
