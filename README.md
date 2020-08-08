@@ -76,8 +76,8 @@ This page will be red
 my_css_string = "body { background: red; }"
 
 # image from html & css string
-hti.load_str(my_html_string, 'red_page.html')
-hti.load_str(my_css_string, 'red_background.css')
+hti.load_str(my_html_string, as_filename='red_page.html')
+hti.load_str(my_css_string, as_filename='red_background.css')
 
 hti.screenshot('red_page.html', 'red.png')
 ```

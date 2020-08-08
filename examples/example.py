@@ -22,8 +22,8 @@ hti.size = (800, 550)
 hti.screenshot_url('https://www.python.org/', 'python_org.png')
 
 # image from html & css string
-hti.load_str(my_html_string, 'red_page.html')
-hti.load_str(my_css_string, 'red_background.css')
+hti.load_str(my_html_string, as_filename='red_page.html')
+hti.load_str(my_css_string, as_filename='red_background.css')
 
 hti.screenshot('red_page.html', 'red.png')
 

@@ -14,10 +14,10 @@ import shutil
 
 
 def _find_chrome(user_given_path=None):
-    """Find a Chrome executable.
+    """Finds a Chrome executable.
 
-    Search chrome on a given path.
-    If no path given, try to find chrome on a Windows or Unix system.
+    Search Chrome on a given path. If no path given,
+    try to find Chromeor Chromium-browser on a Windows or Unixsystem.
 
     Raises
     ------
@@ -116,6 +116,7 @@ class HtmlToImage():
         self.size = size
         self.temp_path = temp_path
 
+        # TODO : add @property + setter on self.browser to do the following
         if self.browser == "chrome":
             self._render = self._chrome_render
             self.chrome_path = chrome_path
