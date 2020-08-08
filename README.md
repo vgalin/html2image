@@ -4,6 +4,9 @@
 ![PyPI](https://img.shields.io/pypi/pyversions/html2image.svg)
 ![PyPI](https://img.shields.io/github/license/vgalin/html2image.svg)
 ](https://pypi.org/project/html2image/)
+[
+![GitHub](https://img.shields.io/github/v/release/vgalin/html2image?include_prereleases)
+](https://github.com/vgalin/html2image)
 
 **HTML2Image** ("HTML to Image") is a **Python** package that acts as a wrapper around the **headless mode** of existing web browsers to *generate images from URLs and from HTML+CSS strings or files*.
 

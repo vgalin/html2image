@@ -9,7 +9,7 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/vgalin/html2image"
 repository = "https://github.com/vgalin/html2image"
-keywords = ["html", "screenshot", "image", "chrome"]
+keywords = ["html", "css", "screenshot", "image", "chrome", "html to image", "css to image", "chrome", "chromium"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3 :: Only",
