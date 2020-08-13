@@ -11,6 +11,7 @@ from URLs and from HTML+CSS strings or files.
 
 import os
 import shutil
+import subprocess
 
 
 def _find_chrome(user_given_path=None):
@@ -56,7 +57,7 @@ def _find_chrome(user_given_path=None):
         # search for chromium-browser with a python
         # equivalent of the `which` command
         which_result = shutil.which('chromium-browser')
-        if os.path.isfile(which_result):
+        if which_result is not None and os.path.isfile(which_result):
             return which_result
 
     raise FileNotFoundError(
@@ -172,23 +173,24 @@ class HtmlToImage():
 
         """
 
-        # multiline str representing the command used to launch chrome in
+        # command used to launch chrome in
         # headless mode and take a screenshot
-        command = (
-            f'"{self.chrome_path}" '
-            f'--headless '
-            f'--screenshot={os.path.join(self.output_path, output_file)} '
-            f'--window-size={self.size[0]},{self.size[1]} '
-            f'--default-background-color=0 '
-            f'--hide-scrollbars '
+        command = [
+            f'{self.chrome_path}',
+            f'--headless',
+            f'--screenshot={os.path.join(self.output_path, output_file)}',
+            f'--window-size={self.size[0]},{self.size[1]}',
+            f'--default-background-color=0',
+            f'--hide-scrollbars',
             # TODO : make it possible to choose to display the scrollbar or not
-            f'{input_file}'
-        )
+            f'{input_file}',
+        ]
 
         if self.print_command:
             print(command)
+            print()
 
-        os.system(command)
+        subprocess.run(command)
 
     def _firefox_render(self, output_file='render.png', input_file=''):
         """
