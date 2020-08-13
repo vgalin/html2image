@@ -109,12 +109,14 @@ class HtmlToImage():
         output_path=os.getcwd(),
         size=(1920, 1080),
         temp_path=None,
+        print_command=False
     ):
 
         self.browser = browser
         self.output_path = output_path
         self.size = size
         self.temp_path = temp_path
+        self.print_command = print_command
 
         # TODO : add @property + setter on self.browser to do the following
         if self.browser == "chrome":
@@ -182,7 +184,10 @@ class HtmlToImage():
             # TODO : make it possible to choose to display the scrollbar or not
             f'{input_file}'
         )
-        # print(command)
+
+        if self.print_command:
+            print(command)
+
         os.system(command)
 
     def _firefox_render(self, output_file='render.png', input_file=''):
