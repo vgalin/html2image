@@ -50,9 +50,13 @@ def _find_chrome(user_given_path=None):
     else:
         # Other systems (not Windows)
 
-        # test for the most common directory first
-        if os.path.isfile("/usr/bin/chromium-browser"):
-            return "/usr/bin/chromium-browser"
+        # snap seems to be a special case?
+        # see https://stackoverflow.com/q/63375327/12182226
+        version_result = subprocess.check_output(
+            ["chromium-browser", "--version"]
+        )
+        if 'snap' in str(version_result):
+            return '/snap/chromium/current/usr/lib/chromium-browser/chrome'
 
         # search for chromium-browser with a python
         # equivalent of the `which` command
