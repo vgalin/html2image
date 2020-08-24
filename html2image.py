@@ -10,6 +10,7 @@ from URLs and from HTML+CSS strings or files.
 # https://numpydoc.readthedocs.io/en/latest/format.html#overview
 
 import os
+import platform
 import shutil
 import subprocess
 
@@ -32,7 +33,7 @@ def _find_chrome(user_given_path=None):
         else:
             raise FileNotFoundError('Could not find chrome in the given path.')
 
-    if os.name == 'nt':
+    if platform.system() == 'Windows':
         # Windows system
         prefixes = [
             os.getenv('PROGRAMFILES(X86)'),
@@ -47,8 +48,8 @@ def _find_chrome(user_given_path=None):
             if os.path.isfile(path_candidate):
                 return path_candidate
 
-    else:
-        # Other systems (not Windows)
+    elif platform.system() == "Linux":
+        # Linux system
 
         # snap seems to be a special case?
         # see https://stackoverflow.com/q/63375327/12182226
@@ -56,13 +57,24 @@ def _find_chrome(user_given_path=None):
             ["chromium-browser", "--version"]
         )
         if 'snap' in str(version_result):
-            return '/snap/chromium/current/usr/lib/chromium-browser/chrome'
+            chrome_snap = '/snap/chromium/current/usr/lib/chromium-browser/chrome'
+            if os.path.isfile(chrome_snap):
+                return chrome_snap
+        else:
+            # search for chromium-browser with a python
+            # equivalent of the `which` command
+            which_result = shutil.which('chromium-browser')
+            if which_result is not None and os.path.isfile(which_result):
+                return which_result
 
-        # search for chromium-browser with a python
-        # equivalent of the `which` command
-        which_result = shutil.which('chromium-browser')
-        if which_result is not None and os.path.isfile(which_result):
-            return which_result
+    elif platform.system() == "Darwin":
+        # MacOS system
+        chrome_app = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        version_result = subprocess.check_output(
+            [chrome_app, "--version"]
+        )
+        if "Google Chrome" in str(version_result):
+            return chrome_app
 
     raise FileNotFoundError(
         'Could not find a Chrome executable on this '
