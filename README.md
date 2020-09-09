@@ -63,7 +63,7 @@ hti.screenshot_url('https://www.python.org', 'python_org.png', size=(800, 400))
 
 Result : 
 
-![blue_screenshot](/readme_assets/python_org.png)
+![python_org_screenshot](/readme_assets/python_org.png)
 
 ### Image from HTML and CSS strings
 
@@ -90,7 +90,7 @@ hti.screenshot('red_page.html', 'red.png')
 
 Result (using `size=(500, 200)`): 
 
-![blue_screenshot](/readme_assets/red.png)
+![red_screenshot](/readme_assets/red.png)
 
 ### Image from HTML and CSS files
 
@@ -132,6 +132,6 @@ Result (using `size=(500, 200)`):
 
 ## TODO List
 -   A nice CLI
--   Suport of other browsers, such as Firefox
+-   Support of other browsers, such as Firefox
 -   More extensive doc + comments
 -   PDF generation?
