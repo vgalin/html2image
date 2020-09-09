@@ -11,7 +11,8 @@
 
 **HTML2Image** (HTML to Image) is a lightweight **Python** package that acts as a wrapper around the **headless mode** of existing web browsers to *generate images from URLs and from HTML+CSS strings or files*.
 
-HTML2Image is currently in a **work in progress** stage.
+HTML2Image has been tested on Windows, Ubuntu (desktop and server) and MacOS. It is currently in a **work in progress** stage, if you encounter any issues while using it, feel free to open an issue on the GitHub page of this project.
+
 
 ## Principle
 
@@ -38,7 +39,7 @@ hti = HtmlToImage()
 
 Possible arguments for the constructor :
 -   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
--   `chrome_path` and  `firefox_path` : The path or the command that can be used to find the `.exe` of a specific browser. For now, `start chrome` is the default value of `chrome_path`.
+-   `chrome_path` and  `firefox_path` : The path or the command that can be used to find the executable of a specific browser.
 -   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
 -   `size` : 2-Tuple reprensenting the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
 -   `temp_path` : Path that will be used by HTML2Image put together the different resources . Default value is the path in the `%TEMP%` user variable on windows (type `echo %TEMP%` in a command prompt to see it).
@@ -133,5 +134,4 @@ Result (using `size=(500, 200)`):
 -   A nice CLI
 -   Suport of other browsers, such as Firefox
 -   More extensive doc + comments
--   Deep search for the browsers executables?
 -   PDF generation?
