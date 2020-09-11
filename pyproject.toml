@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "html2image"
-version = "0.1.4"
+version = "0.1.5"
 description = "Package acting as a wrapper around the headless mode of existing web browsers to generate images from URLs and from HTML+CSS strings or files."
 authors = ["vgalin"]
 license = "MIT"
@@ -9,12 +9,13 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/vgalin/html2image"
 repository = "https://github.com/vgalin/html2image"
-keywords = ["html", "css", "screenshot", "image", "chrome", "html to image", "css to image", "chrome", "chromium"]
+keywords = ["html", "css", "screenshot", "image", "chrome", "html to image", "css to image", "chromium-browser", "chromium"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3 :: Only",
     "Operating System :: Microsoft",
     "Operating System :: Unix",
+    "Operating System :: MacOS",
     "Topic :: Utilities",
     "Topic :: Software Development :: User Interfaces",
     "Topic :: Multimedia :: Graphics :: Graphics Conversion",
@@ -32,3 +33,7 @@ python = "^3.6"
 [build-system]
 requires = ["poetry>=0.12"]
 build-backend = "poetry.masonry.api"
+
+[tool.poetry.scripts]
+hti = 'html2image:cli_entry'
+html2image = 'html2image:cli_entry'
