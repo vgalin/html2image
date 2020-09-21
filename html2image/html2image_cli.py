@@ -10,6 +10,28 @@ from html2image import HtmlToImage
 
 def cli_entry():
 
+    try:
+        htmi = HtmlToImage()
+    except Exception as e:
+        logging.critical('Could not instanciate html2image.')
+        logging.exception(e)
+        exit(1)
+
+    def handle_file(file):
+        htmi.load_file(file)
+        logging.info(f'Loaded file \t{file}')
+
+        # if file is not a css file, screen it
+        if not file.endswith('.css'):
+            htmi.screenshot(file, f'{file}.png')
+            logging.info(f'Screened file \t{file} as {file}.png')
+
+    def handle_url(url):
+        # TODO : a changing output_name
+        output_name = 'screenshot_url.png'
+        htmi.screenshot_url(url, output_name)
+        logging.info(f'Screened url \t{url} as {output_name}')
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument('inputs', nargs='*')  # file.a, file.b, file.c
@@ -25,7 +47,7 @@ def cli_entry():
 
     parser.add_argument('--browser', required=False)
     parser.add_argument('--chrome_path', required=False)
-    parser.add_argument('--firefox_path', required=False)
+    # parser.add_argument('--firefox_path', required=False)
     parser.add_argument('--temp_path', required=False)
     # todo: flag 'ask_for_filename' ?
 
@@ -40,64 +62,51 @@ def cli_entry():
 
     logging.debug(f'{args = }')
 
-    try:
-        htmi = HtmlToImage()
-    except Exception as e:
-        logging.critical('Could not instanciate html2image.')
-        logging.exception(e)
-        exit(1)
-
     if args.size:
         htmi.size = tuple(args.size)
 
     if args.output_path:
         htmi.output_path = args.output_path
 
+    if args.browser:
+        htmi.browser = args.browser
+
+    if args.chrome_path:
+        htmi.chrome_path = args.chrome_path
+
+    # if args.firefox_path:
+    #     htmi.firefox_path = args.firefox_path
+
+    if args.temp_path:
+        htmi.temp_path = args.temp_path
+
     # handling items that can be urls or files
     for item in args.inputs:
 
         if os.path.isfile(item):  # screen file
-            htmi.load_file(item)
-
-            # if item is not a css file, screen it
-            if not item.endswith('.css'):
-                htmi.screenshot(item, f'{item}.png')
-                logging.info(f'screened file \t{item} as {item}.png')
+            handle_file(item)
 
         elif item.startswith('http'):  # screen url
-            # todo output name
-            output_name = 'screenshot.png'
-
-            htmi.screenshot_url(item, output_name)
-            logging.info(f'screened url \t{item} as {output_name}')
+            handle_url(item)
 
         else:
-            logging.error(f'invalid item \t{item}')
+            logging.error(f'Invalid item \t{item}')
+            logging.error('Maybe the protocol (http, https) is missing ?')
 
     for url in args.urls:
         if not url.startswith('http'):
-            logging.info(f'adding missing protocol to {url}')
+            logging.info(f'Adding missing protocol to {url}')
             url = 'https://' + url
 
-        # todo output name
-        output_name = 'screenshot_url.png'
-        htmi.screenshot_url(url, output_name)
-        logging.info(f'screened url \t{url} as {output_name}')
+        handle_url(url)
 
     for file in args.files:
         if not os.path.isfile(file):
-            logging.error(f'cannot find file {file}')
+            logging.error(f'Cannot find file {file}')
             continue
 
-        htmi.load_file(file)
-        logging.info(f'loaded file \t{file}')
-
-        # if file is not a css file, screen it
-        if not file.endswith('.css'):
-            htmi.screenshot(file, f'{file}.png')
-            logging.info(f'screened file \t{file} as {file}.png')
+        handle_file(file)
 
 
-# todo delete
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli_entry()
