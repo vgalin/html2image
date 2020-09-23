@@ -23,14 +23,12 @@ def cli_entry():
 
         # if file is not a css file, screen it
         if not file.endswith('.css'):
-            htmi.screenshot(file, f'{file}.png')
-            logging.info(f'Screened file \t{file} as {file}.png')
+            htmi.screenshot(file, f'{output_name}{output_index}.png')
+            logging.info(f'Screened file {file} as {file}.png')
 
     def handle_url(url):
-        # TODO : a changing output_name
-        output_name = 'screenshot_url.png'
-        htmi.screenshot_url(url, output_name)
-        logging.info(f'Screened url \t{url} as {output_name}')
+        htmi.screenshot_url(url, f'{output_name}{output_index}.png')
+        logging.info(f'Screened url {url} as {output_name}{output_index}.png')
 
     parser = argparse.ArgumentParser()
 
@@ -39,7 +37,7 @@ def cli_entry():
     parser.add_argument('-f', '--files', nargs='*', required=False, default=[])
 
     parser.add_argument('-s', '--size', nargs=2, required=False)
-    parser.add_argument('-n', '--name', required=False)  # screenshot.png
+    parser.add_argument('-n', '--name', type=int, required=False)  # screenshot.png
     parser.add_argument('-o', '--output_path', required=False)
 
     parser.add_argument('-q', '--quiet', required=False, action="store_true")
@@ -65,6 +63,13 @@ def cli_entry():
     if args.size:
         htmi.size = tuple(args.size)
 
+    if args.name:
+        output_name = args.name
+    else:
+        output_name = 'screenshot'
+
+    output_index = 0
+
     if args.output_path:
         htmi.output_path = args.output_path
 
@@ -85,9 +90,11 @@ def cli_entry():
 
         if os.path.isfile(item):  # screen file
             handle_file(item)
+            output_index += 1
 
         elif item.startswith('http'):  # screen url
             handle_url(item)
+            output_index += 1
 
         else:
             logging.error(f'Invalid item \t{item}')
@@ -99,6 +106,7 @@ def cli_entry():
             url = 'https://' + url
 
         handle_url(url)
+        output_index += 1
 
     for file in args.files:
         if not os.path.isfile(file):
@@ -106,6 +114,7 @@ def cli_entry():
             continue
 
         handle_file(file)
+        output_index += 1
 
 
 if __name__ == "__main__":

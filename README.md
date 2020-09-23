@@ -131,7 +131,8 @@ Result (using `size=(500, 200)`):
 ![blue_screenshot](/readme_assets/blue.png)
 
 ## TODO List
--   A nice CLI
+-   A nice CLI (Currently in a WIP state)
+    - A better way to name the CLI's outputed files
 -   Support of other browsers, such as Firefox
 -   More extensive doc + comments
 -   PDF generation?
