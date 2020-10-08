@@ -4,10 +4,9 @@ Main file of the html2image package.
 html2image ia a package acting as a wrapper around the
 headless mode of existing web browsers to generate images
 from URLs and from HTML+CSS strings or files.
-"""
 
-# Docstring format used in this file : NumPy Style
-# https://numpydoc.readthedocs.io/en/latest/format.html#overview
+For usage and to learn more, see https://github.com/vgalin/html2imag
+"""
 
 import os
 import platform
@@ -16,15 +15,15 @@ import subprocess
 
 
 def _find_chrome(user_given_path=None):
-    """Finds a Chrome executable.
+    """ Finds a Chrome executable.
 
     Search Chrome on a given path. If no path given,
-    try to find Chromeor Chromium-browser on a Windows or Unixsystem.
+    try to find Chrome or Chromium-browser on a Windows or Unix system.
 
     Raises
     ------
-        FileNotFoundError
-            If a suitable chrome executable could not be found.
+    - `FileNotFoundError`
+        + If a suitable chrome executable could not be found.
     """
 
     if user_given_path is not None:
@@ -34,7 +33,6 @@ def _find_chrome(user_given_path=None):
             raise FileNotFoundError('Could not find chrome in the given path.')
 
     if platform.system() == 'Windows':
-        # Windows system
         prefixes = [
             os.getenv('PROGRAMFILES(X86)'),
             os.getenv('PROGRAMFILES'),
@@ -49,8 +47,6 @@ def _find_chrome(user_given_path=None):
                 return path_candidate
 
     elif platform.system() == "Linux":
-        # Linux system
-
         # snap seems to be a special case?
         # see https://stackoverflow.com/q/63375327/12182226
         version_result = subprocess.check_output(
@@ -89,33 +85,32 @@ class HtmlToImage():
 
         Parameters
         ----------
-            browser : str , optional
-                Type of the browser that will be used to take screenshots.
-                Default is Chrome.
+        - `browser`: str , optional
+            + Type of the browser that will be used to take screenshots.
+            + Default is Chrome.
 
-            chrome_path : str, optional
-                Path to a Chrome/Chromium executable
+        - `chrome_path` : str, optional
+            + Path to a Chrome/Chromium executable.
 
-            firefox_path: str, optional
-                Path to a Firefox executable
+        - `firefox_path` : str, optional
+            + Path to a Firefox executable.
 
-            output_path: str, optional
-                Path to a directory in which the taken screenshots
-                will be saved.
-                Default is the current working directory.
+        - `output_path` : str, optional
+            + Path to a directory in which the taken screenshots will be saved.
+            + Default is the current working directory.
 
-            size : (int, int), optional
-                Size of the screenshots.
-                Default is (1920, 1080).
+        - `size` : (int, int), optional
+            + Size of the screenshots.
+            + Default is (1920, 1080).
 
-            temp_path : str, optional
-                Path to a directory that will be used to store temporary files.
+        - `temp_path` : str, optional
+            + Path to a directory that will be used to store temporary files.
 
         Raises
         ------
-            FileNotFoundError:
-                If an executable of the browser specified in the `browser`
-                parameter was not found.
+        - `FileNotFoundError`
+            + If an executable of the browser specified in the `browser`
+            parameter was not found.
     """
 
     def __init__(
@@ -185,8 +180,16 @@ class HtmlToImage():
         self._output_path = value
 
     def _chrome_render(self, output_file='render.png', input_file=''):
-        """
+        """ Calls Chrome or Chromium headless to take a screenshot.
 
+            Parameters
+            ----------
+            - `output_file`: str
+                + Name as which the screenshot will be saved.
+                + File extension (e.g. .png) has to be included.
+                + Default is screenshot.png
+            - `input_file`: str
+                + File (or url...) that will be screenshotted.
         """
 
         # command used to launch chrome in
@@ -209,7 +212,7 @@ class HtmlToImage():
         subprocess.run(command)
 
     def _firefox_render(self, output_file='render.png', input_file=''):
-        """
+        """ Not implemented.
         """
         raise NotImplementedError
 
@@ -224,33 +227,32 @@ class HtmlToImage():
 
         Parameters
         ----------
-            content: str
-                HTML/CSS formatted text.
+        - `content`: str
+            + HTML/CSS formatted text.
 
-            as_filename: str
-                Filename as which the given string will be saved.
+        - `as_filename`: str
+            + Filename as which the given string will be saved.
 
         """
         with open(os.path.join(self.temp_path, as_filename), 'w') as f:
             f.writelines(content)
 
     def load_file(self, src, as_filename=None):
-        """
-        Loads a file so that html2image can use it later to take a screenshot.
+        """ 'Loads' a file that html2image can use later to take a screenshot.
 
-        Behind the scenes the file is eventually renamed, if the `as_filename`
-        parameter is specified, and it is then sent to the directory defined
-        in the  `temp_dir` attribute.
+        Behind the scenes, the file found ad `src` is:
+            eventually renamed, if the `as_filename` parameter is specified;
+            then sent to the directory defined in the  `temp_dir` attribute.
 
         Parameters
         ----------
-            src: str
-                Path to the file to load.
+        - `src`: str
+            + Path to the file to load.
 
-            as_filename: str
-                Filename as which the given file will renamed.
-                If None or not specified, the given file will keep
-                its original name.
+        - `as_filename`: str
+            + Filename as which the given file will renamed.
+            + If None or not specified, the given file will keep
+            its original name.
         """
         if as_filename is None:
             as_filename = os.path.basename(src)
@@ -259,21 +261,21 @@ class HtmlToImage():
         shutil.copyfile(src, dest)
 
     def screenshot(self, file, output_file='screenshot.png', size=None):
-        """Takes a screenshot of a _previously loaded_ file or string.
+        """ Takes a screenshot of a _previously loaded_ file or string.
 
         Parameters
         ----------
-            file: str
-                HTML file that will be screenshotted.
+        - `file`: str
+            + HTML file that will be screenshotted.
 
-            output_file: str
-                Name as which the screenshot will be saved.
-                File extension (e.g. .png) has to be included.
-                Default is screenshot.png
+        - `output_file`: str
+            + Name as which the screenshot will be saved.
+            + File extension (e.g. .png) has to be included.
+            + Default is screenshot.png
 
-            size: str, optional
-                Size of the screenshot that will be taken when the
-                method is called. Also changes the size for future screenshots.
+        - `size`: str, optional
+            + Size of the screenshot that will be taken when the
+            method is called. Also changes the size for future screenshots.
         """
 
         if size is not None:
@@ -291,7 +293,7 @@ class HtmlToImage():
         self._render(output_file=output_file, input_file=file)
 
     def screenshot_url(self, url, output_file='screenshot.png', size=None):
-        """Takes a screenshot of a given URL.
+        """ Takes a screenshot of a given URL.
 
         The given URL should be well formed or it may result in undefined
         behaviors when an headless browser will open it.
@@ -300,18 +302,18 @@ class HtmlToImage():
 
         Parameters
         ----------
-            url: str
-                URL of the page that will be screenshotted.
-                Do not ommit the protocol.
+        - `url`: str
+            + URL of the page that will be screenshotted.
+            + Do not ommit the protocol.
 
-            output_file: str, optional
-                    Name as which the screenshot will be saved.
-                    File extension (e.g. .png) has to be included.
-                    Default is screenshot.png
+        - `output_file`: str, optional
+            + Name as which the screenshot will be saved.
+            + File extension (e.g. .png) has to be included.
+            + Default is screenshot.png
 
-            size: str, optional
-                Size of the screenshot that will be taken when the
-                method is called. Also changes the size for future screenshots.
+        - `size`: str, optional
+            + Size of the screenshot that will be taken when the
+            + method is called. Also changes the size for future screenshots.
         """
 
         if size is not None:
