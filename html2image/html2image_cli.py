@@ -22,9 +22,14 @@ def cli_entry():
         logging.info(f'Loaded file \t{file}')
 
         # if file is not a css or js file, screen it
-        if not file.endswith('.css') or not file.endswith('.js'):
-            htmi.screenshot(file, f'{output_name}{output_index}.png')
-            logging.info(f'Screened file {file} as {file}.png')
+        if not file.endswith('.css') and not file.endswith('.js'):
+            htmi.screenshot(
+                # using os.path.basename as `file` can be a relative path
+                # but screenshot need to be a filename
+                os.path.basename(file),
+                f'{output_name}{output_index}.png'
+            )
+            logging.info(f'Screened file {file} as {output_name}{output_index}.png')
 
     def handle_url(url):
         htmi.screenshot_url(url, f'{output_name}{output_index}.png')
@@ -56,7 +61,7 @@ def cli_entry():
     parser.add_argument('-f', '--files', nargs='*', required=False, default=[])
 
     parser.add_argument('-s', '--size', nargs=2, required=False)
-    parser.add_argument('-n', '--name', type=int, required=False)  # sshot.png
+    parser.add_argument('-n', '--name', required=False)  # sshot.png
     parser.add_argument('-o', '--output_path', required=False)
 
     parser.add_argument('-q', '--quiet', required=False, action="store_true")
