@@ -132,7 +132,8 @@ Result (using `size=(500, 200)`):
 
 ## TODO List
 -   A nice CLI (Currently in a WIP state)
-    - A better way to name the CLI's outputed files
+    - A better way to name the CLI's outputed files ?
 -   Support of other browsers, such as Firefox
 -   More extensive doc + comments
 -   PDF generation?
+-   Testing on push/PR with GitHub Actions
