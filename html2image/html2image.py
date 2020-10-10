@@ -223,7 +223,7 @@ class HtmlToImage():
 
         Behind the scenes the string (that can really contain anything) is
         written into a file that is saved in the directory defined in the
-        `temp_dir` attribute.
+        `temp_path` attribute.
 
         Parameters
         ----------
@@ -240,9 +240,9 @@ class HtmlToImage():
     def load_file(self, src, as_filename=None):
         """ 'Loads' a file that html2image can use later to take a screenshot.
 
-        Behind the scenes, the file found ad `src` is:
-            eventually renamed, if the `as_filename` parameter is specified;
-            then sent to the directory defined in the  `temp_dir` attribute.
+        Behind the scenes, the file found at `src` is:
+        -   eventually renamed, if the `as_filename` parameter is specified;
+        -   then sent to the directory defined in the  `temp_path` attribute.
 
         Parameters
         ----------
@@ -261,7 +261,7 @@ class HtmlToImage():
         shutil.copyfile(src, dest)
 
     def screenshot(self, file, output_file='screenshot.png', size=None):
-        """ Takes a screenshot of a _previously loaded_ file or string.
+        """ Takes a screenshot of a *previously loaded* file or string.
 
         Parameters
         ----------
