@@ -21,8 +21,8 @@ def cli_entry():
         htmi.load_file(file)
         logging.info(f'Loaded file \t{file}')
 
-        # if file is not a css file, screen it
-        if not file.endswith('.css'):
+        # if file is not a css or js file, screen it
+        if not file.endswith('.css') or not file.endswith('.js'):
             htmi.screenshot(file, f'{output_name}{output_index}.png')
             logging.info(f'Screened file {file} as {file}.png')
 
@@ -30,14 +30,33 @@ def cli_entry():
         htmi.screenshot_url(url, f'{output_name}{output_index}.png')
         logging.info(f'Screened url {url} as {output_name}{output_index}.png')
 
+    def sort_args(args):
+        ''' Sort an argument list, placing .css and .js files first.
+
+            It is better to sort (non url) arguments before calling
+            handle_file, as we want styles (css) and scripts (js) to be
+            loaded before, for instance, html files.
+        '''
+
+        screenshottables = []
+        others = []
+
+        for arg in args:
+            if arg.endswith('.css') or arg.endswith('.js'):
+                others.append(arg)
+            else:
+                screenshottables.append(arg)
+
+        return others + screenshottables
+
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('inputs', nargs='*')  # file.a, file.b, file.c
+    parser.add_argument('inputs', nargs='*')
     parser.add_argument('-u', '--urls', nargs='*', required=False, default=[])
     parser.add_argument('-f', '--files', nargs='*', required=False, default=[])
 
     parser.add_argument('-s', '--size', nargs=2, required=False)
-    parser.add_argument('-n', '--name', type=int, required=False)  # screenshot.png
+    parser.add_argument('-n', '--name', type=int, required=False)  # sshot.png
     parser.add_argument('-o', '--output_path', required=False)
 
     parser.add_argument('-q', '--quiet', required=False, action="store_true")
@@ -84,6 +103,9 @@ def cli_entry():
 
     if args.temp_path:
         htmi.temp_path = args.temp_path
+
+    args.inputs = sort_args(args.inputs)
+    args.files = sort_args(args.files)
 
     # handling items that can be urls or files
     for item in args.inputs:
