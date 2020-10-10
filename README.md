@@ -198,3 +198,4 @@ python -m pytest
 -   More extensive doc + comments
 -   PDF generation?
 -   Testing on push/PR with GitHub Actions
+-   Use threads or multiprocessing to speed up screenshot taking
