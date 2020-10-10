@@ -25,9 +25,16 @@ For more information about headless modes :
 -   (Firefox) [https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode)
 
 ## Installation
-html2image is published on PyPI and can be obtained through pip or your favorite package manager :
+html2image is published on PyPI and can be installed through pip:
 
-```pip install html2image```
+
+```
+pip install --upgrade html2image
+```
+
+In addition to this package, at least one of the following browsers but be installed on your machine :
+-   Google Chrome (Windows, MacOS)
+-   Chromium (Linux)
 
 ## Usage
 
@@ -37,18 +44,22 @@ from html2image import HtmlToImage
 hti = HtmlToImage()
 ```
 
-Possible arguments for the constructor :
+<details>
+<summary> Possible arguments for the constructor (click to expand):</summary>
+
 -   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
 -   `chrome_path` and  `firefox_path` : The path or the command that can be used to find the executable of a specific browser.
 -   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
 -   `size` : 2-Tuple reprensenting the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
--   `temp_path` : Path that will be used by HTML2Image put together the different resources . Default value is the path in the `%TEMP%` user variable on windows (type `echo %TEMP%` in a command prompt to see it).
+-   `temp_path` : Path that will be used by html2image to put together different resources *loaded* with the `load_str` and `load_file` methods. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 
-You can also modify these values afterward by accessing the attribute of the same name : 
+You can also change these values later: 
 
 ``` python
 hti.size = (500, 200)
 ```
+</details>
+<br>
 
 ### Image from an URL
 The following code takes a screenshot (with a size of 800 * 400 ) of the [python.org](https://www.python.org/) webpage and save it in the current working directory as `python_org.png` :
@@ -56,9 +67,10 @@ The following code takes a screenshot (with a size of 800 * 400 ) of the [python
 hti.size = (800, 400)
 hti.screenshot_url('https://www.python.org', 'python_org.png')
 
-# one line alternative :
+# One line alternative :
 hti.screenshot_url('https://www.python.org', 'python_org.png', size=(800, 400))
 
+# Please note that you don't necessarily have to specify a size.
 ```
 
 Result : 
@@ -85,10 +97,10 @@ my_css_string = "body { background: red; }"
 hti.load_str(my_html_string, as_filename='red_page.html')
 hti.load_str(my_css_string, as_filename='red_background.css')
 
-hti.screenshot('red_page.html', 'red.png')
+hti.screenshot('red_page.html', 'red.png', size=(500, 200))
 ```
 
-Result (using `size=(500, 200)`): 
+Result: 
 
 ![red_screenshot](/readme_assets/red.png)
 
@@ -123,12 +135,61 @@ body {
 hti.load_file('blue_page.html')
 hti.load_file('blue_background.css')
 
-hti.screenshot('blue_page.html', 'blue.png')
+hti.screenshot('blue_page.html', 'blue.png', size=(500, 200))
 ```
 
-Result (using `size=(500, 200)`): 
+Result: 
 
 ![blue_screenshot](/readme_assets/blue.png)
+
+## Using the CLI
+html2image comes with a CLI which you can use to generate screenshots from files and urls on the go.
+
+The CLI is a work in progress and may be subject to changes.
+You can call it by typing `hti` or `html2image` into a terminal.
+
+Let the CLI handle your inputs:
+```
+hti https://www.python.org style.css index.html example.svg
+```
+
+Or use arguments:
+
+| argument | description | example |
+| - | - | - |
+| -h, --help | Show help message | `hti -h` |
+| -u, --urls | Screenshot a list of URLs | `hti -u https://www.python.org` |
+| -f, --files| Screenshot a list of files| `hti -f star.svg test.html`|
+| -n, --name | Name the outputted screenshots | `hti star.svg -n red_star` |
+| -o, --output_path| Change the output path of the screenshots (default is current working directory) | `hti star.svg -o screenshot_dir` |
+| -q, --quiet| Disable all CLI's outputs | `hti --quiet` |
+| -v, --verbose| More details, can help debugging | `hti --verbose` |
+| --chrome_path| Specify a different chrome path ||
+| --temp_path| Specify a different temp path (where the files are loaded)||
+
+<br>
+
+## Note about the way html2image loads files
+To better understand how to use html2image, it is important for you to know what it does with your strings and files.
+
+As you may have noticed, html2image requires you to "load" files and strings before taking a screenshot.
+
+Behing the scenes, everything you load is sent to `temp_path`, which is set by default to `%TEMP%\html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
+
+This directory is used to put together all the resources that are needed to display a web page correctly, like `css`, `js`, and obviously `html` files. In other words : **everything that you load goes, by default, into the same directory**.
+
+When using `load_str` or `load_file`, you have the possiblity to load things under a specific name using the `as_filename` parameter, this is the name that your loaded files and strings will take when they are placed into this directory.
+This name is important:
+-   For the HTML files, you have to pass this name as an argument to the `screenshot` method.
+-   For other files, you have to refer to this name into the HTML file that you are screenshotting.  
+    Example: You load a some CSS with `as_filename='my_style.css'`. To take a screenshot with this CSS applied to your HTML, your HTML must contain the line `<link rel="stylesheet" href="my_style.css">`.
+
+## Testing
+
+Only basic testing is available at the moment. To run tests, run PyTest at the root of the project:
+```
+python -m pytest
+```
 
 ## TODO List
 -   A nice CLI (Currently in a WIP state)
