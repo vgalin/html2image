@@ -1,3 +1,3 @@
-# import html2image.html2image_cli as html2image_cli
+# import html2image.cli as cli
 
 # TODO : add tests when the CLI will be in a stable state

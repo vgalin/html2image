@@ -1,2 +1,2 @@
-from .html2image import HtmlToImage
-from .html2image_cli import cli_entry
+from .main import HtmlToImage
+from .cli import cli_entry
