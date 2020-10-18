@@ -169,8 +169,10 @@ Or use arguments:
 
 <br>
 
-## Note about the way html2image loads files
+## How html2image works
 To better understand how to use html2image, it is important for you to know what it does with your strings and files.
+
+![understand_how_html2image_works](/readme_assets/understand_how_html2image_works.png)
 
 As you may have noticed, html2image requires you to "load" files and strings before taking a screenshot.
 
