@@ -179,7 +179,7 @@ class HtmlToImage():
 
         self._output_path = value
 
-    def _chrome_render(self, output_file='render.png', input_file=''):
+    def _chrome_render(self, output_file='render.png', input_file='', size=None):
         """ Calls Chrome or Chromium headless to take a screenshot.
 
             Parameters
@@ -190,17 +190,23 @@ class HtmlToImage():
                 + Default is screenshot.png
             - `input_file`: str
                 + File (or url...) that will be screenshotted.
+            - `size`: (int, int), optional
+                + Window size of the headless browser and by extention,
+                screenshot size
         """
+
+        if size is None:
+            size = self.size
 
         # command used to launch chrome in
         # headless mode and take a screenshot
         command = [
             f'{self.chrome_path}',
-            f'--headless',
+            '--headless',
             f'--screenshot={os.path.join(self.output_path, output_file)}',
-            f'--window-size={self.size[0]},{self.size[1]}',
-            f'--default-background-color=0',
-            f'--hide-scrollbars',
+            f'--window-size={size[0]},{size[1]}',
+            '--default-background-color=0',
+            '--hide-scrollbars',
             # TODO : make it possible to choose to display the scrollbar or not
             f'{input_file}',
         ]
@@ -260,7 +266,7 @@ class HtmlToImage():
         dest = os.path.join(self.temp_path, as_filename)
         shutil.copyfile(src, dest)
 
-    def screenshot(self, file, output_file='screenshot.png', size=None):
+    def screenshot_loaded_file(self, file, output_file='screenshot.png', size=None):
         """ Takes a screenshot of a *previously loaded* file or string.
 
         Parameters
@@ -273,13 +279,10 @@ class HtmlToImage():
             + File extension (e.g. .png) has to be included.
             + Default is screenshot.png
 
-        - `size`: str, optional
+        - `size`: (int, int), optional
             + Size of the screenshot that will be taken when the
-            method is called. Also changes the size for future screenshots.
+            method is called.
         """
-
-        if size is not None:
-            self.size = size
 
         file = os.path.join(self.temp_path, file)
 
@@ -290,7 +293,7 @@ class HtmlToImage():
                 "modifying the output_path attribute."
             )
 
-        self._render(output_file=output_file, input_file=file)
+        self._render(output_file=output_file, input_file=file, size=size)
 
     def screenshot_url(self, url, output_file='screenshot.png', size=None):
         """ Takes a screenshot of a given URL.
@@ -311,13 +314,10 @@ class HtmlToImage():
             + File extension (e.g. .png) has to be included.
             + Default is screenshot.png
 
-        - `size`: str, optional
+        - `size`: (int, int), optional
             + Size of the screenshot that will be taken when the
             + method is called. Also changes the size for future screenshots.
         """
-
-        if size is not None:
-            self.size = size
 
         if os.path.dirname(output_file) != '':
             raise ValueError(
@@ -326,7 +326,174 @@ class HtmlToImage():
                 "modifying the output_path attribute."
             )
 
-        self._render(input_file=url, output_file=output_file)
+        self._render(input_file=url, output_file=output_file, size=size)
+
+    @staticmethod
+    def _extend_save_as_param(save_as, desired_length):
+        """
+        """
+
+        # get rid of anything that is not a string
+        save_as = [name for name in save_as if isinstance(name, str)]
+
+        if desired_length <= len(save_as):
+            return save_as
+
+        missing_name_count = desired_length - len(save_as)
+        filename, extention = save_as[-1].split('.')
+
+        # remove last object as it will be replaced
+        # from filename.extention to filename_0.extention
+        save_as.pop()
+
+        save_as.extend([
+            f'{filename}_{i}.{extention}'
+            for i in range(missing_name_count + 1)
+        ])
+
+        return save_as
+
+    def _extend_size_param(self, sizes, desired_length):
+        """
+        """
+
+        # get rid of anything that is not a string
+        sizes = [
+            size for size in sizes
+            if isinstance(size, tuple) and len(size) == 2
+        ]
+
+        if desired_length <= len(sizes):
+            return sizes
+
+        # if no size specified, then use default size
+        if len(sizes) == 0:
+            return [
+                self.size
+                for i in range(desired_length)
+            ]
+
+        missing_size_count = desired_length - len(sizes)
+        last_size = sizes[-1]
+
+        sizes.extend([
+            last_size
+            for i in range(missing_size_count)
+        ])
+
+        return sizes
+
+    @staticmethod
+    def _prepare_html_string(html_string, css_style_string):
+        """
+        """
+
+        prepared_html = f"""
+<html>
+<head>
+    <style>
+        {css_style_string}
+    </style>
+</head>
+
+<body>
+    {html_string}
+</body>
+</html>
+"""
+
+        return prepared_html
+
+    def screenshot(
+        self,
+        html=[],
+        css=[],
+        other=[],
+        url=[],
+        save_as='screenshot.png',
+        size=[]
+    ):
+        """
+        """
+
+        screenshot_paths = []
+
+        # convert each parameter into list
+        # e.g: param=value becomes param=[value]
+
+        html = [html] if isinstance(html, str) else html
+        css = [css] if isinstance(css, str) else css
+        other = [other] if isinstance(other, str) else other
+        url = [url] if isinstance(url, str) else url
+        save_as = [save_as] if isinstance(save_as, str) else save_as
+        size = [size] if isinstance(size, tuple) else size
+
+        planned_screenshot_count = len(html) + len(other) + len(url)
+
+        save_as = HtmlToImage._extend_save_as_param(save_as, planned_screenshot_count)
+        size = self._extend_size_param(size, planned_screenshot_count)
+
+        css_style_string = ""
+
+        for css_obj in css:
+            if os.path.isfile(css_obj):
+                self.load_file(src=css_obj)
+            else:
+                css_style_string += css_obj + '\n'
+
+        for html_obj in html:
+
+            name = save_as.pop(0)
+            current_size = size.pop(0)
+
+            if os.path.isfile(html_obj):
+                self.load_file(src=html_obj)
+                self.screenshot_loaded_file(
+                    file=os.path.basename(html_obj),
+                    output_file=name,
+                    size=current_size
+                )
+            else:
+                html_filename = name.split('.')[0] + '.html'
+                content = HtmlToImage._prepare_html_string(
+                    html_obj, css_style_string
+                )
+                self.load_str(content=content, as_filename=html_filename)
+                self.screenshot_loaded_file(
+                    file=html_filename,
+                    output_file=name
+                )
+
+            screenshot_paths.append(os.path.join(self.output_path, name))
+
+        for other_obj in other:
+            name = save_as.pop(0)
+            current_size = size.pop(0)
+
+            if os.path.isfile(other_obj):
+                self.load_file(other_obj)
+                self.screenshot_loaded_file(
+                    file=os.path.basename(other_obj),
+                    output_file=name,
+                    size=current_size
+                )
+            else:
+                raise FileNotFoundError(other_obj)
+
+            screenshot_paths.append(os.path.join(self.output_path, name))
+
+        for target_url in url:
+            name = save_as.pop(0)
+            current_size = size.pop(0)
+
+            self.screenshot_url(
+                url=target_url,
+                output_file=name,
+                size=current_size
+            )
+            screenshot_paths.append(os.path.join(self.output_path, name))
+
+        return screenshot_paths
 
 
 if __name__ == '__main__':
