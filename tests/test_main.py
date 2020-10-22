@@ -96,7 +96,9 @@ def test_screenshot_string():
     html = "Hello"
     css = "body{background: blue; font-size: 50px;}"
 
-    paths = hti.screenshot(html=html, css=css, save_as="blue_big_hello.png")
+    paths = hti.screenshot(
+        html_str=html, css_str=css, save_as="blue_big_hello.png"
+    )
 
     img = Image.open(paths[0])
     pixels = img.load()
@@ -110,7 +112,9 @@ def test_screenshot_string():
 def test_screenshot_other_svg():
     hti = HtmlToImage(output_path=OUTPUT_PATH)
 
-    paths = hti.screenshot(other='./examples/star.svg', save_as="star_svg.png")
+    paths = hti.screenshot(
+        other_file='./examples/star.svg', save_as="star_svg.png"
+    )
 
     img = Image.open(paths[0])
     pixels = img.load()
@@ -125,8 +129,8 @@ def test_screensshot_file():
     hti = HtmlToImage(output_path=OUTPUT_PATH)
 
     paths = hti.screenshot(
-        html="./examples/blue_page.html",
-        css="./examples/blue_background.css",
+        html_file="./examples/blue_page.html",
+        css_file="./examples/blue_background.css",
         save_as="from_file.png",
     )
 

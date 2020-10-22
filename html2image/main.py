@@ -13,6 +13,8 @@ import platform
 import shutil
 import subprocess
 
+from textwrap import dedent
+
 
 def _find_chrome(user_given_path=None):
     """ Finds a Chrome executable.
@@ -53,7 +55,9 @@ def _find_chrome(user_given_path=None):
             ["chromium-browser", "--version"]
         )
         if 'snap' in str(version_result):
-            chrome_snap = '/snap/chromium/current/usr/lib/chromium-browser/chrome'
+            chrome_snap = (
+                '/snap/chromium/current/usr/lib/chromium-browser/chrome'
+            )
             if os.path.isfile(chrome_snap):
                 return chrome_snap
         else:
@@ -65,7 +69,9 @@ def _find_chrome(user_given_path=None):
 
     elif platform.system() == "Darwin":
         # MacOS system
-        chrome_app = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        chrome_app = (
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        )
         version_result = subprocess.check_output(
             [chrome_app, "--version"]
         )
@@ -179,7 +185,9 @@ class HtmlToImage():
 
         self._output_path = value
 
-    def _chrome_render(self, output_file='render.png', input_file='', size=None):
+    def _chrome_render(
+        self, output_file='render.png', input_file='', size=None
+    ):
         """ Calls Chrome or Chromium headless to take a screenshot.
 
             Parameters
@@ -266,7 +274,9 @@ class HtmlToImage():
         dest = os.path.join(self.temp_path, as_filename)
         shutil.copyfile(src, dest)
 
-    def screenshot_loaded_file(self, file, output_file='screenshot.png', size=None):
+    def screenshot_loaded_file(
+        self, file, output_file='screenshot.png', size=None
+    ):
         """ Takes a screenshot of a *previously loaded* file or string.
 
         Parameters
@@ -388,27 +398,28 @@ class HtmlToImage():
         """
         """
 
-        prepared_html = f"""
-<html>
-<head>
-    <style>
-        {css_style_string}
-    </style>
-</head>
+        prepared_html = f"""\
+        <html>
+        <head>
+            <style>
+                {css_style_string}
+            </style>
+        </head>
 
-<body>
-    {html_string}
-</body>
-</html>
-"""
-
-        return prepared_html
+        <body>
+            {html_string}
+        </body>
+        </html>
+        """
+        return dedent(prepared_html)
 
     def screenshot(
         self,
-        html=[],
-        css=[],
-        other=[],
+        html_str=[],  # html_str: Union[str, list] = [],
+        html_file=[],
+        css_str=[],
+        css_file=[],
+        other_file=[],
         url=[],
         save_as='screenshot.png',
         size=[]
@@ -420,65 +431,67 @@ class HtmlToImage():
 
         # convert each parameter into list
         # e.g: param=value becomes param=[value]
-
-        html = [html] if isinstance(html, str) else html
-        css = [css] if isinstance(css, str) else css
-        other = [other] if isinstance(other, str) else other
+        html_str = [html_str] if isinstance(html_str, str) else html_str
+        html_file = [html_file] if isinstance(html_file, str) else html_file
+        css_str = [css_str] if isinstance(css_str, str) else css_str
+        css_file = [css_file] if isinstance(css_file, str) else css_file
+        other_file = (
+            [other_file] if isinstance(other_file, str) else other_file
+        )
         url = [url] if isinstance(url, str) else url
         save_as = [save_as] if isinstance(save_as, str) else save_as
         size = [size] if isinstance(size, tuple) else size
 
-        planned_screenshot_count = len(html) + len(other) + len(url)
-
-        save_as = HtmlToImage._extend_save_as_param(save_as, planned_screenshot_count)
+        planned_screenshot_count = (
+            len(html_str) + len(html_file) + len(other_file) + len(url)
+        )
+        save_as = HtmlToImage._extend_save_as_param(
+            save_as,
+            planned_screenshot_count,
+        )
         size = self._extend_size_param(size, planned_screenshot_count)
 
         css_style_string = ""
 
-        for css_obj in css:
-            if os.path.isfile(css_obj):
-                self.load_file(src=css_obj)
+        for css in css_str:
+            css_style_string += css + '\n'
+
+        for css in css_file:
+            if os.path.isfile(css):
+                self.load_file(src=css)
             else:
-                css_style_string += css_obj + '\n'
+                raise FileNotFoundError(css)
 
-        for html_obj in html:
-
+        for html in html_str:
             name = save_as.pop(0)
             current_size = size.pop(0)
 
-            if os.path.isfile(html_obj):
-                self.load_file(src=html_obj)
-                self.screenshot_loaded_file(
-                    file=os.path.basename(html_obj),
-                    output_file=name,
-                    size=current_size
-                )
-            else:
-                html_filename = name.split('.')[0] + '.html'
-                content = HtmlToImage._prepare_html_string(
-                    html_obj, css_style_string
-                )
-                self.load_str(content=content, as_filename=html_filename)
-                self.screenshot_loaded_file(
-                    file=html_filename,
-                    output_file=name
-                )
+            html_filename = name.split('.')[0] + '.html'
+            content = HtmlToImage._prepare_html_string(
+                html, css_style_string
+            )
+            self.load_str(content=content, as_filename=html_filename)
+            self.screenshot_loaded_file(
+                file=html_filename,
+                output_file=name
+            )
 
             screenshot_paths.append(os.path.join(self.output_path, name))
 
-        for other_obj in other:
+        for screenshot_target in html_file + other_file:
+
             name = save_as.pop(0)
             current_size = size.pop(0)
 
-            if os.path.isfile(other_obj):
-                self.load_file(other_obj)
+            if os.path.isfile(screenshot_target):
+                self.load_file(src=screenshot_target)
                 self.screenshot_loaded_file(
-                    file=os.path.basename(other_obj),
+                    file=os.path.basename(screenshot_target),
                     output_file=name,
                     size=current_size
                 )
             else:
-                raise FileNotFoundError(other_obj)
+                raise FileNotFoundError(screenshot_target)
 
             screenshot_paths.append(os.path.join(self.output_path, name))
 
