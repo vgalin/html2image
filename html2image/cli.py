@@ -5,10 +5,19 @@ import argparse
 import os
 import logging
 
-from html2image import HtmlToImage
+from main import HtmlToImage
 
 
 def cli_entry():
+
+    def size_type(string):
+        try:
+            x, y = map(int, string.split(','))
+            return x, y
+        except:
+            raise argparse.ArgumentTypeError(
+                f"size should be int,int, instead got {string}"
+            )
 
     try:
         htmi = HtmlToImage()
@@ -17,51 +26,17 @@ def cli_entry():
         logging.exception(e)
         exit(1)
 
-    def handle_file(file):
-        htmi.load_file(file)
-        logging.info(f'Loaded file \t{file}')
-
-        # if file is not a css or js file, screen it
-        if not file.endswith('.css') and not file.endswith('.js'):
-            htmi.screenshot(
-                # using os.path.basename as `file` can be a relative path
-                # but screenshot need to be a filename
-                os.path.basename(file),
-                f'{output_name}{output_index}.png'
-            )
-            logging.info(f'Screened file {file} as {output_name}{output_index}.png')
-
-    def handle_url(url):
-        htmi.screenshot_url(url, f'{output_name}{output_index}.png')
-        logging.info(f'Screened url {url} as {output_name}{output_index}.png')
-
-    def sort_args(args):
-        ''' Sort an argument list, placing .css and .js files first.
-
-            It is better to sort (non url) arguments before calling
-            handle_file, as we want styles (css) and scripts (js) to be
-            loaded before, for instance, html files.
-        '''
-
-        screenshottables = []
-        others = []
-
-        for arg in args:
-            if arg.endswith('.css') or arg.endswith('.js'):
-                others.append(arg)
-            else:
-                screenshottables.append(arg)
-
-        return others + screenshottables
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument('inputs', nargs='*')
-    parser.add_argument('-u', '--urls', nargs='*', required=False, default=[])
-    parser.add_argument('-f', '--files', nargs='*', required=False, default=[])
+    parser.add_argument('-U', '--url', nargs='*', required=False, default=[])
+    parser.add_argument('-H', '--html', nargs='*', required=False, default=[])
+    parser.add_argument('-C', '--css', nargs='*', required=False, default=[])
+    parser.add_argument('-O', '--other', nargs='*', required=False, default=[])
 
-    parser.add_argument('-s', '--size', nargs=2, required=False)
-    parser.add_argument('-n', '--name', required=False)  # sshot.png
+    parser.add_argument('-S', '--save-as', nargs='*', required=False, default=[])
+    parser.add_argument('-s', '--size', nargs='*', required=False, default=[], type=size_type)
+
     parser.add_argument('-o', '--output_path', required=False)
 
     parser.add_argument('-q', '--quiet', required=False, action="store_true")
@@ -84,65 +59,10 @@ def cli_entry():
 
     logging.debug(f'{args = }')
 
-    if args.size:
-        htmi.size = tuple(args.size)
-
-    if args.name:
-        output_name = args.name
-    else:
-        output_name = 'screenshot'
-
-    output_index = 0
-
-    if args.output_path:
-        htmi.output_path = args.output_path
-
-    if args.browser:
-        htmi.browser = args.browser
-
-    if args.chrome_path:
-        htmi.chrome_path = args.chrome_path
-
-    # if args.firefox_path:
-    #     htmi.firefox_path = args.firefox_path
-
-    if args.temp_path:
-        htmi.temp_path = args.temp_path
-
-    args.inputs = sort_args(args.inputs)
-    args.files = sort_args(args.files)
-
-    # handling items that can be urls or files
-    for item in args.inputs:
-
-        if os.path.isfile(item):  # screen file
-            handle_file(item)
-            output_index += 1
-
-        elif item.startswith('http'):  # screen url
-            handle_url(item)
-            output_index += 1
-
-        else:
-            logging.error(f'Invalid item \t{item}')
-            logging.error('Maybe the protocol (http, https) is missing ?')
-
-    for url in args.urls:
-        if not url.startswith('http'):
-            logging.info(f'Adding missing protocol to {url}')
-            url = 'https://' + url
-
-        handle_url(url)
-        output_index += 1
-
-    for file in args.files:
-        if not os.path.isfile(file):
-            logging.error(f'Cannot find file {file}')
-            continue
-
-        handle_file(file)
-        output_index += 1
-
+    htmi.screenshot(
+        html_file=args.html, css_file=args.css, other_file=args.other,
+        url=args.url, save_as=args.save_as, size=args.size
+    )
 
 if __name__ == "__main__":
     cli_entry()
