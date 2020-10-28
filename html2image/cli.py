@@ -3,7 +3,6 @@
 
 import argparse
 import os
-import logging
 
 from main import HtmlToImage
 
@@ -20,10 +19,10 @@ def cli_entry():
             )
 
     try:
-        htmi = HtmlToImage()
+        hti = HtmlToImage()
     except Exception as e:
-        logging.critical('Could not instanciate html2image.')
-        logging.exception(e)
+        print('Could not instanciate html2image.')
+        print(e)
         exit(1)
 
     parser = argparse.ArgumentParser()
@@ -34,7 +33,7 @@ def cli_entry():
     parser.add_argument('-C', '--css', nargs='*', required=False, default=[])
     parser.add_argument('-O', '--other', nargs='*', required=False, default=[])
 
-    parser.add_argument('-S', '--save-as', nargs='*', required=False, default=[])
+    parser.add_argument('-S', '--save-as', nargs='*', required=False, default="screenshot.png")
     parser.add_argument('-s', '--size', nargs='*', required=False, default=[], type=size_type)
 
     parser.add_argument('-o', '--output_path', required=False)
@@ -46,23 +45,30 @@ def cli_entry():
     parser.add_argument('--chrome_path', required=False)
     # parser.add_argument('--firefox_path', required=False)
     parser.add_argument('--temp_path', required=False)
-    # todo: flag 'ask_for_filename' ?
 
     args = parser.parse_args()
 
-    if args.quiet:
-        logging.basicConfig(level=logging.CRITICAL)
-    elif args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    if args.verbose:
+        print(f'{args = }')
 
-    logging.debug(f'{args = }')
+    if args.output_path:
+        hti.output_path = args.output_path
+    
+    if args.chrome_path:
+        hti.chrome_path = args.chrome_path
+        
+    if args.temp_path:
+        hti.temp_path = args.temp_path
 
-    htmi.screenshot(
+    paths = hti.screenshot(
         html_file=args.html, css_file=args.css, other_file=args.other,
         url=args.url, save_as=args.save_as, size=args.size
     )
+
+    if not args.quiet:
+        print(f'Created {len(paths)} file(s):')
+        for path in paths:
+            print(f'\t{path}')
 
 if __name__ == "__main__":
     cli_entry()
