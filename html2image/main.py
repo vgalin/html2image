@@ -427,6 +427,10 @@ class HtmlToImage():
         """
         """
 
+        # TODO / BOTE : This does not pose any problem for now but setting
+        # mutables (here empty lists) as default arguments of a function
+        # can cause unwanted behaviours.
+
         screenshot_paths = []
 
         # convert each parameter into list
