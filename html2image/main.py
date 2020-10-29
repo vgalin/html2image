@@ -5,7 +5,7 @@ html2image ia a package acting as a wrapper around the
 headless mode of existing web browsers to generate images
 from URLs and from HTML+CSS strings or files.
 
-For usage and to learn more, see https://github.com/vgalin/html2imag
+For feedback, usage and to learn more, see https://github.com/vgalin/html2image
 """
 
 import os
@@ -26,6 +26,11 @@ def _find_chrome(user_given_path=None):
     ------
     - `FileNotFoundError`
         + If a suitable chrome executable could not be found.
+
+    Returns
+    -------
+    - str
+        + Path of the chrome executable on the current machine.
     """
 
     if user_given_path is not None:
@@ -326,7 +331,7 @@ class HtmlToImage():
 
         - `size`: (int, int), optional
             + Size of the screenshot that will be taken when the
-            + method is called. Also changes the size for future screenshots.
+            + method is called.
         """
 
         if os.path.dirname(output_file) != '':
@@ -340,7 +345,35 @@ class HtmlToImage():
 
     @staticmethod
     def _extend_save_as_param(save_as, desired_length):
-        """
+        """ Extend the save_as parameter of the `screenshot()` method.
+
+        So we do not run out of filenames.
+
+        Parameters
+        ----------
+        - `save_as`: list
+            + List of filenames
+        - `desired_length`: int
+            + Minimum desired length of the ouput
+
+        Returns
+        -------
+        - list
+            + `save_as` extended to `desired_length`
+
+        Examples
+        --------
+        >>> _extend_save_as_param(['a.png', 'b.png'], 2)
+        ['a.png', 'b.png']
+
+        >>> _extend_save_as_param(['a.png', 'b.png'], 4)
+        ['a.png', 'b_0.png', 'b_1.png', 'b_2.png']
+
+        >>> _extend_save_as_param(['a.png', 'b.png'], 0)
+        ['a.png', 'b.png']
+
+        >>> _extend_save_as_param(['a.png', 'b.png', None, 65 ], 2)
+        ['a.png', 'b.png']
         """
 
         # get rid of anything that is not a string
@@ -364,7 +397,38 @@ class HtmlToImage():
         return save_as
 
     def _extend_size_param(self, sizes, desired_length):
-        """
+        """ Extend the size parameter of the `screenshot()` method.
+
+        So we do not run out of sizes.
+        If the given the `sizes` parameter is an empty list, the list
+        will the extended using `self.size`.
+
+        Parameters
+        ----------
+        - `save_as`: list
+            + List of (int, int) tuples
+        - `desired_length`: int
+            + Minimum desired length of the ouput
+
+        Returns
+        -------
+        - list
+            + `sizes` extended to `desired_length`
+
+        Examples
+        --------
+        >>> _extend_size_param([(50, 50)], 1)
+        [(50, 50)]
+
+        >>> _extend_size_param([(50, 50)], 3)
+        [(50, 50), (50, 50), (50, 50)]
+
+        >>> _extend_size_param([(50, 50), (70, 60), (80, 90)], 5)
+        [(50, 50), (70, 60), (80, 90), (80, 90), (80, 90)]
+
+        >>> _extend_size_param([], 3)
+        [(1920, 1080), (1920, 1080), (1920, 1080)]
+
         """
 
         # get rid of anything that is not a string
@@ -394,8 +458,20 @@ class HtmlToImage():
         return sizes
 
     @staticmethod
-    def _prepare_html_string(html_string, css_style_string):
-        """
+    def _prepare_html_string(html_body, css_style_string):
+        """ Creates a basic HTML string from an HTML body and a css string.
+
+        Parameters
+        ----------
+        - `html_body`: str
+        - `css_style_string`: str
+
+        Returns
+        -------
+        - str
+            A combination of `html_body` and `css_style_string` put
+            together in an HTML template.
+
         """
 
         prepared_html = f"""\
@@ -407,7 +483,7 @@ class HtmlToImage():
         </head>
 
         <body>
-            {html_string}
+            {html_body}
         </body>
         </html>
         """
@@ -424,10 +500,44 @@ class HtmlToImage():
         save_as='screenshot.png',
         size=[]
     ):
-        """
+        """ Takes a screeshot using different resources.
+
+        Parameters
+        ----------
+        - `html_str`: list of str or str
+            + HTML string(s) that will be screenshotted.
+        - `html_file`: list of str or str
+            + Filepath(s) of HTML file(s) that will be screenshotted.
+        - `css_str`: list of str or str
+            + CSS string(s) that will be "associated" with the given
+            + HTML string(s)
+        - `css_file`: list of str or str
+            + CSS file(s) supposedly already mentionned by their filenames
+            + in the content of the `html_file`(s).
+        - `other_file`: list of str or str
+            + Filepath(s) of non-HTML file(s) that will be screenshotted.
+        - `url`: list of str or str
+            + URL(s) of the page(s) that will be screenshotted.
+            + Do not ommit the protocol.
+        - `save_as`: list of str or str
+            + Name(s) as which the screenshot will be saved.
+            + File extension (e.g. .png) has to be included.
+            + Default value is screenshot.png
+        - `size`: list of (int, int) or (int, int) tuple
+            + Size(s) of the screenshot(s) that will be taken when the
+            + method is called.
+
+        Returns
+        -------
+        - list of str
+            + A list of the file path(s) of the generated image(s)
+
+        Raises
+        ------
+        - `FileNotFoundError`
         """
 
-        # TODO / BOTE : This does not pose any problem for now but setting
+        # TODO / NOTE : This does not pose any problem for now but setting
         # mutables (here empty lists) as default arguments of a function
         # can cause unwanted behaviours.
 
