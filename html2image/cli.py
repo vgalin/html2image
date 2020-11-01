@@ -2,18 +2,17 @@
 """
 
 import argparse
-import os
 
-from main import HtmlToImage
+from html2image import HtmlToImage
 
 
-def cli_entry():
+def main():
 
     def size_type(string):
         try:
             x, y = map(int, string.split(','))
             return x, y
-        except:
+        except Exception:
             raise argparse.ArgumentTypeError(
                 f"size should be int,int, instead got {string}"
             )
@@ -27,14 +26,17 @@ def cli_entry():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('inputs', nargs='*')
     parser.add_argument('-U', '--url', nargs='*', required=False, default=[])
     parser.add_argument('-H', '--html', nargs='*', required=False, default=[])
     parser.add_argument('-C', '--css', nargs='*', required=False, default=[])
     parser.add_argument('-O', '--other', nargs='*', required=False, default=[])
 
-    parser.add_argument('-S', '--save-as', nargs='*', required=False, default="screenshot.png")
-    parser.add_argument('-s', '--size', nargs='*', required=False, default=[], type=size_type)
+    parser.add_argument(
+        '-S', '--save-as', nargs='*', required=False, default="screenshot.png"
+    )
+    parser.add_argument(
+        '-s', '--size', nargs='*', required=False, default=[], type=size_type
+    )
 
     parser.add_argument('-o', '--output_path', required=False)
 
@@ -53,10 +55,10 @@ def cli_entry():
 
     if args.output_path:
         hti.output_path = args.output_path
-    
+
     if args.chrome_path:
         hti.chrome_path = args.chrome_path
-        
+
     if args.temp_path:
         hti.temp_path = args.temp_path
 
@@ -70,5 +72,6 @@ def cli_entry():
         for path in paths:
             print(f'\t{path}')
 
+
 if __name__ == "__main__":
-    cli_entry()
+    main()

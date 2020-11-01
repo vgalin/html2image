@@ -1,2 +1,7 @@
-from .main import HtmlToImage
-from .cli import cli_entry
+"""Top-level package for html2image
+"""
+
+from .html2image import HtmlToImage
+from .cli import main
+
+__all__ = ['HtmlToImage', 'main', ]
