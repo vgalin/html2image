@@ -46,7 +46,7 @@ hti = HtmlToImage()
 ```
 
 <details>
-<summary> Multiple arguments can be passed to ther constructor (click to expand):</summary>
+<summary> Multiple arguments can be passed to the constructor (click to expand):</summary>
 
 -   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
 -   `chrome_path` and  `firefox_path` : The path or the command that can be used to find the executable of a specific browser.
@@ -71,7 +71,7 @@ hti.size = (500, 200)
 The `screenshot` method is the basis of this package, most of the time, you won't need to use anything else. It can take screenshots of a lot of things :
 - URLs via the `url` parameter;
 - HTML and CSS **files** via the `html_file` and `css_file` parameters;
-- HTML and CSS **strings** strings via the `html_str` and `css_str` parameters;
+- HTML and CSS **strings** via the `html_str` and `css_str` parameters;
 - and "other" types of files via the `other_file` parameter (try it with .svg files!).
 
 And you can also (optional):
@@ -183,7 +183,7 @@ hti.screenshot(
 ---
 
 - **Retrieve the path of the generated file(s)**  
-The `screenshot` method return a list containing the path(s) of the screenshot(s):
+The `screenshot` method returns a list containing the path(s) of the screenshot(s):
 
 ```python
 paths = hti.screenshot(
@@ -201,12 +201,6 @@ HTML2image comes with a CLI which you can use to generate screenshots from files
 The CLI is a work in progress and may be subject to changes.
 You can call it by typing `hti` or `html2image` into a terminal.
 
-Let the CLI handle your inputs:
-```
-hti https://www.python.org style.css index.html example.svg
-```
-
-Or use arguments:
 
 | argument | description | example |
 | - | - | - |
@@ -216,7 +210,7 @@ Or use arguments:
 | -C, --css | Attaches a CSS files to the HTML ones | `hti -H file.html -C style.css` |
 | -O, --other | Screenshots a list of files of type "other" | `hti -O star.svg` |
 | -S, --save-as | A list of the screenshot filename(s)  | `hti -O star.svg -S star.png` |
-| -s, --size | A list of the screenshot size(s) | `hti -O star.svg -S 50,50`|
+| -s, --size | A list of the screenshot size(s) | `hti -O star.svg -s 50,50`|
 | -o, --output_path| Change the output path of the screenshots (default is current working directory) | `hti star.svg -o screenshot_dir` |
 | -q, --quiet| Disable all CLI's outputs | `hti --quiet` |
 | -v, --verbose| More details, can help debugging | `hti --verbose` |
