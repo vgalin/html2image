@@ -372,7 +372,7 @@ class HtmlToImage():
         >>> _extend_save_as_param(['a.png', 'b.png'], 0)
         ['a.png', 'b.png']
 
-        >>> _extend_save_as_param(['a.png', 'b.png', None, 65 ], 2)
+        >>> _extend_save_as_param(['a.png', 'b.png', None, 65], 2)
         ['a.png', 'b.png']
         """
 
