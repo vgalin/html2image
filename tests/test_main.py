@@ -1,4 +1,4 @@
-from html2image.main import HtmlToImage
+from html2image import HtmlToImage
 from PIL import Image
 
 OUTPUT_PATH = "tests_output"
@@ -141,3 +141,35 @@ def test_screensshot_file():
 
     # check colors at top left corner
     assert pixels[0, 0] == (0, 0, 255, 255)  # blue + no transparency
+
+
+def test_extend_size_param():
+    hti = HtmlToImage(output_path=OUTPUT_PATH)
+
+    assert hti._extend_size_param([(50, 50)], 1) \
+        == [(50, 50)]
+
+    assert hti._extend_size_param([(50, 50)], 3) \
+        == [(50, 50), (50, 50), (50, 50)]
+
+    assert hti._extend_size_param([(50, 50), (70, 60), (80, 90)], 5) \
+        == [(50, 50), (70, 60), (80, 90), (80, 90), (80, 90)]
+
+    assert hti._extend_size_param([], 3) \
+        == [(1920, 1080), (1920, 1080), (1920, 1080)]
+
+
+def test_extend_save_as_param():
+    hti = HtmlToImage(output_path=OUTPUT_PATH)
+
+    assert hti._extend_save_as_param(['a.png', 'b.png'], 2) == \
+        ['a.png', 'b.png']
+
+    assert hti._extend_save_as_param(['a.png', 'b.png'], 4) == \
+        ['a.png', 'b_0.png', 'b_1.png', 'b_2.png']
+
+    assert hti._extend_save_as_param(['a.png', 'b.png'], 0) == \
+        ['a.png', 'b.png']
+
+    assert hti._extend_save_as_param(['a.png', 'b.png', None, 65], 2) == \
+        ['a.png', 'b.png']
