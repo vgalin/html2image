@@ -1,6 +1,9 @@
 name: CI
-on: [push, pull_request]
-  
+on:
+  pull_request:
+    branches:
+      - main
+
 jobs:
   ci:
     strategy:
@@ -9,9 +12,6 @@ jobs:
         python-version: [3.6, 3.7, 3.8]
         poetry-version: [1.1.4]
         os: [ubuntu-18.04, macos-latest, windows-latest]
-#        python-version: [3.8]
-#        poetry-version: [1.0, 1.1.4]
-#        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
