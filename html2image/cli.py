@@ -51,7 +51,7 @@ def main():
     args = parser.parse_args()
 
     if args.verbose:
-        print(f'{args = }')
+        print(f'args = {args}')
 
     if args.output_path:
         hti.output_path = args.output_path
