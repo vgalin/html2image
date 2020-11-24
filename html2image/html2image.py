@@ -56,9 +56,12 @@ def _find_chrome(user_given_path=None):
     elif platform.system() == "Linux":
 
         # search google-chrome
-        which_result = shutil.which('google-chrome')
-        if which_result is not None and os.path.isfile(which_result):
-            return which_result
+        version_result = subprocess.check_output(
+            ["google-chrome", "--version"]
+        )
+
+        if 'Google Chrome' in str(version_result):
+            return "google-chrome"
 
         # else search chromium-browser
 
