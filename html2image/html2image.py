@@ -54,6 +54,14 @@ def _find_chrome(user_given_path=None):
                 return path_candidate
 
     elif platform.system() == "Linux":
+
+        # search google-chrome
+        which_result = shutil.which('google-chrome')
+        if which_result is not None and os.path.isfile(which_result):
+            return which_result
+
+        # else search chromium-browser
+
         # snap seems to be a special case?
         # see https://stackoverflow.com/q/63375327/12182226
         version_result = subprocess.check_output(
@@ -66,8 +74,6 @@ def _find_chrome(user_given_path=None):
             if os.path.isfile(chrome_snap):
                 return chrome_snap
         else:
-            # search for chromium-browser with a python
-            # equivalent of the `which` command
             which_result = shutil.which('chromium-browser')
             if which_result is not None and os.path.isfile(which_result):
                 return which_result
