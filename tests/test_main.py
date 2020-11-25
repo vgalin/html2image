@@ -1,11 +1,11 @@
-from html2image import HtmlToImage
+from html2image import Html2Image
 from PIL import Image
 
 OUTPUT_PATH = "tests_output"
 
 
 def test_screenshot_url():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     paths = hti.screenshot(url='https://www.python.org', save_as="pyorg.png")
     img = Image.open(paths[0])
@@ -13,7 +13,7 @@ def test_screenshot_url():
 
 
 def test_screenshot_multiple_urls():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
     paths = hti.screenshot(
         url=['https://www.python.org', "https://www.example.org/"],
         save_as="mixed_urls.png",
@@ -25,7 +25,7 @@ def test_screenshot_multiple_urls():
 
 
 def test_screenshot_url_custom_size():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     test_size = (334, 485)
 
@@ -40,7 +40,7 @@ def test_screenshot_url_custom_size():
 
 
 def test_screenshot_url_custom_sizes():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     test_sizes = [
         (100, 100),
@@ -64,7 +64,7 @@ def test_screenshot_url_custom_sizes():
 
 
 def test_screenshot_url_sizes_missing_custom_names():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     test_sizes = [
         (100, 100),
@@ -91,7 +91,7 @@ def test_screenshot_url_sizes_missing_custom_names():
 
 
 def test_screenshot_string():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     html = "Hello"
     css = "body{background: blue; font-size: 50px;}"
@@ -110,7 +110,7 @@ def test_screenshot_string():
 
 
 def test_screenshot_other_svg():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     paths = hti.screenshot(
         other_file='./examples/star.svg', save_as="star_svg.png"
@@ -126,7 +126,7 @@ def test_screenshot_other_svg():
 
 
 def test_screensshot_file():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     paths = hti.screenshot(
         html_file="./examples/blue_page.html",
@@ -144,7 +144,7 @@ def test_screensshot_file():
 
 
 def test_extend_size_param():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     assert hti._extend_size_param([(50, 50)], 1) \
         == [(50, 50)]
@@ -160,7 +160,7 @@ def test_extend_size_param():
 
 
 def test_extend_save_as_param():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
     assert hti._extend_save_as_param(['a.png', 'b.png'], 2) == \
         ['a.png', 'b.png']

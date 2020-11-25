@@ -41,8 +41,8 @@ In addition to this package, at least one of the following browsers **must** be 
 
 ### First, import the package and instantiate it
 ```python
-from html2image import HtmlToImage
-hti = HtmlToImage()
+from html2image import Html2Image
+hti = Html2Image()
 ```
 
 <details>
@@ -56,7 +56,7 @@ hti = HtmlToImage()
 
 Example:
 ```python
-hti = HtmlToImage(size=(500, 200))
+hti = Html2Image(size=(500, 200))
 ```
 
 You can also change these values later: 
@@ -117,7 +117,7 @@ hti.screenshot(other_file='star.svg', size=(500, 500))
 
 - **Change the directory to which the screenshots are saved**
 ```python
-hti = HtmlToImage(output_path='my_screenshot_folder')
+hti = Html2Image(output_path='my_screenshot_folder')
 ```
 **OR**
 ```python
@@ -131,27 +131,27 @@ hti.output_path = 'my_screenshot_folder'
 #### Use lists in place of any parameters while using the `screenshot` method
 - Screenshot multiple objects using only one filename, or one filename per file:
 ```python
-# creates three files from one filename
-hti.screenshot(html_str=[ 'A', 'B', 'C'], save_as='ABC.png')
+# create three files from one filename
+hti.screenshot(html_str=['A', 'B', 'C'], save_as='ABC.png')
 # outputs ABC_0.png, ABC_1.png, ABC_2.png
 
-# creates three files from from different filenames
-hti.screenshot(html_str=[ 'A', 'B', 'C'], save_as=['A.png', 'B.png', 'C.png'])
+# create three files from from different filenames
+hti.screenshot(html_str=['A', 'B', 'C'], save_as=['A.png', 'B.png', 'C.png'])
 # outputs A.png, B.png, C.png
 ```
 - Take multiple screenshots with the same size
 ```python
-# takes four screenshots with a resolution of 100*50
+# take four screenshots with a resolution of 100*50
 hti.screenshot(
-    html_str=[ 'A', 'B', 'C', 'D']
+    html_str=['A', 'B', 'C', 'D']
     size=(100, 50)
 )
 ```
 - Take multiple screenshots with different sizes
 ```python
-# takes four screenshots with different resolutions from three given sizes
+# take four screenshots with different resolutions from three given sizes
 hti.screenshot(
-    html_str=[ 'A', 'B', 'C', 'D'],
+    html_str=['A', 'B', 'C', 'D'],
     size=[(100, 50), (100, 100), (50, 50)]
 )
 # respectively 100*50, 100*100, 50*50, 50*50
@@ -161,19 +161,19 @@ hti.screenshot(
 
 - Apply CSS string(s) to multiple HTML string(s)
 ```python
-# screenshots two html strings and apply css strings on both
+# screenshot two html strings and apply css strings on both
 hti.screenshot(
     html_str=['A', 'B'],
     css_str='body {background: red;}'
 )
 
-# screenshots two html strings and apply multiple css strings on both
+# screenshot two html strings and apply multiple css strings on both
 hti.screenshot(
     html_str=['A', 'B'],
     css_str=['body {background: red;}', 'body {font-size: 50px;}']
 )
 
-# screenshots one html string and apply multiple css strings on it
+# screenshot one html string and apply multiple css strings on it
 hti.screenshot(
     html_str='A',
     css_str=['body {background: red;}', 'body {font-size: 50px;}']
@@ -187,7 +187,7 @@ The `screenshot` method returns a list containing the path(s) of the screenshot(
 
 ```python
 paths = hti.screenshot(
-    html_str=[ 'A', 'B', 'C'],
+    html_str=['A', 'B', 'C'],
     save_as="letters.png",
 )
 
@@ -196,7 +196,7 @@ print(paths)
 ```
 
 ## Using the CLI
-HTML2image comes with a CLI which you can use to generate screenshots from files and urls on the go.
+HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and urls on the go.
 
 The CLI is a work in progress and may be subject to changes.
 You can call it by typing `hti` or `html2image` into a terminal.

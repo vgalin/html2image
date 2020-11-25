@@ -3,7 +3,7 @@
 
 import argparse
 
-from html2image import HtmlToImage
+from html2image import Html2Image
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
             )
 
     try:
-        hti = HtmlToImage()
+        hti = Html2Image()
     except Exception as e:
         print('Could not instanciate html2image.')
         print(e)

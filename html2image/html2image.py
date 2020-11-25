@@ -98,7 +98,7 @@ def _find_chrome(user_given_path=None):
     )
 
 
-class HtmlToImage():
+class Html2Image():
     """
         Allows the generation of images from
         URLs and HTML/CSS files or strings.
@@ -568,7 +568,7 @@ class HtmlToImage():
         planned_screenshot_count = (
             len(html_str) + len(html_file) + len(other_file) + len(url)
         )
-        save_as = HtmlToImage._extend_save_as_param(
+        save_as = Html2Image._extend_save_as_param(
             save_as,
             planned_screenshot_count,
         )
@@ -590,7 +590,7 @@ class HtmlToImage():
             current_size = size.pop(0)
 
             html_filename = name.split('.')[0] + '.html'
-            content = HtmlToImage._prepare_html_string(
+            content = Html2Image._prepare_html_string(
                 html, css_style_string
             )
             self.load_str(content=content, as_filename=html_filename)
