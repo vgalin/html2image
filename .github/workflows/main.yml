@@ -4,12 +4,12 @@ on:
     branches:
       - main
       - develop
-      - 'releases/*'
+      - 'releases/**'
   push:
     branches: 
       - main
       - develop
-      - 'v*' # temporary
+      - 'v**' # temporary
   
 jobs:
   ci:
