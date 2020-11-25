@@ -1,15 +1,15 @@
 name: CI
-on:
-  pull_request:
-    branches:
-      - main
-      - develop
-      - 'releases/**'
-  push:
-    branches: 
-      - main
-      - develop
-      - 'v**' # temporary
+on: [push, pull_request]
+#  pull_request:
+#    branches:
+#      - main
+#      - develop
+#      - 'releases/**'
+#  push:
+#    branches: 
+#      - main
+#      - develop
+#      - 'v**' # temporary
   
 jobs:
   ci:
