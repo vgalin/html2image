@@ -1,4 +1,6 @@
-# HTML 2 Image
+<img src="readme_assets/html2image_black.png" align="right" alt="html2image logo" title="html2image" height="128"/>
+
+# HTML2Image
 [
 ![PyPI](https://img.shields.io/pypi/v/html2image.svg)
 ![PyPI](https://img.shields.io/pypi/pyversions/html2image.svg)
@@ -9,14 +11,14 @@
 ![GitHub](https://img.shields.io/github/languages/code-size/vgalin/html2image)
 ](https://github.com/vgalin/html2image)
 
-**HTML2Image** (HTML to Image) is a lightweight **Python** package that acts as a wrapper around the **headless mode** of existing web browsers to *generate images from URLs and from HTML+CSS strings or files*.
+HTML2Image is a lightweight Python package that acts as a wrapper around the headless mode of existing web browsers to generate images from URLs and from HTML+CSS strings or files.
 
-HTML2Image has been tested on Windows, Ubuntu (desktop and server) and MacOS. It is currently in a **work in progress** stage, if you encounter any issues while using it, feel free to open an issue on the GitHub page of this project.
+This package has been tested on Windows, Ubuntu (desktop and server) and MacOS. It is currently in a work in progress stage. If you encounter any problem or difficulties while using it, feel free to open an issue on the GitHub page of this project. Feedback is also welcome!
 
 
 ## Principle
 
-Most web browsers have a **Headless Mode**, which is a way to run them without displaying any graphical interface. Headless mode is mainly used for automated testings but also comes in handy if you want to take screenshots of web pages that are exact replicas of what you would see on your screen if you were using the browser yourself.
+Most web browsers have a Headless Mode, which is a way to run them without displaying any graphical interface. Headless mode is mainly used for automated testings but also comes in handy if you want to take screenshots of web pages that are exact replicas of what you would see on your screen if you were using the browser yourself.
 
 However, for the sake of taking screenshots, headless mode is not very convenient to use. HTML2Image aims to hide the inconveniences of the browsers' headless modes while adding useful features such as allowing to create an image from as little as a string.
 
@@ -25,27 +27,26 @@ For more information about headless modes :
 -   (Firefox) [https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode)
 
 ## Installation
-html2image is published on PyPI and can be installed through pip:
+HTML2Image is published on PyPI and can be installed through pip:
 
-
-```
+```console
 pip install --upgrade html2image
 ```
 
-In addition to this package, at least one of the following browsers but be installed on your machine :
+In addition to this package, at least one of the following browsers **must** be installed on your machine :
 -   Google Chrome (Windows, MacOS)
--   Chromium (Linux)
+-   Chromium Brower (Linux)
 
 ## Usage
 
-### Import the library and instantiate it
+### First, import the package and instantiate it
 ```python
-from html2image import HtmlToImage
-hti = HtmlToImage()
+from html2image import Html2Image
+hti = Html2Image()
 ```
 
 <details>
-<summary> Possible arguments for the constructor (click to expand):</summary>
+<summary> Multiple arguments can be passed to the constructor (click to expand):</summary>
 
 -   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
 -   `chrome_path` and  `firefox_path` : The path or the command that can be used to find the executable of a specific browser.
@@ -53,114 +54,163 @@ hti = HtmlToImage()
 -   `size` : 2-Tuple reprensenting the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
 -   `temp_path` : Path that will be used by html2image to put together different resources *loaded* with the `load_str` and `load_file` methods. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 
-You can also change these values later: 
+Example:
+```python
+hti = Html2Image(size=(500, 200))
+```
 
+You can also change these values later: 
 ``` python
 hti.size = (500, 200)
 ```
 </details>
 <br>
 
-### Image from an URL
-The following code takes a screenshot (with a size of 800 * 400 ) of the [python.org](https://www.python.org/) webpage and save it in the current working directory as `python_org.png` :
+### Then take a screenshot
+
+The `screenshot` method is the basis of this package, most of the time, you won't need to use anything else. It can take screenshots of a lot of things :
+- URLs via the `url` parameter;
+- HTML and CSS **files** via the `html_file` and `css_file` parameters;
+- HTML and CSS **strings** via the `html_str` and `css_str` parameters;
+- and "other" types of files via the `other_file` parameter (try it with .svg files!).
+
+And you can also (optional):
+- Change the size of the screenshots using the `size` parameter;
+- Save the screenshots as a specific name using the `save_as` parameter.
+
+*N.B. : The `screenshot` method returns a **list** containing the path(s) of the screenshot(s) it took.*
+
+### A few examples
+
+- **URL to image**
 ```python
-hti.size = (800, 400)
-hti.screenshot_url('https://www.python.org', 'python_org.png')
-
-# One line alternative :
-hti.screenshot_url('https://www.python.org', 'python_org.png', size=(800, 400))
-
-# Please note that you don't necessarily have to specify a size.
+hti.screenshot(url='https://www.python.org', save_as='python_org.png')
 ```
 
-Result : 
+- **HTML & CSS strings to image**
+```python
+html = """<h1> An interesting title </h1> This page will be red"""
+css = "body {background: red;}"
 
-![python_org_screenshot](/readme_assets/python_org.png)
-
-### Image from HTML and CSS strings
-
-The following code generates an image from two given strings, an HTML one and a CSS one.  
-
-```python 
-...
-
-# minimal html : quite unconventional but browsers can read it anyway
-my_html_string = """\
-<link rel="stylesheet" href="red_background.css">
-<h1> An interesting title </h1>
-This page will be red
-"""
-
-my_css_string = "body { background: red; }"
-
-# image from html & css string
-hti.load_str(my_html_string, as_filename='red_page.html')
-hti.load_str(my_css_string, as_filename='red_background.css')
-
-hti.screenshot('red_page.html', 'red.png', size=(500, 200))
+hti.screenshot(html_str=html, css_str=css, save_as='red_page.png')
 ```
 
-Result: 
-
-![red_screenshot](/readme_assets/red.png)
-
-### Image from HTML and CSS files
-
-``` css
-/* blue_background.css */
-body {
-    background: blue;
-}
+- **HTML & CSS files to image**
+```python
+hti.screenshot(
+    html_file='blue_page.html', css_file='blue_background.css',
+    save_as='blue_page.png'
+)
 ```
 
-``` html
-<!-- blue_page.html -->
-<!doctype html>
-<html>
-<head>
-    <link rel="stylesheet" href="blue_background.css">
-</head>
-
-<body>
-    <h1> An interesting title </h1>
-    This page will be blue
-</body>
-</html>
+- **Other files to image**
+```python
+hti.screenshot(other_file='star.svg')
 ```
 
-``` python
-...
-
-# image from html & css files
-hti.load_file('blue_page.html')
-hti.load_file('blue_background.css')
-
-hti.screenshot('blue_page.html', 'blue.png', size=(500, 200))
+- **Change the screenshots' size**
+```python
+hti.screenshot(other_file='star.svg', size=(500, 500))
 ```
 
-Result: 
+---
 
-![blue_screenshot](/readme_assets/blue.png)
+- **Change the directory to which the screenshots are saved**
+```python
+hti = Html2Image(output_path='my_screenshot_folder')
+```
+**OR**
+```python
+hti.output_path = 'my_screenshot_folder'
+```
+
+*N.B. : the output path will be changed for all future screenshots.*
+
+---
+
+#### Use lists in place of any parameters while using the `screenshot` method
+- Screenshot multiple objects using only one filename, or one filename per file:
+```python
+# create three files from one filename
+hti.screenshot(html_str=['A', 'B', 'C'], save_as='ABC.png')
+# outputs ABC_0.png, ABC_1.png, ABC_2.png
+
+# create three files from from different filenames
+hti.screenshot(html_str=['A', 'B', 'C'], save_as=['A.png', 'B.png', 'C.png'])
+# outputs A.png, B.png, C.png
+```
+- Take multiple screenshots with the same size
+```python
+# take four screenshots with a resolution of 100*50
+hti.screenshot(
+    html_str=['A', 'B', 'C', 'D']
+    size=(100, 50)
+)
+```
+- Take multiple screenshots with different sizes
+```python
+# take four screenshots with different resolutions from three given sizes
+hti.screenshot(
+    html_str=['A', 'B', 'C', 'D'],
+    size=[(100, 50), (100, 100), (50, 50)]
+)
+# respectively 100*50, 100*100, 50*50, 50*50
+# if not enough sizes are given, the last size in the list will be repeated
+
+```
+
+- Apply CSS string(s) to multiple HTML string(s)
+```python
+# screenshot two html strings and apply css strings on both
+hti.screenshot(
+    html_str=['A', 'B'],
+    css_str='body {background: red;}'
+)
+
+# screenshot two html strings and apply multiple css strings on both
+hti.screenshot(
+    html_str=['A', 'B'],
+    css_str=['body {background: red;}', 'body {font-size: 50px;}']
+)
+
+# screenshot one html string and apply multiple css strings on it
+hti.screenshot(
+    html_str='A',
+    css_str=['body {background: red;}', 'body {font-size: 50px;}']
+)
+```
+
+---
+
+- **Retrieve the path of the generated file(s)**  
+The `screenshot` method returns a list containing the path(s) of the screenshot(s):
+
+```python
+paths = hti.screenshot(
+    html_str=['A', 'B', 'C'],
+    save_as="letters.png",
+)
+
+print(paths)
+# >>> ['D:\\myFiles\\letters_0.png', 'D:\\myFiles\\letters_1.png', 'D:\\myFiles\\letters_2.png']
+```
 
 ## Using the CLI
-html2image comes with a CLI which you can use to generate screenshots from files and urls on the go.
+HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and urls on the go.
 
 The CLI is a work in progress and may be subject to changes.
 You can call it by typing `hti` or `html2image` into a terminal.
 
-Let the CLI handle your inputs:
-```
-hti https://www.python.org style.css index.html example.svg
-```
-
-Or use arguments:
 
 | argument | description | example |
 | - | - | - |
-| -h, --help | Show help message | `hti -h` |
-| -u, --urls | Screenshot a list of URLs | `hti -u https://www.python.org` |
-| -f, --files| Screenshot a list of files| `hti -f star.svg test.html`|
-| -n, --name | Name the outputted screenshots | `hti star.svg -n red_star` |
+| -h, --help | Shows the help message | `hti -h` |
+| -U, --urls | Screenshots a list of URLs | `hti -U https://www.python.org` |
+| -H, --html | Screenshots a list of HTML files | `hti -H file.html` |
+| -C, --css | Attaches a CSS files to the HTML ones | `hti -H file.html -C style.css` |
+| -O, --other | Screenshots a list of files of type "other" | `hti -O star.svg` |
+| -S, --save-as | A list of the screenshot filename(s)  | `hti -O star.svg -S star.png` |
+| -s, --size | A list of the screenshot size(s) | `hti -O star.svg -s 50,50`|
 | -o, --output_path| Change the output path of the screenshots (default is current working directory) | `hti star.svg -o screenshot_dir` |
 | -q, --quiet| Disable all CLI's outputs | `hti --quiet` |
 | -v, --verbose| More details, can help debugging | `hti --verbose` |
@@ -168,23 +218,6 @@ Or use arguments:
 | --temp_path| Specify a different temp path (where the files are loaded)||
 
 <br>
-
-## How html2image works
-To better understand how to use html2image, it is important for you to know what it does with your strings and files.
-
-![understand_how_html2image_works](/readme_assets/understand_how_html2image_works.png)
-
-As you may have noticed, html2image requires you to "load" files and strings before taking a screenshot.
-
-Behing the scenes, everything you load is sent to `temp_path`, which is set by default to `%TEMP%\html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
-
-This directory is used to put together all the resources that are needed to display a web page correctly, like `css`, `js`, and obviously `html` files. In other words : **everything that you load goes, by default, into the same directory**.
-
-When using `load_str` or `load_file`, you have the possiblity to load things under a specific name using the `as_filename` parameter, this is the name that your loaded files and strings will take when they are placed into this directory.
-This name is important:
--   For the HTML files, you have to pass this name as an argument to the `screenshot` method.
--   For other files, you have to refer to this name into the HTML file that you are screenshotting.  
-    Example: You load a some CSS with `as_filename='my_style.css'`. To take a screenshot with this CSS applied to your HTML, your HTML must contain the line `<link rel="stylesheet" href="my_style.css">`.
 
 ## Testing
 

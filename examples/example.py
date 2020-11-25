@@ -1,4 +1,4 @@
-from html2image import HtmlToImage
+from html2image import Html2Image
 
 # minimal html : quite unconventional but browsers can read it anyway
 my_html_string = """\
@@ -13,7 +13,7 @@ body {
 }
 """
 
-hti = HtmlToImage()
+hti = Html2Image()
 
 # image from an url
 hti.screenshot_url('https://www.python.org', 'python_org.png', size=(800, 400))

@@ -1,63 +1,175 @@
-from html2image.main import HtmlToImage
-
+from html2image import Html2Image
 from PIL import Image
-import os
 
 OUTPUT_PATH = "tests_output"
 
-SIZE_LIST = (
-    (1920, 1080),
-    (1280, 720),
-    (800, 400),
-)
+
+def test_screenshot_url():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    paths = hti.screenshot(url='https://www.python.org', save_as="pyorg.png")
+    img = Image.open(paths[0])
+    assert (1920, 1080) == img.size  # default size
 
 
-def test_screenshot_file():
-    pass
+def test_screenshot_multiple_urls():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+    paths = hti.screenshot(
+        url=['https://www.python.org', "https://www.example.org/"],
+        save_as="mixed_urls.png",
+    )
+
+    for path in paths:
+        img = Image.open(path)
+        assert (1920, 1080) == img.size  # default size
+
+
+def test_screenshot_url_custom_size():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    test_size = (334, 485)
+
+    paths = hti.screenshot(
+        url='https://www.python.org',
+        save_as="pyorg_custom_size.png",
+        size=test_size,
+    )
+
+    img = Image.open(paths[0])
+    assert test_size == img.size  # default size
+
+
+def test_screenshot_url_custom_sizes():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    test_sizes = [
+        (100, 100),
+        (100, 1000),
+        (100, 200),
+    ]
+
+    paths = hti.screenshot(
+        url=[
+            'https://www.python.org',
+            'https://www.wikipedia.org/',
+            'https://www.example.org/',
+        ],
+        save_as="mixed_urls_custom_sizes.png",
+        size=test_sizes,
+    )
+
+    for wanted_size, path in zip(test_sizes, paths):
+        img = Image.open(path)
+        assert wanted_size == img.size  # default size
+
+
+def test_screenshot_url_sizes_missing_custom_names():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    test_sizes = [
+        (100, 100),
+        (100, 1000),
+    ]
+
+    paths = hti.screenshot(
+        url=[
+            'https://www.python.org',
+            'https://www.wikipedia.org/',
+            'https://www.example.org/',
+        ],
+        save_as=[
+            "python_100_100.png",
+            "wikipedia_100_1000.png",
+            "example_100_1000.png",
+        ],
+        size=test_sizes,
+    )
+
+    for wanted_size, path in zip(test_sizes, paths):
+        img = Image.open(path)
+        assert wanted_size == img.size  # default size
 
 
 def test_screenshot_string():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
-    for size in SIZE_LIST:
-        img_name = f'fromstr_{size[0]}_{size[1]}.png'
-        img_relative_path = os.path.join(OUTPUT_PATH, img_name)
+    html = "Hello"
+    css = "body{background: blue; font-size: 50px;}"
 
-        html_string = """\
-            <link rel="stylesheet" href="background.css">
-            <h1> An interesting title </h1>
-            Some interesting text
-        """
+    paths = hti.screenshot(
+        html_str=html, css_str=css, save_as="blue_big_hello.png"
+    )
 
-        css_string = (
-            "body { background: linear-gradient(90deg, #00f 50%, #0f0 50%);}"
-        )
+    img = Image.open(paths[0])
+    pixels = img.load()
 
-        hti.load_str(html_string, as_filename='page.html')
-        hti.load_str(css_string, as_filename='background.css')
-        hti.screenshot('page.html', img_name, size=size)
+    assert (1920, 1080) == img.size  # default size
 
-        img = Image.open(img_relative_path)
-        pixels = img.load()
-
-        assert size == img.size
-
-        # check colors at top corners
-        assert pixels[0, 0] == (0, 0, 255, 255)
-        assert pixels[size[1], 0] == (0, 255, 0, 255)
+    # check colors at top left corner
+    assert pixels[0, 0] == (0, 0, 255, 255)  # blue + no transparency
 
 
-def test_screenshot_url():
-    hti = HtmlToImage(output_path=OUTPUT_PATH)
+def test_screenshot_other_svg():
+    hti = Html2Image(output_path=OUTPUT_PATH)
 
-    for size in SIZE_LIST:
-        img_name = f'pyorg_{size[0]}_{size[1]}.png'
-        img_relative_path = os.path.join(OUTPUT_PATH, img_name)
+    paths = hti.screenshot(
+        other_file='./examples/star.svg', save_as="star_svg.png"
+    )
 
-        hti.screenshot_url(
-            'https://www.python.org', img_name, size=size
-        )
+    img = Image.open(paths[0])
+    pixels = img.load()
 
-        img = Image.open(img_relative_path)
+    assert (1920, 1080) == img.size  # default size
 
-        assert size == img.size
+    # check colors at top left corner
+    assert pixels[0, 0] == (0, 0, 0, 0)  # full transparency no color
+
+
+def test_screensshot_file():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    paths = hti.screenshot(
+        html_file="./examples/blue_page.html",
+        css_file="./examples/blue_background.css",
+        save_as="from_file.png",
+    )
+
+    img = Image.open(paths[0])
+    pixels = img.load()
+
+    assert (1920, 1080) == img.size  # default size
+
+    # check colors at top left corner
+    assert pixels[0, 0] == (0, 0, 255, 255)  # blue + no transparency
+
+
+def test_extend_size_param():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    assert hti._extend_size_param([(50, 50)], 1) \
+        == [(50, 50)]
+
+    assert hti._extend_size_param([(50, 50)], 3) \
+        == [(50, 50), (50, 50), (50, 50)]
+
+    assert hti._extend_size_param([(50, 50), (70, 60), (80, 90)], 5) \
+        == [(50, 50), (70, 60), (80, 90), (80, 90), (80, 90)]
+
+    assert hti._extend_size_param([], 3) \
+        == [(1920, 1080), (1920, 1080), (1920, 1080)]
+
+
+def test_extend_save_as_param():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    assert hti._extend_save_as_param(['a.png', 'b.png'], 2) == \
+        ['a.png', 'b.png']
+
+    assert hti._extend_save_as_param(['a.png', 'b.png'], 4) == \
+        ['a.png', 'b_0.png', 'b_1.png', 'b_2.png']
+
+    assert hti._extend_save_as_param(['a.png', 'b.png'], 0) == \
+        ['a.png', 'b.png']
+
+    assert hti._extend_save_as_param(['a.png', 'b.png', None, 65], 2) == \
+        ['a.png', 'b.png']
