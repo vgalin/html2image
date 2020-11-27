@@ -126,6 +126,9 @@ class Html2Image():
         - `temp_path` : str, optional
             + Path to a directory that will be used to store temporary files.
 
+        - `custom_flags`: list of str or str, optional
+            + Additional custom flags for the headless browser.
+
         Raises
         ------
         - `FileNotFoundError`
@@ -141,6 +144,7 @@ class Html2Image():
         output_path=os.getcwd(),
         size=(1920, 1080),
         temp_path=None,
+        custom_flags=[],
         print_command=False
     ):
 
@@ -149,6 +153,9 @@ class Html2Image():
         self.size = size
         self.temp_path = temp_path
         self.print_command = print_command
+        self.custom_flags = (
+            [custom_flags] if isinstance(custom_flags, str) else custom_flags
+        )
 
         # TODO : add @property + setter on self.browser to do the following
         if self.browser == "chrome":
@@ -230,6 +237,7 @@ class Html2Image():
             '--default-background-color=0',
             '--hide-scrollbars',
             # TODO : make it possible to choose to display the scrollbar or not
+            *self.custom_flags,
             f'{input_file}',
         ]
 
