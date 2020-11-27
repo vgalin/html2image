@@ -41,8 +41,8 @@ In addition to this package, at least one of the following browsers **must** be 
 
 ### First, import the package and instantiate it
 ```python
-from html2image import HtmlToImage
-hti = HtmlToImage()
+from html2image import Html2Image
+hti = Html2Image()
 ```
 
 <details>
@@ -56,7 +56,7 @@ hti = HtmlToImage()
 
 Example:
 ```python
-hti = HtmlToImage(size=(500, 200))
+hti = Html2Image(size=(500, 200))
 ```
 
 You can also change these values later: 
@@ -130,7 +130,7 @@ hti.screenshot(other_file='star.svg', size=(500, 500))
 
 - **Change the directory to which the screenshots are saved**
 ```python
-hti = HtmlToImage(output_path='my_screenshot_folder')
+hti = Html2Image(output_path='my_screenshot_folder')
 ```
 **OR**
 ```python
