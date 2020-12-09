@@ -270,8 +270,8 @@ class Html2Image():
             + Filename as which the given string will be saved.
 
         """
-        with open(os.path.join(self.temp_path, as_filename), 'w') as f:
-            f.writelines(content)
+        with open(os.path.join(self.temp_path, as_filename), 'wb') as f:
+            f.write(content.encode('utf-8'))
 
     def load_file(self, src, as_filename=None):
         """ 'Loads' a file that html2image can use later to take a screenshot.
