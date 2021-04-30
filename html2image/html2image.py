@@ -220,12 +220,24 @@ class Html2Image():
             - `input_file`: str
                 + File (or url...) that will be screenshotted.
             - `size`: (int, int), optional
-                + Window size of the headless browser and by extention,
-                screenshot size
+                + Two values representing the window size of the headless
+                + browser and by extention, the screenshot size.
+                + These two values must be greater than 0.
+            Raises
+            ------
+            - `ValueError`
+                + If the value of `size` is incorrect.
         """
 
         if size is None:
             size = self.size
+
+        if size[0] < 1 or size[1] < 1:
+            raise ValueError(
+                f'Could not screenshot "{output_file}" '
+                f'with a size of {size}:\n'
+                'A valid size consists of two integer greater than 0.'
+            )
 
         # command used to launch chrome in
         # headless mode and take a screenshot
