@@ -1,7 +1,7 @@
 """
 Main file of the html2image package.
 
-html2image ia a package acting as a wrapper around the
+html2image is a package acting as a wrapper around the
 headless mode of existing web browsers to generate images
 from URLs and from HTML+CSS strings or files.
 
