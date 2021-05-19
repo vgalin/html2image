@@ -236,7 +236,7 @@ class Html2Image():
             raise ValueError(
                 f'Could not screenshot "{output_file}" '
                 f'with a size of {size}:\n'
-                'A valid size consists of two integer greater than 0.'
+                'A valid size consists of two integers greater than 0.'
             )
 
         # command used to launch chrome in
