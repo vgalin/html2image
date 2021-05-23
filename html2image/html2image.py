@@ -207,7 +207,7 @@ class Html2Image():
         self._output_path = value
 
     def _chrome_render(
-        self, output_file='render.png', input_file='', size=None
+        self, output_file='render.png', input_file='', size=None, scrollbar=False, incognito=False
     ):
         """ Calls Chrome or Chromium headless to take a screenshot.
 
@@ -223,6 +223,10 @@ class Html2Image():
                 + Two values representing the window size of the headless
                 + browser and by extention, the screenshot size.
                 + These two values must be greater than 0.
+            - `scrollbar`: bool
+                + To show the scrollbar or not
+            - `incognito`: bool
+                + To run capture the screenshot using incognito mode
             Raises
             ------
             - `ValueError`
@@ -247,8 +251,15 @@ class Html2Image():
             f'--screenshot={os.path.join(self.output_path, output_file)}',
             f'--window-size={size[0]},{size[1]}',
             '--default-background-color=0',
-            '--hide-scrollbars',
-            # TODO : make it possible to choose to display the scrollbar or not
+        ]
+
+        if not scrollbar:
+            command.append('--hide-scrollbars')
+
+        if incognito:
+            command.append('--incognito')
+
+        command += [
             *self.custom_flags,
             f'{input_file}',
         ]
@@ -309,7 +320,7 @@ class Html2Image():
         shutil.copyfile(src, dest)
 
     def screenshot_loaded_file(
-        self, file, output_file='screenshot.png', size=None
+        self, file, output_file='screenshot.png', size=None, scrollbar=False, incognito=False
     ):
         """ Takes a screenshot of a *previously loaded* file or string.
 
@@ -326,6 +337,12 @@ class Html2Image():
         - `size`: (int, int), optional
             + Size of the screenshot that will be taken when the
             method is called.
+
+        - `scrollbar`: bool
+            + To show the scrollbar or not
+
+        - `incognito`: bool
+            + To run capture the screenshot using incognito mode
         """
 
         file = os.path.join(self.temp_path, file)
@@ -337,7 +354,7 @@ class Html2Image():
                 "modifying the output_path attribute."
             )
 
-        self._render(output_file=output_file, input_file=file, size=size)
+        self._render(output_file=output_file, input_file=file, size=size, scrollbar=scrollbar, incognito=incognito)
 
     def screenshot_url(self, url, output_file='screenshot.png', size=None):
         """ Takes a screenshot of a given URL.
