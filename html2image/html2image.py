@@ -616,7 +616,8 @@ class Html2Image():
             self.load_str(content=content, as_filename=html_filename)
             self.screenshot_loaded_file(
                 file=html_filename,
-                output_file=name
+                output_file=name,
+                size=current_size,
             )
 
             screenshot_paths.append(os.path.join(self.output_path, name))
@@ -631,7 +632,7 @@ class Html2Image():
                 self.screenshot_loaded_file(
                     file=os.path.basename(screenshot_target),
                     output_file=name,
-                    size=current_size
+                    size=current_size,
                 )
             else:
                 raise FileNotFoundError(screenshot_target)
@@ -645,7 +646,7 @@ class Html2Image():
             self.screenshot_url(
                 url=target_url,
                 output_file=name,
-                size=current_size
+                size=current_size,
             )
             screenshot_paths.append(os.path.join(self.output_path, name))
 
