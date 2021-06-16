@@ -60,7 +60,7 @@ def test_screenshot_url_custom_sizes():
 
     for wanted_size, path in zip(test_sizes, paths):
         img = Image.open(path)
-        assert wanted_size == img.size  # default size
+        assert wanted_size == img.size
 
 
 def test_screenshot_url_sizes_missing_custom_names():
@@ -87,7 +87,7 @@ def test_screenshot_url_sizes_missing_custom_names():
 
     for wanted_size, path in zip(test_sizes, paths):
         img = Image.open(path)
-        assert wanted_size == img.size  # default size
+        assert wanted_size == img.size
 
 
 def test_screenshot_string():
@@ -109,6 +109,28 @@ def test_screenshot_string():
     assert pixels[0, 0] == (0, 0, 255, 255)  # blue + no transparency
 
 
+def test_screenshot_string_different_sizes():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    test_sizes = [
+        (100, 100),
+        (100, 1000),
+        (100, 200),
+    ]
+
+    html = "Hello"
+
+    paths = hti.screenshot(
+        html_str=[html]*3,
+        save_as="from_string_custom_size.png",
+        size=test_sizes
+    )
+
+    for wanted_size, path in zip(test_sizes, paths):
+        img = Image.open(path)
+        assert wanted_size == img.size
+
+
 def test_screenshot_other_svg():
     hti = Html2Image(output_path=OUTPUT_PATH)
 
@@ -125,7 +147,7 @@ def test_screenshot_other_svg():
     assert pixels[0, 0] == (0, 0, 0, 0)  # full transparency no color
 
 
-def test_screensshot_file():
+def test_screenshot_file():
     hti = Html2Image(output_path=OUTPUT_PATH)
 
     paths = hti.screenshot(
@@ -141,6 +163,26 @@ def test_screensshot_file():
 
     # check colors at top left corner
     assert pixels[0, 0] == (0, 0, 255, 255)  # blue + no transparency
+
+
+def test_screenshot_file_different_sizes():
+    hti = Html2Image(output_path=OUTPUT_PATH)
+
+    test_sizes = [
+        (100, 100),
+        (100, 1000),
+        (100, 200),
+    ]
+
+    paths = hti.screenshot(
+        html_file=["./examples/blue_page.html"]*3,
+        save_as="from_file_custom_size.png",
+        size=test_sizes
+    )
+
+    for wanted_size, path in zip(test_sizes, paths):
+        img = Image.open(path)
+        assert wanted_size == img.size
 
 
 def test_extend_size_param():
