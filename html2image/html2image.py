@@ -9,93 +9,21 @@ For feedback, usage and to learn more, see https://github.com/vgalin/html2image
 """
 
 import os
-import platform
 import shutil
-import subprocess
 
 from textwrap import dedent
 
+from html2image.browsers import chrome, firefox
 
-def _find_chrome(user_given_path=None):
-    """ Finds a Chrome executable.
-
-    Search Chrome on a given path. If no path given,
-    try to find Chrome or Chromium-browser on a Windows or Unix system.
-
-    Raises
-    ------
-    - `FileNotFoundError`
-        + If a suitable chrome executable could not be found.
-
-    Returns
-    -------
-    - str
-        + Path of the chrome executable on the current machine.
-    """
-
-    if user_given_path is not None:
-        if os.path.isfile(user_given_path):
-            return user_given_path
-        else:
-            raise FileNotFoundError('Could not find chrome in the given path.')
-
-    if platform.system() == 'Windows':
-        prefixes = [
-            os.getenv('PROGRAMFILES(X86)'),
-            os.getenv('PROGRAMFILES'),
-            os.getenv('LOCALAPPDATA'),
-        ]
-
-        suffix = "Google\\Chrome\\Application\\chrome.exe"
-
-        for prefix in prefixes:
-            path_candidate = os.path.join(prefix, suffix)
-            if os.path.isfile(path_candidate):
-                return path_candidate
-
-    elif platform.system() == "Linux":
-
-        # search google-chrome
-        version_result = subprocess.check_output(
-            ["google-chrome", "--version"]
-        )
-
-        if 'Google Chrome' in str(version_result):
-            return "google-chrome"
-
-        # else search chromium-browser
-
-        # snap seems to be a special case?
-        # see https://stackoverflow.com/q/63375327/12182226
-        version_result = subprocess.check_output(
-            ["chromium-browser", "--version"]
-        )
-        if 'snap' in str(version_result):
-            chrome_snap = (
-                '/snap/chromium/current/usr/lib/chromium-browser/chrome'
-            )
-            if os.path.isfile(chrome_snap):
-                return chrome_snap
-        else:
-            which_result = shutil.which('chromium-browser')
-            if which_result is not None and os.path.isfile(which_result):
-                return which_result
-
-    elif platform.system() == "Darwin":
-        # MacOS system
-        chrome_app = (
-            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-        )
-        version_result = subprocess.check_output(
-            [chrome_app, "--version"]
-        )
-        if "Google Chrome" in str(version_result):
-            return chrome_app
-
-    raise FileNotFoundError(
-        'Could not find a Chrome executable on this '
-        'machine, please specify it yourself.'
-    )
+browser_map = {
+    'chrome': chrome.ChromeHeadless,
+    'chromium': chrome.ChromeHeadless,
+    'google-chrome': chrome.ChromeHeadless,
+    'googlechrome': chrome.ChromeHeadless,
+    'firefox': firefox.FirefoxHeadless,
+    'mozilla-firefox': firefox.FirefoxHeadless,
+    'mozilla firefox': firefox.FirefoxHeadless,
+}
 
 
 class Html2Image():
@@ -109,11 +37,8 @@ class Html2Image():
             + Type of the browser that will be used to take screenshots.
             + Default is Chrome.
 
-        - `chrome_path` : str, optional
-            + Path to a Chrome/Chromium executable.
-
-        - `firefox_path` : str, optional
-            + Path to a Firefox executable.
+        - `browser_path` : str, optional
+            + Path to a browser executable.
 
         - `output_path` : str, optional
             + Path to a directory in which the taken screenshots will be saved.
@@ -139,41 +64,27 @@ class Html2Image():
     def __init__(
         self,
         browser='chrome',
-        chrome_path=None,
-        firefox_path=None,
+        browser_path=None,
         output_path=os.getcwd(),
         size=(1920, 1080),
         temp_path=None,
         custom_flags=[],
-        print_command=False
     ):
 
-        self.browser = browser
+        if browser.lower() not in browser_map:
+            raise ValueError(
+                f'"{browser}" is not a browser known by HTML2Image.'
+            )
+
+        browser_class = browser_map[browser.lower()]
+        self.browser = browser_class(executable_path=browser_path)
+
         self.output_path = output_path
         self.size = size
         self.temp_path = temp_path
-        self.print_command = print_command
         self.custom_flags = (
             [custom_flags] if isinstance(custom_flags, str) else custom_flags
         )
-
-        # TODO : add @property + setter on self.browser to do the following
-        if self.browser == "chrome":
-            self._render = self._chrome_render
-            self.chrome_path = chrome_path
-
-        elif self.browser == "firefox":
-            raise NotImplementedError
-        else:
-            raise NotImplementedError
-
-    @property
-    def chrome_path(self):
-        return self._chrome_path
-
-    @chrome_path.setter
-    def chrome_path(self, value):
-        self._chrome_path = _find_chrome(value)
 
     @property
     def temp_path(self):
@@ -205,64 +116,6 @@ class Html2Image():
         os.makedirs(value, exist_ok=True)
 
         self._output_path = value
-
-    def _chrome_render(
-        self, output_file='render.png', input_file='', size=None
-    ):
-        """ Calls Chrome or Chromium headless to take a screenshot.
-
-            Parameters
-            ----------
-            - `output_file`: str
-                + Name as which the screenshot will be saved.
-                + File extension (e.g. .png) has to be included.
-                + Default is screenshot.png
-            - `input_file`: str
-                + File (or url...) that will be screenshotted.
-            - `size`: (int, int), optional
-                + Two values representing the window size of the headless
-                + browser and by extention, the screenshot size.
-                + These two values must be greater than 0.
-            Raises
-            ------
-            - `ValueError`
-                + If the value of `size` is incorrect.
-        """
-
-        if size is None:
-            size = self.size
-
-        if size[0] < 1 or size[1] < 1:
-            raise ValueError(
-                f'Could not screenshot "{output_file}" '
-                f'with a size of {size}:\n'
-                'A valid size consists of two integers greater than 0.'
-            )
-
-        # command used to launch chrome in
-        # headless mode and take a screenshot
-        command = [
-            f'{self.chrome_path}',
-            '--headless',
-            f'--screenshot={os.path.join(self.output_path, output_file)}',
-            f'--window-size={size[0]},{size[1]}',
-            '--default-background-color=0',
-            '--hide-scrollbars',
-            # TODO : make it possible to choose to display the scrollbar or not
-            *self.custom_flags,
-            f'{input_file}',
-        ]
-
-        if self.print_command:
-            print(command)
-            print()
-
-        subprocess.run(command)
-
-    def _firefox_render(self, output_file='render.png', input_file=''):
-        """ Not implemented.
-        """
-        raise NotImplementedError
 
     def load_str(self, content, as_filename):
         """
@@ -337,7 +190,12 @@ class Html2Image():
                 "modifying the output_path attribute."
             )
 
-        self._render(output_file=output_file, input_file=file, size=size)
+        self.browser.screenshot(
+            output_path=self.output_path,
+            output_file=output_file,
+            input=file,
+            size=size,
+        )
 
     def screenshot_url(self, url, output_file='screenshot.png', size=None):
         """ Takes a screenshot of a given URL.
@@ -370,7 +228,12 @@ class Html2Image():
                 "modifying the output_path attribute."
             )
 
-        self._render(input_file=url, output_file=output_file, size=size)
+        self.browser.screenshot(
+            output_path=self.output_path,
+            output_file=output_file,
+            input=url,
+            size=size
+        )
 
     @staticmethod
     def _extend_save_as_param(save_as, desired_length):
