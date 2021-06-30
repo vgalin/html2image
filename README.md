@@ -49,10 +49,10 @@ hti = Html2Image()
 <summary> Multiple arguments can be passed to the constructor (click to expand):</summary>
 
 -   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
--   `chrome_path` and  `firefox_path` : The path or the command that can be used to find the executable of a specific browser.
+-   `browser_path` : The path or the command that can be used to find the executable of a specific browser.
 -   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
 -   `size` : 2-Tuple reprensenting the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
--   `temp_path` : Path that will be used by html2image to put together different resources *loaded* with the `load_str` and `load_file` methods. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
+-   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 
 Example:
 ```python
@@ -206,6 +206,62 @@ paths = hti.screenshot(
 
 print(paths)
 # >>> ['D:\\myFiles\\letters_0.png', 'D:\\myFiles\\letters_1.png', 'D:\\myFiles\\letters_2.png']
+```
+
+---
+
+#### Change browser flags
+In some cases, you may need to change the *flags* that are used to run the headless mode of a browser.
+
+Flags can be used to:
+- Change the default background color of the pages;
+- Hide the scrollbar;
+- Add delay before taking a screenshot;
+- Allow you to use Html2Image when you're root, as you will have to specify the `--no-sandbox` flag;
+
+You can find the full list of Chrome / Chromium flags [here](https://peter.sh/experiments/chromium-command-line-switches/).
+
+There is two ways to specify custom flags:
+```python
+# At the object instanciation
+hti = Html2image(custom_flags=['--my_flag', '--my_other_flag=value'])
+
+# Afterwards
+hti.browser.flags = ['--my_flag', '--my_other_flag=value']
+```
+
+- **Flags example use-case: adding a delay before taking a screenshot**
+
+With Chrome / Chromium, screenshots are fired directly after there is no more "pending network fetches", but you may sometimes want to add a delay before taking a screenshot, to wait for animations to end for example. 
+There is a flag for this purpose, `--virtual-time-budget=VALUE_IN_MILLISECONDS`. You can use it like so:
+
+```python
+hti = Html2Image(
+    custom_flags=['--virtual-time-budget=10000', '--hide-scrollbars']
+)
+
+hti.screenshot(url='http://example.org')
+```
+
+- **Default flags**
+
+For ease of use, some flags are set by default. However default flags are not used if you decide to specify `custom_flags` or change the value of `browser.flags`:
+
+```python
+# Taking a look at the default flags
+>>> hti = Html2Image()
+>>> hti.browser.flags
+['--default-background-color=0', '--hide-scrollbars']
+
+# Changing the value of browser.flags gets rid of the default flags.
+>>> hti.browser.flags = ['--1', '--2']
+>>> hti.browser.flags
+['--1', '--2'] 
+
+# Using the custom_flags parameter gets rid of the default flags.
+>>> hti = Html2Image(custom_flags=['--a', '--b'])
+>>> hti.browser.flags
+['--a', '--b']
 ```
 
 ## Using the CLI
