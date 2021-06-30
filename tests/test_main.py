@@ -1,7 +1,18 @@
 from html2image import Html2Image
 from PIL import Image
 
+import pytest
+
 OUTPUT_PATH = "tests_output"
+
+
+def test_bad_browser():
+    with pytest.raises(ValueError):
+        Html2Image(browser='watergoupil')
+
+
+def test_good_browser():
+    Html2Image(browser='cHrOme')
 
 
 def test_screenshot_url():
