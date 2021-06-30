@@ -76,14 +76,14 @@ class Html2Image():
                 f'"{browser}" is not a browser known by HTML2Image.'
             )
 
-        browser_class = browser_map[browser.lower()]
-        self.browser = browser_class(executable_path=browser_path)
-
         self.output_path = output_path
         self.size = size
         self.temp_path = temp_path
-        self.custom_flags = (
-            [custom_flags] if isinstance(custom_flags, str) else custom_flags
+
+        browser_class = browser_map[browser.lower()]
+        self.browser = browser_class(
+            executable_path=browser_path,
+            flags=custom_flags,
         )
 
     @property
