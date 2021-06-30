@@ -290,16 +290,32 @@ You can call it by typing `hti` or `html2image` into a terminal.
 
 ## Testing
 
-Only basic testing is available at the moment. To run tests, run PyTest at the root of the project:
-```
+Only basic testing is available at the moment. To run tests, install the requirements (Pillow) and run PyTest at the root of the project:
+``` console
+pip install -r requirements-test.txt
 python -m pytest
 ```
 
+
+## FAQ
+
+- Can I automatically take a full page screenshot?  
+**Sadly no**, it is not easily possible. Html2Image relies on the headless mode of Chrome/Chromium browsers to take screenshots and there is no way to "ask" for a full page screenshot at the moment. If you know a way to take one (by estimating the page size for example) I would be happy to see it, so please open an issue or a discussion!
+
+- Can I add delay before taking a screenshot?   
+**Yes** you can, please take a look at the `Change browser flags` section of the readme.
+
+- Can I speed up the screenshot taking process?  
+**Yes**, when you are taking a lot of screenshots, you can achieve better "performances" using Parallel Processing or Multiprocessing methods. You can find an [example of it here](https://github.com/vgalin/html2image/issues/28#issuecomment-862608053).
+
+- Can I make a cookie modal disappear?  
+**Yes and no**. **No** because there is no options to do it magically and [extensions are not supported in headless Chrome](https://bugs.chromium.org/p/chromium/issues/detail?id=706008#c5) (The [`I don't care about cookies`](https://www.i-dont-care-about-cookies.eu/) extension would have been useful in this case). **Yes** because you can make any element of a page disappear by retrieving its source code, modifying it as you wish, and finally screenshotting the modified source code.
 ## TODO List
--   A nice CLI (Currently in a WIP state)
-    - A better way to name the CLI's outputed files ?
--   Support of other browsers, such as Firefox
--   More extensive doc + comments
+-   A nice CLI (currently in a WIP state).
+-   Support of other browsers (such as Firefox when their screenshot feature will work).
 -   PDF generation?
--   Testing on push/PR with GitHub Actions
--   Use threads or multiprocessing to speed up screenshot taking
+-   Contributing, issue templates, pull request template, code of conduct.
+
+---
+
+*If you see any typos or notice things that are odly said, feel free to create an issue or a pull request.*
