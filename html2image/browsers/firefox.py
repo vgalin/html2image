@@ -10,11 +10,11 @@ class FirefoxHeadless(Browser):
         )
 
     @property
-    def executable_path(self):
+    def executable(self):
         pass
 
-    @executable_path.setter
-    def executable_path(self, value):
+    @executable.setter
+    def executable(self, value):
         pass
 
     def render(self, **kwargs):
