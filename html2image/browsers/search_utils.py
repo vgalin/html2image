@@ -1,7 +1,11 @@
 import shutil
 import os
-from winreg import ConnectRegistry, OpenKey, QueryValueEx,\
-        HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, KEY_READ
+try:
+    from winreg import ConnectRegistry, OpenKey, QueryValueEx,\
+            HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, KEY_READ
+except ImportError:
+    # os is not Windows, and there is no need for winreg
+    pass
 
 
 def get_command_origin(command):
