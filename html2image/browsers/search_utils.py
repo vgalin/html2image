@@ -93,10 +93,3 @@ def find_first_defined_env_var(env_var_list, toggle):
             if value:
                 return value
     return None
-
-
-if __name__ == '__main__':
-    cmd_path = "C:\\Windows\\system32\\cmd.EXE"
-    print(f'{get_command_origin(cmd_path)=}')
-    print(f'{get_command_origin("chrome")=}')
-    print(f'{get_command_origin("chrome.exe")=}')
