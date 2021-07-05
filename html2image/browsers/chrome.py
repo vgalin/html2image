@@ -1,16 +1,35 @@
 from .browser import Browser
+from .search_utils import get_command_origin, find_first_defined_env_var
 
 import subprocess
 import platform
 import os
 import shutil
 
+ENV_VAR_LOOKUP_TOGGLE = 'HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP'
 
-def _find_chrome(user_given_path=None):
+CHROME_EXECUTABLE_ENV_VAR_CANDIDATES = [
+    'HTML2IMAGE_CHROME_BIN',
+    'HTML2IMAGE_CHROME_EXE',
+    'CHROME_BIN',
+    'CHROME_EXE',
+]
+
+
+def _find_chrome(user_given_executable=None):
     """ Finds a Chrome executable.
 
     Search Chrome on a given path. If no path given,
     try to find Chrome or Chromium-browser on a Windows or Unix system.
+
+    Parameters
+    ----------
+    - `user_given_executable`: str (optional)
+        + A filepath leading to a Chrome/ Chromium executable
+        + Or a filename found in the current working directory
+        + Or a keyword that executes Chrome/ Chromium, ex:
+            - 'chromium' on linux systems
+            - 'chrome' on windows (if typing `start chrome` in a cmd works)
 
     Raises
     ------
@@ -23,15 +42,58 @@ def _find_chrome(user_given_path=None):
         + Path of the chrome executable on the current machine.
     """
 
-    # TODO when other browsers will be available:
-    # Ensure that the given executable is a chrome one.
+    # try to find a chrome bin/exe in ENV
+    path_from_env = find_first_defined_env_var(
+        env_var_list=CHROME_EXECUTABLE_ENV_VAR_CANDIDATES,
+        toggle=ENV_VAR_LOOKUP_TOGGLE
+    )
 
-    if user_given_path is not None:
-        if os.path.isfile(user_given_path):
-            return user_given_path
+    if path_from_env:
+        print(
+            f'Found a potential chrome executable in the {path_from_env} '
+            f'environment variable:\n{path_from_env}\n'
+        )
+        return path_from_env
+
+    # if an executable is given, try to use it
+    if user_given_executable is not None:
+
+        # On Windows, we cannot "safely" validate that user_given_executable
+        # seems to be a chrome executable, as we cannot run it with
+        # the --version flag.
+        # https://bugs.chromium.org/p/chromium/issues/detail?id=158372
+        #
+        # We thus do the "bare minimum" and check if user_given_executable
+        # is a file, a filepath, or corresponds to a keyword that can be used
+        # with the start command, like so: `start user_given_executable`
+        if platform.system() == 'Windows':
+            command_origin = get_command_origin(user_given_executable)
+            if command_origin:
+                return command_origin
+
+            # cannot validate user_given_executable
+            raise FileNotFoundError()
+
+        # On a non-Windows OS, we can validate in a basic way that
+        # user_given_executable leads to a Chrome / Chromium executable,
+        # or is a command, using the --version flag
         else:
-            raise FileNotFoundError('Could not find chrome in the given path.')
+            try:
+                if 'chrom' in subprocess.check_output(
+                    [user_given_executable, '--version']
+                ).decode('utf-8').lower():
+                    return user_given_executable
+            except Exception:
+                pass
 
+        # We got a user_given_executable but couldn't validate it
+        raise FileNotFoundError(
+            'Failed to find a seemingly valid chrome executable '
+            'in the given path.'
+        )
+
+    # Executable not in ENV or given by the user, try to find it
+    # Search for executable on a Windows OS
     if platform.system() == 'Windows':
         prefixes = [
             os.getenv('PROGRAMFILES(X86)'),
@@ -46,45 +108,54 @@ def _find_chrome(user_given_path=None):
             if os.path.isfile(path_candidate):
                 return path_candidate
 
+    # Search for executable on a Linux OS
     elif platform.system() == "Linux":
 
-        # search google-chrome
-        version_result = subprocess.check_output(
-            ["google-chrome", "--version"]
-        )
+        chrome_commands = [
+            'chromium',
+            'chromium-browser',
+            'chrome',
+            'google-chrome'
+        ]
 
-        if 'Google Chrome' in str(version_result):
-            return "google-chrome"
-
-        # else search chromium-browser
+        for chrome_command in chrome_commands:
+            if shutil.which(chrome_command):
+                # check the --version for "chrom" ?
+                return chrome_command
 
         # snap seems to be a special case?
         # see https://stackoverflow.com/q/63375327/12182226
-        version_result = subprocess.check_output(
-            ["chromium-browser", "--version"]
-        )
-        if 'snap' in str(version_result):
-            chrome_snap = (
-                '/snap/chromium/current/usr/lib/chromium-browser/chrome'
-            )
-            if os.path.isfile(chrome_snap):
-                return chrome_snap
-        else:
-            which_result = shutil.which('chromium-browser')
-            if which_result is not None and os.path.isfile(which_result):
-                return which_result
 
+        try:
+            version_result = subprocess.check_output(
+                ["chromium-browser", "--version"]
+            )
+            if 'snap' in str(version_result):
+                chrome_snap = (
+                    '/snap/chromium/current/usr/lib/chromium-browser/chrome'
+                )
+                if os.path.isfile(chrome_snap):
+                    return chrome_snap
+        except Exception:
+            pass
+
+    # Search for executable on MacOS
     elif platform.system() == "Darwin":
         # MacOS system
         chrome_app = (
             '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
         )
-        version_result = subprocess.check_output(
-            [chrome_app, "--version"]
-        )
-        if "Google Chrome" in str(version_result):
-            return chrome_app
 
+        try:
+            version_result = subprocess.check_output(
+                [chrome_app, "--version"]
+            )
+            if "Google Chrome" in str(version_result):
+                return chrome_app
+        except Exception:
+            pass
+
+    # Couldn't find an executable (or OS not in Windows, Linux or Mac)
     raise FileNotFoundError(
         'Could not find a Chrome executable on this '
         'machine, please specify it yourself.'
@@ -97,7 +168,7 @@ class ChromeHeadless(Browser):
 
         Parameters
         ----------
-        - `executable_path` : str, optional
+        - `executable` : str, optional
             + Path to a chrome executable.
 
         - `flags` : list of str
@@ -109,8 +180,8 @@ class ChromeHeadless(Browser):
             + Whether or not to print the command used to take a screenshot.
     """
 
-    def __init__(self, executable_path=None, flags=None, print_command=False):
-        self.executable_path = executable_path
+    def __init__(self, executable=None, flags=None, print_command=False):
+        self.executable = executable
         if not flags:
             self.flags = [
                 '--default-background-color=0',
@@ -122,12 +193,12 @@ class ChromeHeadless(Browser):
         self.print_command = print_command
 
     @property
-    def executable_path(self):
-        return self._executable_path
+    def executable(self):
+        return self._executable
 
-    @executable_path.setter
-    def executable_path(self, value):
-        self._executable_path = _find_chrome(value)
+    @executable.setter
+    def executable(self, value):
+        self._executable = _find_chrome(value)
 
     def screenshot(
         self,
@@ -171,7 +242,7 @@ class ChromeHeadless(Browser):
         # command used to launch chrome in
         # headless mode and take a screenshot
         command = [
-            f'{self.executable_path}',
+            f'{self.executable}',
             '--headless',
             f'--screenshot={os.path.join(output_path, output_file)}',
             f'--window-size={size[0]},{size[1]}',

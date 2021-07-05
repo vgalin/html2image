@@ -9,12 +9,12 @@ class Browser(ABC):
 
     @property
     @abstractmethod
-    def executable_path(self):
+    def executable(self):
         pass
 
-    @executable_path.setter
+    @executable.setter
     @abstractmethod
-    def executable_path(self, value):
+    def executable(self, value):
         pass
 
     @abstractmethod

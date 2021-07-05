@@ -37,7 +37,7 @@ class Html2Image():
             + Type of the browser that will be used to take screenshots.
             + Default is Chrome.
 
-        - `browser_path` : str, optional
+        - `browser_executable` : str, optional
             + Path to a browser executable.
 
         - `output_path` : str, optional
@@ -64,11 +64,11 @@ class Html2Image():
     def __init__(
         self,
         browser='chrome',
-        browser_path=None,
+        browser_executable=None,
         output_path=os.getcwd(),
         size=(1920, 1080),
         temp_path=None,
-        custom_flags=[],
+        custom_flags=None,
     ):
 
         if browser.lower() not in browser_map:
@@ -82,7 +82,7 @@ class Html2Image():
 
         browser_class = browser_map[browser.lower()]
         self.browser = browser_class(
-            executable_path=browser_path,
+            executable=browser_executable,
             flags=custom_flags,
         )
 
