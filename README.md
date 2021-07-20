@@ -288,6 +288,21 @@ You can call it by typing `hti` or `html2image` into a terminal.
 
 <br>
 
+### ... now within a Docker container !
+
+You can also test the package and the CLI without having to install everything on your local machine, via a Docker container.
+
+- First `git clone` this repo
+- `cd` inside it
+- Build the image : `docker build -t html2image .`
+- Run and get inside the container : `docker run -it html2image /bin/bash`
+
+Inside that container, the `html2image` package as well as `chromium` are installed.
+
+You can load and execute a python script to use the package, or simply use the CLI.
+
+On top of that, you can also use [volumes](https://docs.docker.com/storage/volumes/) to bind a container directory to your local machine directory, allowing you to retrieve the generated images, or even load some resources (HTML, CSS or Python files).
+
 ## Testing
 
 Only basic testing is available at the moment. To run tests, install the requirements (Pillow) and run PyTest at the root of the project:
