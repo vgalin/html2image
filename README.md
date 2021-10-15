@@ -221,7 +221,7 @@ Flags can be used to:
 
 You can find the full list of Chrome / Chromium flags [here](https://peter.sh/experiments/chromium-command-line-switches/).
 
-There is two ways to specify custom flags:
+There are two ways to specify custom flags:
 ```python
 # At the object instanciation
 hti = Html2image(custom_flags=['--my_flag', '--my_other_flag=value'])
