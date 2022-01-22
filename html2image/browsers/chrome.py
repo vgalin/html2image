@@ -6,6 +6,8 @@ import platform
 import os
 import shutil
 
+DEVNULL = open(os.devnull, 'w')
+
 ENV_VAR_LOOKUP_TOGGLE = 'HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP'
 
 CHROME_EXECUTABLE_ENV_VAR_CANDIDATES = [
@@ -253,4 +255,4 @@ class ChromeHeadless(Browser):
         if self.print_command:
             print(' '.join(command))
 
-        subprocess.run(command)
+        subprocess.run(command, stdout=DEVNULL, stderr=DEVNULL)
