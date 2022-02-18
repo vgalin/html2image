@@ -20,3 +20,19 @@ class Browser(ABC):
     @abstractmethod
     def screenshot(self, *args, **kwargs):
         pass
+
+    @abstractmethod
+    def __enter__(self):
+        pass
+
+    @abstractmethod
+    def __exit__(self, *exc):
+        pass
+
+
+class CDPBrowser(Browser):
+    """A web browser that can be interacted with via Chrome DevTools Protocol.
+    """
+
+    def __init__(self, flags, cdp_port):
+        pass

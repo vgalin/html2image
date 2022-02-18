@@ -13,16 +13,21 @@ import shutil
 
 from textwrap import dedent
 
-from html2image.browsers import chrome, firefox
+from html2image.browsers import chrome, chrome_cdp#, firefox, firefox_cdp
+from html2image.browsers.browser import CDPBrowser
 
 browser_map = {
     'chrome': chrome.ChromeHeadless,
     'chromium': chrome.ChromeHeadless,
     'google-chrome': chrome.ChromeHeadless,
-    'googlechrome': chrome.ChromeHeadless,
-    'firefox': firefox.FirefoxHeadless,
-    'mozilla-firefox': firefox.FirefoxHeadless,
-    'mozilla firefox': firefox.FirefoxHeadless,
+
+    'chrome-cdp': chrome_cdp.ChromeCDP,
+    'chromium-cdp': chrome_cdp.ChromeCDP,
+
+    # 'firefox': firefox.FirefoxHeadless,
+    # 'mozilla-firefox': firefox.FirefoxHeadless,
+
+    # 'firefox-cdp': firefox_cdp.FirefoxCDP,
 }
 
 
@@ -65,6 +70,7 @@ class Html2Image():
         self,
         browser='chrome',
         browser_executable=None,
+        browser_cdp_port=None,
         output_path=os.getcwd(),
         size=(1920, 1080),
         temp_path=None,
@@ -81,10 +87,18 @@ class Html2Image():
         self.temp_path = temp_path
 
         browser_class = browser_map[browser.lower()]
-        self.browser = browser_class(
-            executable=browser_executable,
-            flags=custom_flags,
-        )
+
+        if isinstance(browser_class, CDPBrowser):
+            self.browser = browser_class(
+                executable=browser_executable,
+                flags=custom_flags,
+                cdp_port=browser_cdp_port,
+            )
+        else:
+            self.browser = browser_class(
+                executable=browser_executable,
+                flags=custom_flags,
+            )
 
     @property
     def temp_path(self):
@@ -514,6 +528,13 @@ class Html2Image():
             screenshot_paths.append(os.path.join(self.output_path, name))
 
         return screenshot_paths
+
+    def __enter__(self):
+        self.browser.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        self.browser.__exit__(*exc)
 
 
 if __name__ == '__main__':
