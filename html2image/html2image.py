@@ -161,6 +161,21 @@ class Html2Image():
         dest = os.path.join(self.temp_path, as_filename)
         shutil.copyfile(src, dest)
 
+    def _remove_tmp_file(self, filename):
+        """ Removes a file in the tmp directory.
+
+        This function is used after a temporary file is created in order to
+        load an HTML string.
+        This prevents the temp directory to end up bloated by temp files.
+
+        Parameters
+        ----------
+        - `filename`: str
+            + Filename of the file to be removed
+            + (path is the temp_path directory)
+        """
+        os.remove(os.path.join(self.temp_path, filename))
+
     def screenshot_loaded_file(
         self, file, output_file='screenshot.png', size=None
     ):
@@ -482,6 +497,7 @@ class Html2Image():
                 output_file=name,
                 size=current_size,
             )
+            self._remove_tmp_file(html_filename)
 
             screenshot_paths.append(os.path.join(self.output_path, name))
 
