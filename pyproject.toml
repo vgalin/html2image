@@ -29,7 +29,7 @@ python = "^3.6"
 websocket-client = "1.2.3"
 
 [tool.poetry.dev-dependencies]
-Pillow = "8.2.0"
+Pillow = "^8.2.0"
 
 [build-system]
 requires = ["poetry>=0.12"]
