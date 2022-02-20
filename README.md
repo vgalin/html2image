@@ -221,7 +221,7 @@ Flags can be used to:
 
 You can find the full list of Chrome / Chromium flags [here](https://peter.sh/experiments/chromium-command-line-switches/).
 
-There is two ways to specify custom flags:
+There are two ways to specify custom flags:
 ```python
 # At the object instanciation
 hti = Html2image(custom_flags=['--my_flag', '--my_other_flag=value'])
@@ -287,6 +287,21 @@ You can call it by typing `hti` or `html2image` into a terminal.
 | --temp_path| Specify a different temp path (where the files are loaded)||
 
 <br>
+
+### ... now within a Docker container !
+
+You can also test the package and the CLI without having to install everything on your local machine, via a Docker container.
+
+- First `git clone` this repo
+- `cd` inside it
+- Build the image : `docker build -t html2image .`
+- Run and get inside the container : `docker run -it html2image /bin/bash`
+
+Inside that container, the `html2image` package as well as `chromium` are installed.
+
+You can load and execute a python script to use the package, or simply use the CLI.
+
+On top of that, you can also use [volumes](https://docs.docker.com/storage/volumes/) to bind a container directory to your local machine directory, allowing you to retrieve the generated images, or even load some resources (HTML, CSS or Python files).
 
 ## Testing
 
