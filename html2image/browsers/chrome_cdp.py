@@ -14,7 +14,8 @@ class ChromeCDP(CDPBrowser):
 
     def __init__(
         self, executable=None, flags=None,
-        print_command=False, cdp_port=9222
+        print_command=False, cdp_port=9222,
+        disable_logging=False,
     ):
         self.executable = executable
         if not flags:
@@ -27,8 +28,8 @@ class ChromeCDP(CDPBrowser):
             self.flags = [flags] if isinstance(flags, str) else flags
 
         self.print_command = print_command
-
         self.cdp_port = cdp_port
+        self.disable_logging = disable_logging
 
         self._ws = None  # Websocket connection
         self.proc = None  # Headless browser Popen object
@@ -42,6 +43,14 @@ class ChromeCDP(CDPBrowser):
     @executable.setter
     def executable(self, value):
         self._executable = find_chrome(value)
+
+    @property
+    def disable_logging(self):
+        return self.disable_logging
+    
+    @disable_logging.setter
+    def disable_logging(self, value):
+        self.disable_logging = value
 
     @property
     def ws(self):
@@ -115,10 +124,12 @@ class ChromeCDP(CDPBrowser):
     def __enter__(self):
         """
         """
-        print(
-            'Starting headless Chrome with '
-            f'--remote-debugging-port={self.cdp_port}.'
-        )
+        if not self.disable_logging:
+            print(
+                'Starting headless Chrome with '
+                f'--remote-debugging-port={self.cdp_port}.'
+            )
+
         command = [
             f'{self.executable}',
             '--window-size=1920,1080',
@@ -137,7 +148,8 @@ class ChromeCDP(CDPBrowser):
     def __exit__(self, *exc):
         """
         """
-        print(f'Stopping headless Chrome instance on port {self.cdp_port}.')
+        if not self.disable_logging:
+            print(f'Stopping headless Chrome instance on port {self.cdp_port}.')
 
         # check if the process is still running
         if self.proc.poll() is None:

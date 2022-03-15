@@ -21,9 +21,17 @@ class ChromeHeadless(Browser):
                 - '--hide-scrollbars'
         - `print_command` : bool
             + Whether or not to print the command used to take a screenshot.
+        - `disable_logging` : bool
+            + Whether or not to disable Chrome's output.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False):
+    def __init__(
+        self,
+        executable=None,
+        flags=None,
+        print_command=False,
+        disable_logging=False,
+    ):
         self.executable = executable
         if not flags:
             self.flags = [
@@ -34,6 +42,7 @@ class ChromeHeadless(Browser):
             self.flags = [flags] if isinstance(flags, str) else flags
 
         self.print_command = print_command
+        self.disable_logging = disable_logging
 
     @property
     def executable(self):
@@ -42,6 +51,21 @@ class ChromeHeadless(Browser):
     @executable.setter
     def executable(self, value):
         self._executable = find_chrome(value)
+
+    @property
+    def disable_logging(self):
+        return self.disable_logging
+    
+    @disable_logging.setter
+    def disable_logging(self, value):
+        self.disable_logging = value
+
+        # dict that will be passed unpacked as a parameter
+        # to the subprocess.call() method to take a screenshot
+        self.__output_redirection = {
+            'stdout': subprocess.DEVNULL,
+            'stderr': subprocess.DEVNULL,
+        } if value else {}
 
     def screenshot(
         self,
@@ -96,7 +120,7 @@ class ChromeHeadless(Browser):
         if self.print_command:
             print(' '.join(command))
 
-        subprocess.run(command)
+        subprocess.run(command, **self.__output_redirection)
 
     def __enter__(self):
         print(
