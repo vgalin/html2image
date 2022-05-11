@@ -54,15 +54,15 @@ class ChromeHeadless(Browser):
 
     @property
     def disable_logging(self):
-        return self.disable_logging
+        return self._disable_logging
     
     @disable_logging.setter
     def disable_logging(self, value):
-        self.disable_logging = value
+        self._disable_logging = value
 
         # dict that will be passed unpacked as a parameter
         # to the subprocess.call() method to take a screenshot
-        self.__output_redirection = {
+        self._subprocess_run_kwargs = {
             'stdout': subprocess.DEVNULL,
             'stderr': subprocess.DEVNULL,
         } if value else {}
@@ -120,7 +120,7 @@ class ChromeHeadless(Browser):
         if self.print_command:
             print(' '.join(command))
 
-        subprocess.run(command, **self.__output_redirection)
+        subprocess.run(command, **self._subprocess_run_kwargs)
 
     def __enter__(self):
         print(

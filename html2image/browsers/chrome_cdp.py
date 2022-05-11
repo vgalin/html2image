@@ -29,7 +29,7 @@ class ChromeCDP(CDPBrowser):
 
         self.print_command = print_command
         self.cdp_port = cdp_port
-        self.disable_logging = disable_logging
+        self._disable_logging = disable_logging
 
         self._ws = None  # Websocket connection
         self.proc = None  # Headless browser Popen object
@@ -46,11 +46,11 @@ class ChromeCDP(CDPBrowser):
 
     @property
     def disable_logging(self):
-        return self.disable_logging
+        return self._disable_logging
     
     @disable_logging.setter
     def disable_logging(self, value):
-        self.disable_logging = value
+        self._disable_logging = value
 
     @property
     def ws(self):
@@ -140,7 +140,7 @@ class ChromeCDP(CDPBrowser):
             *self.flags,
         ]
 
-        if not self.print_command:
+        if self.print_command:
             print(' '.join(command))
 
         self.proc = subprocess.Popen(command, shell=True)
@@ -148,12 +148,16 @@ class ChromeCDP(CDPBrowser):
     def __exit__(self, *exc):
         """
         """
-        if not self.disable_logging:
+        if self.disable_logging:
             print(f'Stopping headless Chrome instance on port {self.cdp_port}.')
 
         # check if the process is still running
         if self.proc.poll() is None:
             # ensure that it is properly killed
-            self.cdp_send('Browser.close')
-            self.ws.close()
-            self.proc.terminate()
+            try:
+                self.cdp_send('Browser.close')
+                self.ws.close()
+                self.proc.terminate()
+            except:
+                print('Could not properly kill Chrome.')
+                pass

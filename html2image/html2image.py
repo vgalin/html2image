@@ -75,6 +75,7 @@ class Html2Image():
         size=(1920, 1080),
         temp_path=None,
         custom_flags=None,
+        disable_logging=False,
     ):
 
         if browser.lower() not in browser_map:
@@ -93,11 +94,13 @@ class Html2Image():
                 executable=browser_executable,
                 flags=custom_flags,
                 cdp_port=browser_cdp_port,
+                disable_logging=disable_logging,
             )
         else:
             self.browser = browser_class(
                 executable=browser_executable,
                 flags=custom_flags,
+                disable_logging=disable_logging,
             )
 
     @property
