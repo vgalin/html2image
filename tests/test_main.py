@@ -12,7 +12,7 @@ def test_bad_browser():
 
 
 def test_good_browser():
-    Html2Image(browser='cHrOme')
+    Html2Image(browser='edGe')
 
 
 def test_screenshot_url():

@@ -13,9 +13,10 @@ import shutil
 
 from textwrap import dedent
 
-from html2image.browsers import chrome, firefox
+from html2image.browsers import chrome, firefox, edge
 
 browser_map = {
+    'edge': edge.EdgeHeadless,
     'chrome': chrome.ChromeHeadless,
     'chromium': chrome.ChromeHeadless,
     'google-chrome': chrome.ChromeHeadless,
@@ -63,7 +64,7 @@ class Html2Image():
 
     def __init__(
         self,
-        browser='chrome',
+        browser='edge',
         browser_executable=None,
         output_path=os.getcwd(),
         size=(1920, 1080),
