@@ -237,6 +237,9 @@ class EdgeHeadless(Browser):
         if not input:
             raise ValueError('The `input` parameter is empty.')
 
+        # for some reason window sizes are doubled when taking screenshots (on mac osx)
+        size = (int(size[0]/2), int(size[1]/2))
+
         if size[0] < 1 or size[1] < 1:
             raise ValueError(
                 f'Could not screenshot "{output_file}" '
