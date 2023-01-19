@@ -1,4 +1,4 @@
-from .browser import Browser
+from .chromium import ChromiumHeadless
 from .search_utils import get_command_origin, find_first_defined_env_var
 
 import subprocess
@@ -14,7 +14,6 @@ CHROME_EXECUTABLE_ENV_VAR_CANDIDATES = [
     'CHROME_BIN',
     'CHROME_EXE',
 ]
-
 
 def _find_chrome(user_given_executable=None):
     """ Finds a Chrome executable.
@@ -161,8 +160,7 @@ def _find_chrome(user_given_executable=None):
         'machine, please specify it yourself.'
     )
 
-
-class ChromeHeadless(Browser):
+class ChromeHeadless(ChromiumHeadless):
     """
         Chrome/Chromium browser wrapper.
 
@@ -181,16 +179,7 @@ class ChromeHeadless(Browser):
     """
 
     def __init__(self, executable=None, flags=None, print_command=False):
-        self.executable = executable
-        if not flags:
-            self.flags = [
-                '--default-background-color=0',
-                '--hide-scrollbars',
-            ]
-        else:
-            self.flags = [flags] if isinstance(flags, str) else flags
-
-        self.print_command = print_command
+        super().__init__(executable=executable, flags=flags, print_command=print_command)
 
     @property
     def executable(self):
@@ -199,58 +188,3 @@ class ChromeHeadless(Browser):
     @executable.setter
     def executable(self, value):
         self._executable = _find_chrome(value)
-
-    def screenshot(
-        self,
-        input,
-        output_path,
-        output_file='screenshot.png',
-        size=(1920, 1080),
-    ):
-        """ Calls Chrome or Chromium headless to take a screenshot.
-
-            Parameters
-            ----------
-            - `output_file`: str
-                + Name as which the screenshot will be saved.
-                + File extension (e.g. .png) has to be included.
-                + Default is screenshot.png
-            - `input`: str
-                + File or url that will be screenshotted.
-                + Cannot be None
-            - `size`: (int, int), optional
-                + Two values representing the window size of the headless
-                + browser and by extention, the screenshot size.
-                + These two values must be greater than 0.
-            Raises
-            ------
-            - `ValueError`
-                + If the value of `size` is incorrect.
-                + If `input` is empty.
-        """
-
-        if not input:
-            raise ValueError('The `input` parameter is empty.')
-
-        if size[0] < 1 or size[1] < 1:
-            raise ValueError(
-                f'Could not screenshot "{output_file}" '
-                f'with a size of {size}:\n'
-                'A valid size consists of two integers greater than 0.'
-            )
-
-        # command used to launch chrome in
-        # headless mode and take a screenshot
-        command = [
-            f'{self.executable}',
-            '--headless',
-            f'--screenshot={os.path.join(output_path, output_file)}',
-            f'--window-size={size[0]},{size[1]}',
-            *self.flags,
-            f'{input}',
-        ]
-
-        if self.print_command:
-            print(' '.join(command))
-
-        subprocess.run(command)
