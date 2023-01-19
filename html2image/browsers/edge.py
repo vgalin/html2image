@@ -117,32 +117,14 @@ def _find_edge(user_given_executable=None):
     elif platform.system() == "Linux":
 
         edge_commands = [
-            'chromium',
-            'chromium-browser',
-            'chrome',
-            'google-chrome'
+            'msedge',
+            '/opt/microsoft/msedge/msedge'
         ]
 
         for edge_command in edge_commands:
             if shutil.which(edge_command):
-                # check the --version for "chrom" ?
+                # check the --version for "edge" ?
                 return edge_command
-
-        # snap seems to be a special case?
-        # see https://stackoverflow.com/q/63375327/12182226
-
-        try:
-            version_result = subprocess.check_output(
-                ["chromium-browser", "--version"]
-            )
-            if 'snap' in str(version_result):
-                edge_snap = (
-                    '/snap/chromium/current/usr/lib/chromium-browser/chrome'
-                )
-                if os.path.isfile(edge_snap):
-                    return edge_snap
-        except Exception:
-            pass
 
     # Search for executable on MacOS
     elif platform.system() == "Darwin":
@@ -169,7 +151,7 @@ def _find_edge(user_given_executable=None):
 
 class EdgeHeadless(Browser):
     """
-        Edge/Chromium browser wrapper.
+        Edge browser wrapper.
 
         Parameters
         ----------
@@ -212,7 +194,7 @@ class EdgeHeadless(Browser):
         output_file='screenshot.png',
         size=(1920, 1080),
     ):
-        """ Calls Edge or Chromium headless to take a screenshot.
+        """ Calls Edge headless to take a screenshot.
 
             Parameters
             ----------
@@ -238,7 +220,8 @@ class EdgeHeadless(Browser):
             raise ValueError('The `input` parameter is empty.')
 
         # for some reason window sizes are doubled when taking screenshots (on mac osx)
-        size = (int(size[0]/2), int(size[1]/2))
+        #Size is double on darwin
+        #size = (int(size[0]/2), int(size[1]/2))
 
         if size[0] < 1 or size[1] < 1:
             raise ValueError(
