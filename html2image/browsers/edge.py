@@ -6,11 +6,6 @@ import platform
 import os
 import shutil
 
-
-## TODO: Use MS Edge WebDriver
-## https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/
-
-
 ENV_VAR_LOOKUP_TOGGLE = 'HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP'
 
 EDGE_EXECUTABLE_ENV_VAR_CANDIDATES = [
@@ -80,11 +75,11 @@ def _find_edge(user_given_executable=None):
             raise FileNotFoundError()
 
         # On a non-Windows OS, we can validate in a basic way that
-        # user_given_executable leads to a Edge / Chromium executable,
+        # user_given_executable leads to a Edge executable,
         # or is a command, using the --version flag
         else:
             try:
-                if 'chrom' in subprocess.check_output(
+                if 'edge' in subprocess.check_output(
                     [user_given_executable, '--version']
                 ).decode('utf-8').lower():
                     return user_given_executable
