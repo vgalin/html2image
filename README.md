@@ -35,7 +35,7 @@ pip install --upgrade html2image
 
 In addition to this package, at least one of the following browsers **must** be installed on your machine :
 -   Google Chrome (Windows, MacOS)
--   Chromium Brower (Linux)
+-   Chromium Browser (Linux)
 
 ## Usage
 
@@ -51,7 +51,7 @@ hti = Html2Image()
 -   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
 -   `browser_executable` : The path or the command that can be used to find the executable of a specific browser.
 -   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
--   `size` : 2-Tuple reprensenting the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
+-   `size` : 2-Tuple representing the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
 -   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 
 Example:
@@ -333,4 +333,4 @@ python -m pytest
 
 ---
 
-*If you see any typos or notice things that are odly said, feel free to create an issue or a pull request.*
+*If you see any typos or notice things that are oddly said, feel free to create an issue or a pull request.*
