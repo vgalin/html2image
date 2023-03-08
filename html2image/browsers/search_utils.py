@@ -1,5 +1,6 @@
 import shutil
 import os
+import subprocess
 try:
     from winreg import ConnectRegistry, OpenKey, QueryValueEx,\
             HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, KEY_READ
@@ -8,7 +9,7 @@ except ImportError:
     pass
 
 
-def get_command_origin(command):
+def get_command_origin_win(command):
     ''' Finds the path of a given command (windows only).
 
     This function is inspired by the `start` command on windows.
@@ -69,6 +70,33 @@ def get_command_origin(command):
                 except Exception:
                     # cannot open key, do nothing and proceed to the next one
                     pass
+    return None
+
+
+def get_bundle_path_darwin(bundle_id, bundle_name, spotlight=True):
+    # try default path first
+    if os.path.isdir('/Applications/' + bundle_name):
+        return '/Applications/' + bundle_name
+
+    # Try probing actively running processes.
+    # There is also `lsappinfo info -only executablepath` to get the full path
+    # but then the return value will be inconsisten with the other checks
+    try:
+        return subprocess.check_output([
+            'lsappinfo', 'info', '-only', 'bundlepath', bundle_id
+        ], encoding='utf8').split('"')[3]  # "CFBundleExecutablePath"="/path.."
+    except Exception:
+        pass
+
+    # Spotlight search is slow (~1sec)! Fallback only if absolutely necessary
+    if spotlight:
+        try:
+            return subprocess.check_output([
+                'mdfind', '-name', bundle_name
+            ], encoding='utf8').strip()
+        except Exception:
+            pass
+    # everything failed, give up
     return None
 
 

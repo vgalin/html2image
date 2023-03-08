@@ -1,5 +1,7 @@
 from .browser import Browser
-from .search_utils import get_command_origin, find_first_defined_env_var
+from .search_utils import (
+    get_command_origin_win, get_bundle_path_darwin, find_first_defined_env_var
+)
 
 import subprocess
 import platform
@@ -67,7 +69,7 @@ def _find_chrome(user_given_executable=None):
         # is a file, a filepath, or corresponds to a keyword that can be used
         # with the start command, like so: `start user_given_executable`
         if platform.system() == 'Windows':
-            command_origin = get_command_origin(user_given_executable)
+            command_origin = get_command_origin_win(user_given_executable)
             if command_origin:
                 return command_origin
 
@@ -142,9 +144,16 @@ def _find_chrome(user_given_executable=None):
     # Search for executable on MacOS
     elif platform.system() == "Darwin":
         # MacOS system
-        chrome_app = (
-            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-        )
+        # defaults field 'LastRunAppBundlePath' may not exist, so it might fail
+        try:
+            chrome_app = subprocess.check_output([
+                'defaults', 'read', 'com.google.Chrome', 'LastRunAppBundlePath'
+            ], encoding='utf8', stderr=subprocess.DEVNULL).strip()
+        except Exception:
+            chrome_app = get_bundle_path_darwin(
+                'com.google.Chrome', 'Google Chrome.app')
+
+        chrome_app += '/Contents/MacOS/Google Chrome'
 
         try:
             version_result = subprocess.check_output(
