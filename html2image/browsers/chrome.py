@@ -174,7 +174,7 @@ class ChromeHeadless(Browser):
         - `flags` : list of str
             + Flags to be used by the headless browser.
             + Default flags are :
-                - '--default-background-color=0'
+                - '--default-background-color=000000'
                 - '--hide-scrollbars'
         - `print_command` : bool
             + Whether or not to print the command used to take a screenshot.
@@ -184,7 +184,7 @@ class ChromeHeadless(Browser):
         self.executable = executable
         if not flags:
             self.flags = [
-                '--default-background-color=0',
+                '--default-background-color=000000',
                 '--hide-scrollbars',
             ]
         else:
