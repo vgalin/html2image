@@ -251,7 +251,7 @@ For ease of use, some flags are set by default. However default flags are not us
 # Taking a look at the default flags
 >>> hti = Html2Image()
 >>> hti.browser.flags
-['--default-background-color=0', '--hide-scrollbars']
+['--default-background-color=000000', '--hide-scrollbars']
 
 # Changing the value of browser.flags gets rid of the default flags.
 >>> hti.browser.flags = ['--1', '--2']
