@@ -13,13 +13,14 @@ import shutil
 
 from textwrap import dedent
 
-from html2image.browsers import chrome, firefox
+from html2image.browsers import chrome, firefox, edge
 
 browser_map = {
     'chrome': chrome.ChromeHeadless,
     'chromium': chrome.ChromeHeadless,
     'google-chrome': chrome.ChromeHeadless,
     'googlechrome': chrome.ChromeHeadless,
+    'edge': edge.EdgeHeadless,
     'firefox': firefox.FirefoxHeadless,
     'mozilla-firefox': firefox.FirefoxHeadless,
     'mozilla firefox': firefox.FirefoxHeadless,
