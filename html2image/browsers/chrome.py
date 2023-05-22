@@ -224,7 +224,7 @@ class ChromeHeadless(Browser):
                 + Cannot be None
             - `size`: (int, int), optional
                 + Two values representing the window size of the headless
-                + browser and by extention, the screenshot size.
+                + browser and by extension, the screenshot size.
                 + These two values must be greater than 0.
             Raises
             ------
