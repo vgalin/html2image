@@ -209,7 +209,7 @@ class Html2Image:
         ----------
         - `url`: str
             + URL of the page that will be screenshotted.
-            + Do not ommit the protocol.
+            + Do not omit the protocol.
 
         - `output_file`: str, optional
             + Name as which the screenshot will be saved.
