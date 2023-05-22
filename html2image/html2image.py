@@ -344,7 +344,7 @@ class Html2Image:
 
         sizes.extend([
             last_size
-            for i in range(missing_size_count)
+            for _ in range(missing_size_count)
         ])
 
         return sizes
