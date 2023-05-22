@@ -168,20 +168,20 @@ def _find_chrome(user_given_executable=None):
 
 class ChromeHeadless(Browser):
     """
-        Chrome/Chromium browser wrapper.
+    Chrome/Chromium browser wrapper.
 
-        Parameters
-        ----------
-        - `executable` : str, optional
-            + Path to a chrome executable.
+    Parameters
+    ----------
+    - `executable` : str, optional
+        + Path to a chrome executable.
 
-        - `flags` : list of str
-            + Flags to be used by the headless browser.
-            + Default flags are :
-                - '--default-background-color=000000'
-                - '--hide-scrollbars'
-        - `print_command` : bool
-            + Whether or not to print the command used to take a screenshot.
+    - `flags` : list of str
+        + Flags to be used by the headless browser.
+        + Default flags are :
+            - '--default-background-color=000000'
+            - '--hide-scrollbars'
+    - `print_command` : bool
+        + Whether to print the command used to take a screenshot.
     """
 
     def __init__(self, executable=None, flags=None, print_command=False):
