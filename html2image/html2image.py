@@ -336,7 +336,7 @@ class Html2Image:
         if len(sizes) == 0:
             return [
                 self.size
-                for i in range(desired_length)
+                for _ in range(desired_length)
             ]
 
         missing_size_count = desired_length - len(sizes)
