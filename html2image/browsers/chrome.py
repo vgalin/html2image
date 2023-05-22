@@ -143,7 +143,7 @@ def _find_chrome(user_given_executable=None):
         except Exception as e:
             logger.error(e)
 
-    # Search for executable on MacOS
+    # Search for executable on macOS
     elif platform.system() == "Darwin":
         # MacOS system
         chrome_app = (
