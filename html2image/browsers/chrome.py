@@ -206,7 +206,7 @@ class ChromeHeadless(Browser):
 
     def screenshot(
         self,
-        input,
+        input_,
         output_path,
         output_file='screenshot.png',
         size=(1920, 1080),
@@ -233,7 +233,7 @@ class ChromeHeadless(Browser):
                 + If `input` is empty.
         """
 
-        if not input:
+        if not input_:
             raise ValueError('The `input` parameter is empty.')
 
         if size[0] < 1 or size[1] < 1:
@@ -251,7 +251,7 @@ class ChromeHeadless(Browser):
             f'--screenshot={os.path.join(output_path, output_file)}',
             f'--window-size={size[0]},{size[1]}',
             *self.flags,
-            f'{input}',
+            f'{input_}',
         ]
 
         if self.print_command:
