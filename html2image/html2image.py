@@ -392,7 +392,7 @@ class Html2Image:
         save_as='screenshot.png',
         size=[]
     ):
-        """ Takes a screeshot using different resources.
+        """ Takes a screenshot using different resources.
 
         Parameters
         ----------
@@ -404,13 +404,13 @@ class Html2Image:
             + CSS string(s) that will be "associated" with the given
             + HTML string(s)
         - `css_file`: list of str or str
-            + CSS file(s) supposedly already mentionned by their filenames
+            + CSS file(s) supposedly already mentioned by their filenames
             + in the content of the `html_file`(s).
         - `other_file`: list of str or str
             + Filepath(s) of non-HTML file(s) that will be screenshotted.
         - `url`: list of str or str
             + URL(s) of the page(s) that will be screenshotted.
-            + Do not ommit the protocol.
+            + Do not omit the protocol.
         - `save_as`: list of str or str
             + Name(s) as which the screenshot will be saved.
             + File extension (e.g. .png) has to be included.
@@ -430,7 +430,7 @@ class Html2Image:
         """
 
         # TODO / NOTE : This does not pose any problem for now but setting
-        # mutables (here empty lists) as default arguments of a function
+        # mutable (here empty lists) as default arguments of a function
         # can cause unwanted behaviours.
 
         screenshot_paths = []
