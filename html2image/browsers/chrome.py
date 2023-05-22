@@ -6,6 +6,10 @@ import platform
 import os
 import shutil
 
+import logging
+
+logger = logging.getLogger("html2image")
+
 ENV_VAR_LOOKUP_TOGGLE = 'HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP'
 
 CHROME_EXECUTABLE_ENV_VAR_CANDIDATES = [
@@ -72,7 +76,7 @@ def _find_chrome(user_given_executable=None):
                 return command_origin
 
             # cannot validate user_given_executable
-            raise FileNotFoundError()
+            raise FileNotFoundError("Failed to validate executable")
 
         # On a non-Windows OS, we can validate in a basic way that
         # user_given_executable leads to a Chrome / Chromium executable,
@@ -83,8 +87,8 @@ def _find_chrome(user_given_executable=None):
                     [user_given_executable, '--version']
                 ).decode('utf-8').lower():
                     return user_given_executable
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(e)
 
         # We got a user_given_executable but couldn't validate it
         raise FileNotFoundError(
@@ -136,8 +140,8 @@ def _find_chrome(user_given_executable=None):
                 )
                 if os.path.isfile(chrome_snap):
                     return chrome_snap
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(e)
 
     # Search for executable on MacOS
     elif platform.system() == "Darwin":
@@ -152,8 +156,8 @@ def _find_chrome(user_given_executable=None):
             )
             if "Google Chrome" in str(version_result):
                 return chrome_app
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(e)
 
     # Couldn't find an executable (or OS not in Windows, Linux or Mac)
     raise FileNotFoundError(
