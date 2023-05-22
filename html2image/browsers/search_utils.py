@@ -9,13 +9,14 @@ except ImportError:
 
 
 def get_command_origin(command):
-    ''' Finds the path of a given command (windows only).
+    """
+    Finds the path of a given command (windows only).
 
     This function is inspired by the `start` command on windows.
     It will search if the given command corresponds :
     - To an executable in the current directory
     - To an executable in the PATH environment variable
-    - To an executable mentionned in the registry in the
+    - To an executable mentioned in the registry in the
       HKEY_LOCAL_MACHINE or HKEY_LOCAL_MACHINE hkeys in
       SOFTWARE\\[Wow6432Node\\]Microsoft\\Windows\\CurrentVersion\\App Paths\\
 
@@ -31,7 +32,7 @@ def get_command_origin(command):
     - str or None
         + the path corresponding to `command`
         + None, if no path was found
-    '''
+    """
 
     # `start "command"` itself could be used to run the command but we want to
     # assess that the command is a valid one.
