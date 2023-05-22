@@ -158,8 +158,8 @@ class Html2Image:
         if as_filename is None:
             as_filename = os.path.basename(src)
 
-        dest = os.path.join(self.temp_path, as_filename)
-        shutil.copyfile(src, dest)
+        destination = os.path.join(self.temp_path, as_filename)
+        shutil.copyfile(src, destination)
 
     def screenshot_loaded_file(
         self, file, output_file='screenshot.png', size=None
