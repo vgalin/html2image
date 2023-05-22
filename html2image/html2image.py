@@ -151,7 +151,7 @@ class Html2Image:
             + Path to the file to load.
 
         - `as_filename`: str
-            + Filename as which the given file will renamed.
+            + Filename as which the given file will be renamed.
             + If None or not specified, the given file will keep
             its original name.
         """
