@@ -4,9 +4,6 @@ from abc import ABC, abstractmethod
 class Browser(ABC):
     """Abstract class representing a web browser."""
 
-    def __init__(self, flags):
-        pass
-
     @property
     @abstractmethod
     def executable(self):
