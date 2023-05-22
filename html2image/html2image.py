@@ -26,7 +26,7 @@ browser_map = {
 }
 
 
-class Html2Image():
+class Html2Image:
     """
         Allows the generation of images from
         URLs and HTML/CSS files or strings.
