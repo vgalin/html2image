@@ -39,7 +39,7 @@ def get_command_origin(command):
     command = command.replace('start ', '')
 
     # which search in current directory + path
-    # and file extention can be ommited
+    # and file extension can be omitted
     which_result = shutil.which(command)
     if which_result:
         return which_result
