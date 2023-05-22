@@ -1,3 +1,4 @@
+import logging
 import shutil
 import os
 try:
@@ -6,6 +7,8 @@ try:
 except ImportError:
     # os is not Windows, and there is no need for winreg
     pass
+
+logger = logging.getLogger("html2image")
 
 
 def get_command_origin(command):
@@ -67,8 +70,9 @@ def get_command_origin(command):
                     with OpenKey(registry, key, 0, KEY_READ) as k:
                         # if no exception: we found the exe
                         return QueryValueEx(k, '')[0]
-                except Exception:
-                    # cannot open key, do nothing and proceed to the next one
+                except Exception as e:
+                    logger.error(e)
+                    logger.info("Can not open the key, do nothing and proceed to the next one")
                     pass
     return None
 
