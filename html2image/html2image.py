@@ -201,7 +201,7 @@ class Html2Image:
         """ Takes a screenshot of a given URL.
 
         The given URL should be well-formed or it may result in undefined
-        behaviors when an headless browser will open it.
+        behaviors when a headless browser will open it.
         Please do include the protocol in the URL (http, https).
         E.g. url = 'https://www.python.org/'
 
