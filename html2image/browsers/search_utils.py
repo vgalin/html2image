@@ -74,10 +74,10 @@ def get_command_origin(command):
 
 
 def find_first_defined_env_var(env_var_list, toggle):
-    '''
+    """
     Returns the value of the first defined environment variable
     encountered in the `env_var_list` list, but only if the
-    the `toggle` environment variableif defined.
+    the `toggle` environment variable if defined.
 
     Parameters
     ----------
@@ -85,9 +85,8 @@ def find_first_defined_env_var(env_var_list, toggle):
         + list of environment variable names
     - `toggle`: str
         + environment variable name
+    """
 
-
-    '''
     if toggle in os.environ:
         for env_var in env_var_list:
             value = os.environ.get(env_var)
