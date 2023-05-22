@@ -49,7 +49,7 @@ def get_command_origin(command):
     command = command.replace('.exe', '').strip()
 
     # Once combined, these hkeys and keys are where the `start`
-    # command seach for executable.
+    # command search for executable.
     hkeys = [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER]
     keys = [
         "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\"
