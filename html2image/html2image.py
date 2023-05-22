@@ -275,14 +275,14 @@ class Html2Image:
             return save_as
 
         missing_name_count = desired_length - len(save_as)
-        filename, extention = save_as[-1].split('.')
+        filename, extension = save_as[-1].split('.')
 
         # remove last object as it will be replaced
-        # from filename.extention to filename_0.extention
+        # from filename.extension to filename_0.extension
         save_as.pop()
 
         save_as.extend([
-            f'{filename}_{i}.{extention}'
+            f'{filename}_{i}.{extension}'
             for i in range(missing_name_count + 1)
         ])
 
