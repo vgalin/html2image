@@ -11,11 +11,11 @@ class FirefoxHeadless(Browser):
 
     @property
     def executable(self):
-        pass
+        return None
 
     @executable.setter
     def executable(self, value):
         pass
 
-    def render(self, **kwargs):
+    def screenshot(self, **kwargs):
         pass
