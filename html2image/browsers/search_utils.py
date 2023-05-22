@@ -37,7 +37,7 @@ def get_command_origin(command):
         + None, if no path was found
     """
 
-    # `start "command"` itself could be used to run the command but we want to
+    # `start "command"` itself could be used to run the command, but we want to
     # assess that the command is a valid one.
     command = command.replace('start ', '')
 
