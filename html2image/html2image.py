@@ -193,7 +193,7 @@ class Html2Image:
         self.browser.screenshot(
             output_path=self.output_path,
             output_file=output_file,
-            input=file,
+            input_=file,
             size=size,
         )
 
@@ -231,7 +231,7 @@ class Html2Image:
         self.browser.screenshot(
             output_path=self.output_path,
             output_file=output_file,
-            input=url,
+            input_=url,
             size=size
         )
 
