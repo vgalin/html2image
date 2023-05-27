@@ -6,6 +6,10 @@ import platform
 import os
 import shutil
 
+import logging
+
+logger = logging.getLogger("html2image")
+
 ENV_VAR_LOOKUP_TOGGLE = 'HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP'
 
 CHROME_EXECUTABLE_ENV_VAR_CANDIDATES = [
@@ -72,7 +76,7 @@ def _find_chrome(user_given_executable=None):
                 return command_origin
 
             # cannot validate user_given_executable
-            raise FileNotFoundError()
+            raise FileNotFoundError("Failed to validate executable")
 
         # On a non-Windows OS, we can validate in a basic way that
         # user_given_executable leads to a Chrome / Chromium executable,
@@ -83,8 +87,8 @@ def _find_chrome(user_given_executable=None):
                     [user_given_executable, '--version']
                 ).decode('utf-8').lower():
                     return user_given_executable
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(e)
 
         # We got a user_given_executable but couldn't validate it
         raise FileNotFoundError(
@@ -136,10 +140,10 @@ def _find_chrome(user_given_executable=None):
                 )
                 if os.path.isfile(chrome_snap):
                     return chrome_snap
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(e)
 
-    # Search for executable on MacOS
+    # Search for executable on macOS
     elif platform.system() == "Darwin":
         # MacOS system
         chrome_app = (
@@ -152,8 +156,8 @@ def _find_chrome(user_given_executable=None):
             )
             if "Google Chrome" in str(version_result):
                 return chrome_app
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(e)
 
     # Couldn't find an executable (or OS not in Windows, Linux or Mac)
     raise FileNotFoundError(
@@ -164,20 +168,20 @@ def _find_chrome(user_given_executable=None):
 
 class ChromeHeadless(Browser):
     """
-        Chrome/Chromium browser wrapper.
+    Chrome/Chromium browser wrapper.
 
-        Parameters
-        ----------
-        - `executable` : str, optional
-            + Path to a chrome executable.
+    Parameters
+    ----------
+    - `executable` : str, optional
+        + Path to a chrome executable.
 
-        - `flags` : list of str
-            + Flags to be used by the headless browser.
-            + Default flags are :
-                - '--default-background-color=000000'
-                - '--hide-scrollbars'
-        - `print_command` : bool
-            + Whether or not to print the command used to take a screenshot.
+    - `flags` : list of str
+        + Flags to be used by the headless browser.
+        + Default flags are :
+            - '--default-background-color=000000'
+            - '--hide-scrollbars'
+    - `print_command` : bool
+        + Whether to print the command used to take a screenshot.
     """
 
     def __init__(self, executable=None, flags=None, print_command=False):
@@ -202,7 +206,7 @@ class ChromeHeadless(Browser):
 
     def screenshot(
         self,
-        input,
+        input_,
         output_path,
         output_file='screenshot.png',
         size=(1920, 1080),
@@ -220,7 +224,7 @@ class ChromeHeadless(Browser):
                 + Cannot be None
             - `size`: (int, int), optional
                 + Two values representing the window size of the headless
-                + browser and by extention, the screenshot size.
+                + browser and by extension, the screenshot size.
                 + These two values must be greater than 0.
             Raises
             ------
@@ -229,7 +233,7 @@ class ChromeHeadless(Browser):
                 + If `input` is empty.
         """
 
-        if not input:
+        if not input_:
             raise ValueError('The `input` parameter is empty.')
 
         if size[0] < 1 or size[1] < 1:
@@ -247,7 +251,7 @@ class ChromeHeadless(Browser):
             f'--screenshot={os.path.join(output_path, output_file)}',
             f'--window-size={size[0]},{size[1]}',
             *self.flags,
-            f'{input}',
+            f'{input_}',
         ]
 
         if self.print_command:

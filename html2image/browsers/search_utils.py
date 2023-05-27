@@ -1,21 +1,25 @@
+import logging
 import shutil
 import os
 try:
     from winreg import ConnectRegistry, OpenKey, QueryValueEx,\
-            HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, KEY_READ
+            HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, KEY_READ  # noqa
 except ImportError:
     # os is not Windows, and there is no need for winreg
     pass
 
+logger = logging.getLogger("html2image")
+
 
 def get_command_origin(command):
-    ''' Finds the path of a given command (windows only).
+    """
+    Finds the path of a given command (windows only).
 
     This function is inspired by the `start` command on windows.
     It will search if the given command corresponds :
     - To an executable in the current directory
     - To an executable in the PATH environment variable
-    - To an executable mentionned in the registry in the
+    - To an executable mentioned in the registry in the
       HKEY_LOCAL_MACHINE or HKEY_LOCAL_MACHINE hkeys in
       SOFTWARE\\[Wow6432Node\\]Microsoft\\Windows\\CurrentVersion\\App Paths\\
 
@@ -31,14 +35,14 @@ def get_command_origin(command):
     - str or None
         + the path corresponding to `command`
         + None, if no path was found
-    '''
+    """
 
-    # `start "command"` itself could be used to run the command but we want to
+    # `start "command"` itself could be used to run the command, but we want to
     # assess that the command is a valid one.
     command = command.replace('start ', '')
 
     # which search in current directory + path
-    # and file extention can be ommited
+    # and file extension can be omitted
     which_result = shutil.which(command)
     if which_result:
         return which_result
@@ -48,7 +52,7 @@ def get_command_origin(command):
     command = command.replace('.exe', '').strip()
 
     # Once combined, these hkeys and keys are where the `start`
-    # command seach for executable.
+    # command search for executable.
     hkeys = [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER]
     keys = [
         "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\"
@@ -66,17 +70,18 @@ def get_command_origin(command):
                     with OpenKey(registry, key, 0, KEY_READ) as k:
                         # if no exception: we found the exe
                         return QueryValueEx(k, '')[0]
-                except Exception:
-                    # cannot open key, do nothing and proceed to the next one
+                except Exception as e:
+                    logger.error(e)
+                    logger.info("Can not open the key, do nothing and proceed to the next one")
                     pass
     return None
 
 
 def find_first_defined_env_var(env_var_list, toggle):
-    '''
+    """
     Returns the value of the first defined environment variable
     encountered in the `env_var_list` list, but only if the
-    the `toggle` environment variableif defined.
+    the `toggle` environment variable if defined.
 
     Parameters
     ----------
@@ -84,9 +89,8 @@ def find_first_defined_env_var(env_var_list, toggle):
         + list of environment variable names
     - `toggle`: str
         + environment variable name
+    """
 
-
-    '''
     if toggle in os.environ:
         for env_var in env_var_list:
             value = os.environ.get(env_var)

@@ -20,7 +20,7 @@ def main():
     try:
         hti = Html2Image()
     except Exception as e:
-        print('Could not instanciate html2image.')
+        print('Could not instantiate html2image.')
         print(e)
         exit(1)
 

@@ -26,7 +26,7 @@ browser_map = {
 }
 
 
-class Html2Image():
+class Html2Image:
     """
         Allows the generation of images from
         URLs and HTML/CSS files or strings.
@@ -151,15 +151,15 @@ class Html2Image():
             + Path to the file to load.
 
         - `as_filename`: str
-            + Filename as which the given file will renamed.
+            + Filename as which the given file will be renamed.
             + If None or not specified, the given file will keep
             its original name.
         """
         if as_filename is None:
             as_filename = os.path.basename(src)
 
-        dest = os.path.join(self.temp_path, as_filename)
-        shutil.copyfile(src, dest)
+        destination = os.path.join(self.temp_path, as_filename)
+        shutil.copyfile(src, destination)
 
     def screenshot_loaded_file(
         self, file, output_file='screenshot.png', size=None
@@ -193,15 +193,15 @@ class Html2Image():
         self.browser.screenshot(
             output_path=self.output_path,
             output_file=output_file,
-            input=file,
+            input_=file,
             size=size,
         )
 
     def screenshot_url(self, url, output_file='screenshot.png', size=None):
         """ Takes a screenshot of a given URL.
 
-        The given URL should be well formed or it may result in undefined
-        behaviors when an headless browser will open it.
+        The given URL should be well-formed, or it may result in undefined
+        behaviors when a headless browser will open it.
         Please do include the protocol in the URL (http, https).
         E.g. url = 'https://www.python.org/'
 
@@ -209,7 +209,7 @@ class Html2Image():
         ----------
         - `url`: str
             + URL of the page that will be screenshotted.
-            + Do not ommit the protocol.
+            + Do not omit the protocol.
 
         - `output_file`: str, optional
             + Name as which the screenshot will be saved.
@@ -231,7 +231,7 @@ class Html2Image():
         self.browser.screenshot(
             output_path=self.output_path,
             output_file=output_file,
-            input=url,
+            input_=url,
             size=size
         )
 
@@ -275,14 +275,14 @@ class Html2Image():
             return save_as
 
         missing_name_count = desired_length - len(save_as)
-        filename, extention = save_as[-1].split('.')
+        filename, extension = save_as[-1].split('.')
 
         # remove last object as it will be replaced
-        # from filename.extention to filename_0.extention
+        # from filename.extension to filename_0.extension
         save_as.pop()
 
         save_as.extend([
-            f'{filename}_{i}.{extention}'
+            f'{filename}_{i}.{extension}'
             for i in range(missing_name_count + 1)
         ])
 
@@ -336,7 +336,7 @@ class Html2Image():
         if len(sizes) == 0:
             return [
                 self.size
-                for i in range(desired_length)
+                for _ in range(desired_length)
             ]
 
         missing_size_count = desired_length - len(sizes)
@@ -344,7 +344,7 @@ class Html2Image():
 
         sizes.extend([
             last_size
-            for i in range(missing_size_count)
+            for _ in range(missing_size_count)
         ])
 
         return sizes
@@ -392,7 +392,7 @@ class Html2Image():
         save_as='screenshot.png',
         size=[]
     ):
-        """ Takes a screeshot using different resources.
+        """ Takes a screenshot using different resources.
 
         Parameters
         ----------
@@ -404,13 +404,13 @@ class Html2Image():
             + CSS string(s) that will be "associated" with the given
             + HTML string(s)
         - `css_file`: list of str or str
-            + CSS file(s) supposedly already mentionned by their filenames
+            + CSS file(s) supposedly already mentioned by their filenames
             + in the content of the `html_file`(s).
         - `other_file`: list of str or str
             + Filepath(s) of non-HTML file(s) that will be screenshotted.
         - `url`: list of str or str
             + URL(s) of the page(s) that will be screenshotted.
-            + Do not ommit the protocol.
+            + Do not omit the protocol.
         - `save_as`: list of str or str
             + Name(s) as which the screenshot will be saved.
             + File extension (e.g. .png) has to be included.
@@ -430,7 +430,7 @@ class Html2Image():
         """
 
         # TODO / NOTE : This does not pose any problem for now but setting
-        # mutables (here empty lists) as default arguments of a function
+        # mutable (here empty lists) as default arguments of a function
         # can cause unwanted behaviours.
 
         screenshot_paths = []
