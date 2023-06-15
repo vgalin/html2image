@@ -35,7 +35,7 @@ class ChromeHeadless(Browser):
         self.executable = executable
         if not flags:
             self.flags = [
-                '--default-background-color=000000',
+                '--default-background-color=00000000',
                 '--hide-scrollbars',
             ]
         else:
