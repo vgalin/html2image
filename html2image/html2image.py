@@ -13,8 +13,8 @@ import shutil
 
 from textwrap import dedent
 
-from html2image.browsers import chrome, chrome_cdp#, firefox, firefox_cdp
-from html2image.browsers.browser import CDPBrowser
+from html2image.browsers import chrome, chrome_cdp  # , firefox, firefox_cdp
+from html2image.browsers.browser import Browser, CDPBrowser
 
 browser_map = {
     'chrome': chrome.ChromeHeadless,
@@ -86,6 +86,7 @@ class Html2Image():
         self.output_path = output_path
         self.size = size
         self.temp_path = temp_path
+        self.browser: Browser = None
 
         browser_class = browser_map[browser.lower()]
 
@@ -407,7 +408,7 @@ class Html2Image():
         other_file=[],
         url=[],
         save_as='screenshot.png',
-        size=[]
+        size=[],
     ):
         """ Takes a screeshot using different resources.
 

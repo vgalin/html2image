@@ -34,6 +34,7 @@ class Browser(ABC):
     def disable_logging(self):
         pass
 
+
 class CDPBrowser(Browser):
     """A web browser that can be interacted with via Chrome DevTools Protocol.
     """

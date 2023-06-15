@@ -9,6 +9,9 @@ import json
 from websocket import create_connection
 import base64
 
+import websocket
+websocket.enableTrace(True)
+
 
 class ChromeCDP(CDPBrowser):
 
@@ -54,9 +57,14 @@ class ChromeCDP(CDPBrowser):
 
     @property
     def ws(self):
+
         if not self._ws:
-            r = requests.get(f'http://localhost:{self.cdp_port}/json')
+            print(f'----------- http://localhost:{self.cdp_port}/json/version')
+            r = requests.get(f'http://localhost:{self.cdp_port}/json')  # TODO use page websocket instead of browser one
+            print(f'{r.json()=}')
+            print(f'Using ws url= {r.json()[0]["webSocketDebuggerUrl"]}')
             self._ws = create_connection(r.json()[0]['webSocketDebuggerUrl'])
+            print('Successfully connected to ws.')
         return self._ws
 
     @property
@@ -67,6 +75,7 @@ class ChromeCDP(CDPBrowser):
     def cdp_send(self, method, **params):
         """
         """
+        print(f'cdp_send: {method=} {params=}')
         return self.ws.send(
             json.dumps({
                 'id': self._id,
@@ -92,26 +101,63 @@ class ChromeCDP(CDPBrowser):
 
         self.cdp_send('Page.navigate', url=input)
 
+        print('wait for page to load')
+
         # Wait for page to load entirely
         while True:
+            print('i')
             message = json.loads(self.ws.recv())
-            if message.get('method') == 'Page.loadEventFired':
+            print('j')
+            method = message.get('method')
+            print(f'{method=}')
+            if method == 'Page.loadEventFired':
                 break
-
+        
+        print('page disable')
         self.cdp_send('Page.disable')
+
+        # full page screenshot
+        page_infos = self.get_page_infos()
+        pwidth, pheight = page_infos['cssContentSize']['width'], page_infos['cssContentSize']['height']
+
+        # self.cdp_send(
+        #     'Emulation.setDeviceMetricsOverride',
+        #     width=size[0],
+        #     height=size[1],
+        #     deviceScaleFactor=0,  # 0 disables the override
+        #     mobile=False,
+        # )
+
+        print('send Emulation.setDeviceMetricsOverride')
         self.cdp_send(
             'Emulation.setDeviceMetricsOverride',
-            width=size[0],
-            height=size[1],
+            width=pwidth,
+            height=pheight,
             deviceScaleFactor=0,  # 0 disables the override
             mobile=False,
         )
-        self.cdp_send('Page.captureScreenshot')
+
+        print('send Page.captureScreenshot')
+
+        self.cdp_send(
+            'Page.captureScreenshot',
+            # captureBeyondViewport=True,
+            # clip={
+            #     'width': size[0],
+            #     'height': size[1],
+            #     'x': 500,
+            #     'y': 200,
+            #     'scale': 4
+            # }
+        )
+
+        print('writing to file..')
 
         # get screenshot data when ready,
         # while potentially skipping unneeded messages
         while True:
             message = json.loads(self.ws.recv())
+            # todo capture and display errors ?
             if 'result' in message and 'data' in message['result']:
                 # retrive base64 encoded image data
                 img_data = message['result']['data']
@@ -120,6 +166,21 @@ class ChromeCDP(CDPBrowser):
         # Decode and write image data to file
         with open(os.path.join(output_path, output_file), 'wb') as f:
             f.write(base64.b64decode(img_data))
+
+    def get_page_infos(self):
+        """
+        """
+        self.cdp_send('Page.getLayoutMetrics')
+
+        while True:
+            message = json.loads(self.ws.recv())
+            print(f'{message=}')
+            if 'result' in message and 'layoutViewport' in message['result']:
+                return message['result']
+
+    def print_pdf():
+        # Page.printToPDF
+        pass
 
     def __enter__(self):
         """
@@ -130,17 +191,20 @@ class ChromeCDP(CDPBrowser):
                 f'--remote-debugging-port={self.cdp_port}.'
             )
 
+        self.flags.append('--remote-allow-origins=*')
+
         command = [
             f'{self.executable}',
             '--window-size=1920,1080',
             f'--remote-debugging-port={self.cdp_port}',
-            '--headless',
+            # '--headless',
             '--no-first-run',
             '--no-default-browser-check',
             *self.flags,
         ]
 
-        if self.print_command:
+        # if self.print_command:
+        if True:
             print(' '.join(command))
 
         self.proc = subprocess.Popen(command, shell=True)
@@ -149,7 +213,7 @@ class ChromeCDP(CDPBrowser):
         """
         """
         if self.disable_logging:
-            print(f'Stopping headless Chrome instance on port {self.cdp_port}.')
+            print(f'Closing headless Chrome instance on port {self.cdp_port}.')
 
         # check if the process is still running
         if self.proc.poll() is None:
@@ -157,7 +221,12 @@ class ChromeCDP(CDPBrowser):
             try:
                 self.cdp_send('Browser.close')
                 self.ws.close()
+                print('(TODO) Closed CDP and WebSocket connections properly.')
+            except Exception:
+                print('Could not properly close the CDP and WebSocket connections.')
+            
+            try:
                 self.proc.terminate()
-            except:
+                print('Closed Chrome properly.')
+            except Exception:
                 print('Could not properly kill Chrome.')
-                pass
