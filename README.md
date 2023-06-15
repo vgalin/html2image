@@ -24,7 +24,7 @@ However, for the sake of taking screenshots, headless mode is not very convenien
 
 For more information about headless modes :
 -   (Chrome) [https://developers.google.com/web/updates/2017/04/headless-chrome](https://developers.google.com/web/updates/2017/04/headless-chrome)
--   (Firefox) [https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode)
+-   (Firefox) [https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode](https://web.archive.org/web/20210604151145/https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode)
 
 ## Installation
 HTML2Image is published on PyPI and can be installed through pip:
@@ -35,7 +35,7 @@ pip install --upgrade html2image
 
 In addition to this package, at least one of the following browsers **must** be installed on your machine :
 -   Google Chrome (Windows, MacOS)
--   Chromium Brower (Linux)
+-   Chromium Browser (Linux)
 
 ## Usage
 
@@ -50,7 +50,7 @@ Multiple arguments can be passed to the constructor:
 -   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
 -   `browser_executable` : The path or the command that can be used to find the executable of a specific browser.
 -   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
--   `size` : 2-Tuple reprensenting the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
+-   `size` : 2-Tuple representing the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
 -   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 
 Example:
@@ -248,7 +248,7 @@ For ease of use, some flags are set by default. However default flags are not us
 # Taking a look at the default flags
 >>> hti = Html2Image()
 >>> hti.browser.flags
-['--default-background-color=0', '--hide-scrollbars']
+['--default-background-color=000000', '--hide-scrollbars']
 
 # Changing the value of browser.flags gets rid of the default flags.
 >>> hti.browser.flags = ['--1', '--2']
@@ -330,4 +330,4 @@ python -m pytest
 
 ---
 
-*If you see any typos or notice things that are odly said, feel free to create an issue or a pull request.*
+*If you see any typos or notice things that are oddly said, feel free to create an issue or a pull request.*
