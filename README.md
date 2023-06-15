@@ -45,8 +45,7 @@ from html2image import Html2Image
 hti = Html2Image()
 ```
 
-<details>
-<summary> Multiple arguments can be passed to the constructor (click to expand):</summary>
+Multiple arguments can be passed to the constructor:
 
 -   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
 -   `browser_executable` : The path or the command that can be used to find the executable of a specific browser.
@@ -63,8 +62,6 @@ You can also change these values later:
 ``` python
 hti.size = (500, 200)
 ```
-</details>
-<br>
 
 ### Then take a screenshot
 
