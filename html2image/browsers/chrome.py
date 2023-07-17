@@ -251,8 +251,6 @@ class ChromeHeadless(Browser):
             f'{input}',
         ]
 
-        print(command)
-
         if self.print_command:
             print(' '.join(command))
 
