@@ -12,6 +12,7 @@ import os
 import shutil
 
 from textwrap import dedent
+from tempfile import TemporaryDirectory
 
 from html2image.browsers import chrome, firefox
 
@@ -92,16 +93,9 @@ class Html2Image():
 
     @temp_path.setter
     def temp_path(self, value):
-        if value is None:
-            temp_dir = os.environ['TMP'] if os.name == 'nt' else '/tmp'
-            temp_dir = os.path.join(temp_dir, 'html2image')
-        else:
-            temp_dir = value
-
-        # create the directory if it does not exist
-        os.makedirs(temp_dir, exist_ok=True)
-
-        self._temp_path = temp_dir
+        if value is not None:
+            os.makedirs(value, exist_ok=True)
+        self._temp_path = TemporaryDirectory(dir=value)
 
     @property
     def output_path(self):
@@ -135,7 +129,7 @@ class Html2Image():
             + Filename as which the given string will be saved.
 
         """
-        with open(os.path.join(self.temp_path, as_filename), 'wb') as f:
+        with open(os.path.join(self.temp_path.name, as_filename), 'wb') as f:
             f.write(content.encode('utf-8'))
 
     def load_file(self, src, as_filename=None):
@@ -158,7 +152,7 @@ class Html2Image():
         if as_filename is None:
             as_filename = os.path.basename(src)
 
-        dest = os.path.join(self.temp_path, as_filename)
+        dest = os.path.join(self.temp_path.name, as_filename)
         shutil.copyfile(src, dest)
 
     def screenshot_loaded_file(
@@ -181,7 +175,7 @@ class Html2Image():
             method is called.
         """
 
-        file = os.path.join(self.temp_path, file)
+        file = os.path.join(self.temp_path.name, file)
 
         if os.path.dirname(output_file) != '':
             raise ValueError(
@@ -513,6 +507,7 @@ class Html2Image():
             )
             screenshot_paths.append(os.path.join(self.output_path, name))
 
+        self.temp_path.cleanup()
         return screenshot_paths
 
 
