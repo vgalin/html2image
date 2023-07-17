@@ -111,18 +111,6 @@ def _find_chrome(user_given_executable=None):
     # Search for executable on a Linux OS
     elif platform.system() == "Linux":
 
-        chrome_commands = [
-            'chromium',
-            'chromium-browser',
-            'chrome',
-            'google-chrome'
-        ]
-
-        for chrome_command in chrome_commands:
-            if shutil.which(chrome_command):
-                # check the --version for "chrom" ?
-                return chrome_command
-
         # snap seems to be a special case?
         # see https://stackoverflow.com/q/63375327/12182226
 
@@ -136,8 +124,21 @@ def _find_chrome(user_given_executable=None):
                 )
                 if os.path.isfile(chrome_snap):
                     return chrome_snap
+                
         except Exception:
             pass
+
+        chrome_commands = [
+            'chromium',
+            'chromium-browser',
+            'chrome',
+            'google-chrome'
+        ]
+
+        for chrome_command in chrome_commands:
+            if shutil.which(chrome_command):
+                # check the --version for "chrom" ?
+                return chrome_command
 
     # Search for executable on MacOS
     elif platform.system() == "Darwin":
