@@ -110,7 +110,7 @@ class ChromeHeadless(Browser):
         # headless mode and take a screenshot
         command = [
             f'{self.executable}',
-            '--headless',
+            '--headless=new',
             f'--screenshot={os.path.join(output_path, output_file)}',
             f'--window-size={size[0]},{size[1]}',
             *self.flags,
