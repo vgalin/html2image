@@ -4,7 +4,7 @@ import os
 import subprocess
 
 class ChromiumHeadless(Browser):
-    def __init__(self, executable=None, flags=None, print_command=False):
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False):
         self.executable = executable
         if not flags:
             self.flags = [
@@ -15,6 +15,7 @@ class ChromiumHeadless(Browser):
             self.flags = [flags] if isinstance(flags, str) else flags
 
         self.print_command = print_command
+        self.disable_logging = disable_logging
 
     def screenshot(
         self,
@@ -69,4 +70,28 @@ class ChromiumHeadless(Browser):
         if self.print_command:
             print(' '.join(command))
 
-        subprocess.run(command)
+        subprocess.run(command, **self._subprocess_run_kwargs)
+    
+    @property
+    def disable_logging(self):
+        return self._disable_logging
+    
+    @disable_logging.setter
+    def disable_logging(self, value):
+        self._disable_logging = value
+
+        # dict that will be passed unpacked as a parameter
+        # to the subprocess.call() method to take a screenshot
+        self._subprocess_run_kwargs = {
+            'stdout': subprocess.DEVNULL,
+            'stderr': subprocess.DEVNULL,
+        } if value else {}
+    
+    def __enter__(self):
+        print(
+            'Context manager (with ... as:) is',
+            f'not supported for {__class__.__name__}.'
+        )
+
+    def __exit__(self, *exc):
+        pass

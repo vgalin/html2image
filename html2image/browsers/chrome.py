@@ -4,6 +4,7 @@ from .search_utils import get_command_origin, find_first_defined_env_var
 import subprocess
 import os
 import shutil
+import platform
 
 ENV_VAR_LOOKUP_TOGGLE = 'HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP'
 
@@ -179,8 +180,8 @@ class ChromeHeadless(ChromiumHeadless):
             + Whether or not to disable Chrome's output.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False):
-        super().__init__(executable=executable, flags=flags, print_command=print_command)
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False):
+        super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging)
 
     @property
     def executable(self):
