@@ -52,6 +52,7 @@ Multiple arguments can be passed to the constructor:
 -   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
 -   `size` : 2-Tuple representing the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
 -   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
+-   `keep_temp_files` : Pass True to this argument to not automatically remove temporary files created in `temp_path`. Default is False.
 
 Example:
 ```python
