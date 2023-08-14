@@ -13,16 +13,21 @@ import shutil
 
 from textwrap import dedent
 
-from html2image.browsers import chrome, firefox
+from html2image.browsers import chrome, chrome_cdp, edge  # , firefox, firefox_cdp
+from html2image.browsers.browser import Browser, CDPBrowser
+
 
 browser_map = {
     'chrome': chrome.ChromeHeadless,
     'chromium': chrome.ChromeHeadless,
     'google-chrome': chrome.ChromeHeadless,
     'googlechrome': chrome.ChromeHeadless,
-    'firefox': firefox.FirefoxHeadless,
-    'mozilla-firefox': firefox.FirefoxHeadless,
-    'mozilla firefox': firefox.FirefoxHeadless,
+    'edge': edge.EdgeHeadless,
+    'chrome-cdp': chrome_cdp.ChromeCDP,
+    'chromium-cdp': chrome_cdp.ChromeCDP,
+    # 'firefox': firefox.FirefoxHeadless,
+    # 'mozilla-firefox': firefox.FirefoxHeadless,
+    # 'firefox-cdp': firefox_cdp.FirefoxCDP,
 }
 
 
@@ -51,6 +56,9 @@ class Html2Image():
         - `temp_path` : str, optional
             + Path to a directory that will be used to store temporary files.
 
+        - `keep_temp_files` : bool, optional
+            + If True, will not automatically remove temporary files created.
+
         - `custom_flags`: list of str or str, optional
             + Additional custom flags for the headless browser.
 
@@ -65,10 +73,13 @@ class Html2Image():
         self,
         browser='chrome',
         browser_executable=None,
+        browser_cdp_port=None,
         output_path=os.getcwd(),
         size=(1920, 1080),
         temp_path=None,
+        keep_temp_files=False,
         custom_flags=None,
+        disable_logging=False,
     ):
 
         if browser.lower() not in browser_map:
@@ -79,12 +90,24 @@ class Html2Image():
         self.output_path = output_path
         self.size = size
         self.temp_path = temp_path
+        self.keep_temp_files = keep_temp_files
+        self.browser: Browser = None
 
         browser_class = browser_map[browser.lower()]
-        self.browser = browser_class(
-            executable=browser_executable,
-            flags=custom_flags,
-        )
+
+        if isinstance(browser_class, CDPBrowser):
+            self.browser = browser_class(
+                executable=browser_executable,
+                flags=custom_flags,
+                cdp_port=browser_cdp_port,
+                disable_logging=disable_logging,
+            )
+        else:
+            self.browser = browser_class(
+                executable=browser_executable,
+                flags=custom_flags,
+                disable_logging=disable_logging,
+            )
 
     @property
     def temp_path(self):
@@ -160,6 +183,21 @@ class Html2Image():
 
         dest = os.path.join(self.temp_path, as_filename)
         shutil.copyfile(src, dest)
+
+    def _remove_temp_file(self, filename):
+        """ Removes a file in the tmp directory.
+
+        This function is used after a temporary file is created in order to
+        load an HTML string.
+        This prevents the temp directory to end up bloated by temp files.
+
+        Parameters
+        ----------
+        - `filename`: str
+            + Filename of the file to be removed
+            + (path is the temp_path directory)
+        """
+        os.remove(os.path.join(self.temp_path, filename))
 
     def screenshot_loaded_file(
         self, file, output_file='screenshot.png', size=None
@@ -390,7 +428,7 @@ class Html2Image():
         other_file=[],
         url=[],
         save_as='screenshot.png',
-        size=[]
+        size=[],
     ):
         """ Takes a screeshot using different resources.
 
@@ -482,6 +520,8 @@ class Html2Image():
                 output_file=name,
                 size=current_size,
             )
+            if not self.keep_temp_files:
+                self._remove_temp_file(html_filename)
 
             screenshot_paths.append(os.path.join(self.output_path, name))
 
@@ -514,6 +554,13 @@ class Html2Image():
             screenshot_paths.append(os.path.join(self.output_path, name))
 
         return screenshot_paths
+
+    def __enter__(self):
+        self.browser.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        self.browser.__exit__(*exc)
 
 
 if __name__ == '__main__':
