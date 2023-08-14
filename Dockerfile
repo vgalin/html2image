@@ -1,12 +1,12 @@
 FROM python
 
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
+RUN curl -sSL https://install.python-poetry.org | python3 -
 
 WORKDIR /pkgs/html2image
 COPY . .
 
-RUN $HOME/.poetry/bin/poetry install
-RUN $HOME/.poetry/bin/poetry build
+RUN $HOME/.local/bin/poetry install
+RUN $HOME/.local/bin/poetry build
 RUN pip install dist/*.whl
 
 RUN apt-get update -y && apt-get install -y chromium
