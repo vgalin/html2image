@@ -1,22 +1,35 @@
-<img src="readme_assets/html2image_black.png" align="right" alt="html2image logo" title="html2image" height="128"/>
 
-# HTML2Image
-[
+
+
+<h1 align="center">
+  <a href="https://github.com/MadeInPierre/finalynx">
+    <img src="readme_assets/html2image_black.png" alt="html2image logo" title="html2image" height="200"/>
+  </a>
+</h1>
+
+
+<div align="center">
+
 ![PyPI](https://img.shields.io/pypi/v/html2image.svg)
 ![PyPI](https://img.shields.io/pypi/pyversions/html2image.svg)
 ![PyPI](https://img.shields.io/github/license/vgalin/html2image.svg)
-](https://pypi.org/project/html2image/)
-[
 ![GitHub](https://img.shields.io/github/v/release/vgalin/html2image?include_prereleases)
 ![GitHub](https://img.shields.io/github/languages/code-size/vgalin/html2image)
-](https://github.com/vgalin/html2image)
 
-HTML2Image is a lightweight Python package that acts as a wrapper around the headless mode of existing web browsers to generate images from URLs and from HTML+CSS strings or files.
+
+|[PyPI Package](https://pypi.org/project/html2image/)|[GitHub Repository](https://github.com/vgalin/html2image)|
+|-|-|
+
+**A lightweight Python package acting a wrapper around the headless mode of existing web browsers, allowing images generation from HTML/CSS strings, files and URLs.**
+
+</div>
+&nbsp;
 
 This package has been tested on Windows, Ubuntu (desktop and server) and MacOS. It is currently in a work in progress stage. If you encounter any problem or difficulties while using it, feel free to open an issue on the GitHub page of this project. Feedback is also welcome!
 
 
 ## Principle
+
 
 Most web browsers have a Headless Mode, which is a way to run them without displaying any graphical interface. Headless mode is mainly used for automated testings but also comes in handy if you want to take screenshots of web pages that are exact replicas of what you would see on your screen if you were using the browser yourself.
 
@@ -36,6 +49,7 @@ pip install --upgrade html2image
 In addition to this package, at least one of the following browsers **must** be installed on your machine :
 -   Google Chrome (Windows, MacOS)
 -   Chromium Browser (Linux)
+-   Microsoft Edge
 
 ## Usage
 
@@ -47,7 +61,7 @@ hti = Html2Image()
 
 Multiple arguments can be passed to the constructor:
 
--   `browser` :  Browser that will be used, set by default to `'chrome'` (the only browser supported by HTML2Image at the moment)
+-   `browser` :  Browser that will be used, can be set to `'chrome'` (default) or `'edge'`.
 -   `browser_executable` : The path or the command that can be used to find the executable of a specific browser.
 -   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
 -   `size` : 2-Tuple representing the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
