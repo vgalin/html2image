@@ -13,20 +13,20 @@ import shutil
 
 from textwrap import dedent
 
-from html2image.browsers import chrome, chrome_cdp  # , firefox, firefox_cdp
+from html2image.browsers import chrome, chrome_cdp, edge  # , firefox, firefox_cdp
 from html2image.browsers.browser import Browser, CDPBrowser
+
 
 browser_map = {
     'chrome': chrome.ChromeHeadless,
     'chromium': chrome.ChromeHeadless,
     'google-chrome': chrome.ChromeHeadless,
-
+    'googlechrome': chrome.ChromeHeadless,
+    'edge': edge.EdgeHeadless,
     'chrome-cdp': chrome_cdp.ChromeCDP,
     'chromium-cdp': chrome_cdp.ChromeCDP,
-
     # 'firefox': firefox.FirefoxHeadless,
     # 'mozilla-firefox': firefox.FirefoxHeadless,
-
     # 'firefox-cdp': firefox_cdp.FirefoxCDP,
 }
 
