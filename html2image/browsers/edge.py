@@ -154,7 +154,7 @@ class EdgeHeadless(ChromiumHeadless):
         - `flags` : list of str
             + Flags to be used by the headless browser.
             + Default flags are :
-                - '--default-background-color=0'
+                - '--default-background-color=00000000'
                 - '--hide-scrollbars'
         - `print_command` : bool
             + Whether or not to print the command used to take a screenshot.
