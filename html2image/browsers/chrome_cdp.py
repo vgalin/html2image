@@ -10,7 +10,7 @@ from websocket import create_connection
 import base64
 
 import websocket
-websocket.enableTrace(True)
+# websocket.enableTrace(True) 
 
 
 class ChromeCDP(CDPBrowser):
@@ -105,9 +105,7 @@ class ChromeCDP(CDPBrowser):
 
         # Wait for page to load entirely
         while True:
-            print('i')
             message = json.loads(self.ws.recv())
-            print('j')
             method = message.get('method')
             print(f'{method=}')
             if method == 'Page.loadEventFired':
@@ -116,23 +114,10 @@ class ChromeCDP(CDPBrowser):
         print('page disable')
         self.cdp_send('Page.disable')
 
-        # full page screenshot
-        page_infos = self.get_page_infos()
-        pwidth, pheight = page_infos['cssContentSize']['width'], page_infos['cssContentSize']['height']
-
-        # self.cdp_send(
-        #     'Emulation.setDeviceMetricsOverride',
-        #     width=size[0],
-        #     height=size[1],
-        #     deviceScaleFactor=0,  # 0 disables the override
-        #     mobile=False,
-        # )
-
-        print('send Emulation.setDeviceMetricsOverride')
         self.cdp_send(
             'Emulation.setDeviceMetricsOverride',
-            width=pwidth,
-            height=pheight,
+            width=size[0],
+            height=size[1],
             deviceScaleFactor=0,  # 0 disables the override
             mobile=False,
         )
@@ -179,7 +164,7 @@ class ChromeCDP(CDPBrowser):
                 return message['result']
 
     def print_pdf():
-        # Page.printToPDF
+        # TODO : Page.printToPDF
         pass
 
     def __enter__(self):
@@ -197,7 +182,7 @@ class ChromeCDP(CDPBrowser):
             f'{self.executable}',
             '--window-size=1920,1080',
             f'--remote-debugging-port={self.cdp_port}',
-            # '--headless',
+            '--headless=new',
             '--no-first-run',
             '--no-default-browser-check',
             *self.flags,
