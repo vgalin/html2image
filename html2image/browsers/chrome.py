@@ -2,7 +2,6 @@ from .chromium import ChromiumHeadless
 from .search_utils import get_command_origin, find_first_defined_env_var
 
 import subprocess
-import platform
 import os
 import shutil
 
@@ -176,6 +175,8 @@ class ChromeHeadless(ChromiumHeadless):
                 - '--hide-scrollbars'
         - `print_command` : bool
             + Whether or not to print the command used to take a screenshot.
+        - `disable_logging` : bool
+            + Whether or not to disable Chrome's output.
     """
 
     def __init__(self, executable=None, flags=None, print_command=False):
