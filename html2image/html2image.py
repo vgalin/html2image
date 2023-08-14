@@ -13,16 +13,21 @@ import shutil
 
 from textwrap import dedent
 
-from html2image.browsers import chrome, firefox
+from html2image.browsers import chrome, chrome_cdp, edge  # , firefox, firefox_cdp
+from html2image.browsers.browser import Browser, CDPBrowser
+
 
 browser_map = {
     'chrome': chrome.ChromeHeadless,
     'chromium': chrome.ChromeHeadless,
     'google-chrome': chrome.ChromeHeadless,
     'googlechrome': chrome.ChromeHeadless,
-    'firefox': firefox.FirefoxHeadless,
-    'mozilla-firefox': firefox.FirefoxHeadless,
-    'mozilla firefox': firefox.FirefoxHeadless,
+    'edge': edge.EdgeHeadless,
+    'chrome-cdp': chrome_cdp.ChromeCDP,
+    'chromium-cdp': chrome_cdp.ChromeCDP,
+    # 'firefox': firefox.FirefoxHeadless,
+    # 'mozilla-firefox': firefox.FirefoxHeadless,
+    # 'firefox-cdp': firefox_cdp.FirefoxCDP,
 }
 
 
@@ -68,11 +73,13 @@ class Html2Image():
         self,
         browser='chrome',
         browser_executable=None,
+        browser_cdp_port=None,
         output_path=os.getcwd(),
         size=(1920, 1080),
         temp_path=None,
         keep_temp_files=False,
         custom_flags=None,
+        disable_logging=False,
     ):
 
         if browser.lower() not in browser_map:
@@ -84,12 +91,23 @@ class Html2Image():
         self.size = size
         self.temp_path = temp_path
         self.keep_temp_files = keep_temp_files
+        self.browser: Browser = None
 
         browser_class = browser_map[browser.lower()]
-        self.browser = browser_class(
-            executable=browser_executable,
-            flags=custom_flags,
-        )
+
+        if isinstance(browser_class, CDPBrowser):
+            self.browser = browser_class(
+                executable=browser_executable,
+                flags=custom_flags,
+                cdp_port=browser_cdp_port,
+                disable_logging=disable_logging,
+            )
+        else:
+            self.browser = browser_class(
+                executable=browser_executable,
+                flags=custom_flags,
+                disable_logging=disable_logging,
+            )
 
     @property
     def temp_path(self):
@@ -410,7 +428,7 @@ class Html2Image():
         other_file=[],
         url=[],
         save_as='screenshot.png',
-        size=[]
+        size=[],
     ):
         """ Takes a screeshot using different resources.
 
@@ -536,6 +554,13 @@ class Html2Image():
             screenshot_paths.append(os.path.join(self.output_path, name))
 
         return screenshot_paths
+
+    def __enter__(self):
+        self.browser.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        self.browser.__exit__(*exc)
 
 
 if __name__ == '__main__':

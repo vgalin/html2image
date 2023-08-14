@@ -17,13 +17,6 @@ def main():
                 f"size should be int,int, instead got {string}"
             )
 
-    try:
-        hti = Html2Image()
-    except Exception as e:
-        print('Could not instanciate html2image.')
-        print(e)
-        exit(1)
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-U', '--url', nargs='*', required=False, default=[])
@@ -43,15 +36,23 @@ def main():
     parser.add_argument('-q', '--quiet', required=False, action="store_true")
     parser.add_argument('-v', '--verbose', required=False, action="store_true")
 
-    parser.add_argument('--browser', required=False)
+    # parser.add_argument('--browser', required=False)
     parser.add_argument('--chrome_path', required=False)
     # parser.add_argument('--firefox_path', required=False)
     parser.add_argument('--temp_path', required=False)
 
     args = parser.parse_args()
 
+    try:
+        hti = Html2Image(disable_logging=args.quiet)
+    except Exception as e:
+        print('Could not instanciate html2image.')
+        print(e)
+        exit(1)
+
     if args.verbose:
         print(f'args = {args}')
+        hti.browser.print_command = True
 
     if args.output_path:
         hti.output_path = args.output_path
@@ -64,7 +65,8 @@ def main():
 
     paths = hti.screenshot(
         html_file=args.html, css_file=args.css, other_file=args.other,
-        url=args.url, save_as=args.save_as, size=args.size
+        url=args.url, save_as=args.save_as, size=args.size,
+        browser_executable=args.chrome_path,
     )
 
     if not args.quiet:
