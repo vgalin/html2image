@@ -2,8 +2,8 @@
 
 
 <h1 align="center">
-  <a href="https://github.com/MadeInPierre/finalynx">
-    <img src="readme_assets/html2image_black.png" alt="html2image logo" title="html2image" height="200"/>
+  <a href="https://github.com/vgalin/html2image">
+    <img src="https://raw.githubusercontent.com/vgalin/html2image/master/readme_assets/html2image_black.png" alt="html2image logo" title="html2image" height="200"/>
   </a>
 </h1>
 
