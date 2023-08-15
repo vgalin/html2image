@@ -20,20 +20,20 @@
 |[PyPI Package](https://pypi.org/project/html2image/)|[GitHub Repository](https://github.com/vgalin/html2image)|
 |-|-|
 
-**A lightweight Python package acting a wrapper around the headless mode of existing web browsers, allowing images generation from HTML/CSS strings, files and URLs.**
+**A lightweight Python package acting as wrapper around the headless mode of existing web browsers, allowing image generation from HTML/CSS strings, files and URLs.**
 
 </div>
 &nbsp;
 
-This package has been tested on Windows, Ubuntu (desktop and server) and MacOS. It is currently in a work in progress stage. If you encounter any problem or difficulties while using it, feel free to open an issue on the GitHub page of this project. Feedback is also welcome!
+This package has been tested on Windows, Ubuntu (desktop and server) and MacOS. If you encounter any problems or difficulties while using it, feel free to open an issue on the GitHub page of this project. Feedback is also welcome!
 
 
 ## Principle
 
 
-Most web browsers have a Headless Mode, which is a way to run them without displaying any graphical interface. Headless mode is mainly used for automated testings but also comes in handy if you want to take screenshots of web pages that are exact replicas of what you would see on your screen if you were using the browser yourself.
+Most web browsers have a Headless Mode, which is a way to run them without displaying any graphical interface. Headless mode is mainly used for automated testing but also comes in handy if you want to take screenshots of web pages that are exact replicas of what you would see on your screen if you were using the browser yourself.
 
-However, for the sake of taking screenshots, headless mode is not very convenient to use. HTML2Image aims to hide the inconveniences of the browsers' headless modes while adding useful features such as allowing to create an image from as little as a string.
+However, for the sake of taking screenshots, headless mode is not very convenient to use. HTML2Image aims to hide the inconveniences of the browsers' headless modes while adding useful features, such as allowing the creation of images from simple strings.
 
 For more information about headless modes :
 -   (Chrome) [https://developers.google.com/web/updates/2017/04/headless-chrome](https://developers.google.com/web/updates/2017/04/headless-chrome)
@@ -63,7 +63,7 @@ Multiple arguments can be passed to the constructor:
 
 -   `browser` :  Browser that will be used, can be set to `'chrome'` (default) or `'edge'`.
 -   `browser_executable` : The path or the command that can be used to find the executable of a specific browser.
--   `output_path` : Path to the folder to which taken screenshots will be outputed. Default is the current working directory of your python program.
+-   `output_path` : Path to the folder to which taken screenshots will be outputted. Default is the current working directory of your python program.
 -   `size` : 2-Tuple representing the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
 -   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 -   `keep_temp_files` : Pass True to this argument to not automatically remove temporary files created in `temp_path`. Default is False.
@@ -80,7 +80,7 @@ hti.size = (500, 200)
 
 ### Then take a screenshot
 
-The `screenshot` method is the basis of this package, most of the time, you won't need to use anything else. It can take screenshots of a lot of things :
+The `screenshot` method is the basis of this package. Most of the time, you won't need to use anything else. It can take screenshots of various things:
 - URLs via the `url` parameter;
 - HTML and CSS **files** via the `html_file` and `css_file` parameters;
 - HTML and CSS **strings** via the `html_str` and `css_str` parameters;
@@ -90,7 +90,7 @@ And you can also (optional):
 - Change the size of the screenshots using the `size` parameter;
 - Save the screenshots as a specific name using the `save_as` parameter.
 
-*N.B. : The `screenshot` method returns a **list** containing the path(s) of the screenshot(s) it took.*
+*N.B.: The `screenshot` method returns a **list** containing the path(s) of the screenshot(s) it took.*
 
 ### A few examples
 
@@ -168,7 +168,7 @@ hti.screenshot(html_str=['A', 'B', 'C'], save_as=['A.png', 'B.png', 'C.png'])
 ```python
 # take four screenshots with a resolution of 100*50
 hti.screenshot(
-    html_str=['A', 'B', 'C', 'D']
+    html_str=['A', 'B', 'C', 'D'],
     size=(100, 50)
 )
 ```
@@ -277,9 +277,9 @@ For ease of use, some flags are set by default. However default flags are not us
 ```
 
 ## Using the CLI
-HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and urls on the go.
+HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and URLs on the go.
 
-The CLI is a work in progress and may be subject to changes.
+The CLI is a work in progress and may undergo changes.
 You can call it by typing `hti` or `html2image` into a terminal.
 
 
@@ -327,19 +327,19 @@ python -m pytest
 ## FAQ
 
 - Can I automatically take a full page screenshot?  
-**Sadly no**, it is not easily possible. Html2Image relies on the headless mode of Chrome/Chromium browsers to take screenshots and there is no way to "ask" for a full page screenshot at the moment. If you know a way to take one (by estimating the page size for example) I would be happy to see it, so please open an issue or a discussion!
+**Sadly no**, it is not easily possible. Html2Image relies on the headless mode of Chrome/Chromium browsers to take screenshots and there is no way to "ask" for a full page screenshot at the moment. If you know a way (by estimating the page size for example), please open an issue or a discussion!
 
 - Can I add delay before taking a screenshot?   
 **Yes** you can, please take a look at the `Change browser flags` section of the readme.
 
-- Can I speed up the screenshot taking process?  
-**Yes**, when you are taking a lot of screenshots, you can achieve better "performances" using Parallel Processing or Multiprocessing methods. You can find an [example of it here](https://github.com/vgalin/html2image/issues/28#issuecomment-862608053).
+- Can I speed up the screenshot-taking process?  
+**Yes**, when you are taking a lot of screenshots, you can achieve better performance using Parallel Processing or Multiprocessing methods. You can find an [example of it here](https://github.com/vgalin/html2image/issues/28#issuecomment-862608053).
 
 - Can I make a cookie modal disappear?  
-**Yes and no**. **No** because there is no options to do it magically and [extensions are not supported in headless Chrome](https://bugs.chromium.org/p/chromium/issues/detail?id=706008#c5) (The [`I don't care about cookies`](https://www.i-dont-care-about-cookies.eu/) extension would have been useful in this case). **Yes** because you can make any element of a page disappear by retrieving its source code, modifying it as you wish, and finally screenshotting the modified source code.
+**Yes and no**. **No**, because there is no options to do it magically and [extensions are not supported in headless Chrome](https://bugs.chromium.org/p/chromium/issues/detail?id=706008#c5) (The [`I don't care about cookies`](https://www.i-dont-care-about-cookies.eu/) extension would have been useful in this case). **Yes**, because you can make any element of a page disappear by retrieving its source code, modifying it as you wish, and finally screenshotting the modified source code.
 ## TODO List
 -   A nice CLI (currently in a WIP state).
--   Support of other browsers (such as Firefox when their screenshot feature will work).
+-   Support for other browsers, such as Firefox, once their screenshot feature becomes operational.
 -   PDF generation?
 -   Contributing, issue templates, pull request template, code of conduct.
 
