@@ -27,6 +27,7 @@
 
 This package has been tested on Windows, Ubuntu (desktop and server) and MacOS. If you encounter any problems or difficulties while using it, feel free to open an issue on the GitHub page of this project. Feedback is also welcome!
 
+⚠️ Disclaimer: Use this package with trusted content only. Processing untrusted or unsanitized input can lead to malicious code execution. Always ensure content safety.
 
 ## Principle
 
