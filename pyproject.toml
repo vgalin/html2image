@@ -26,7 +26,7 @@ include = [
 
 [tool.poetry.dependencies]
 python = "^3.6"
-websocket-client = "1.2.3"
+websocket-client = "1.*"
 requests = "*"
 
 [tool.poetry.dev-dependencies]
