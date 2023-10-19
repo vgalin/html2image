@@ -510,7 +510,7 @@ class Html2Image():
             name = save_as.pop(0)
             current_size = size.pop(0)
 
-            html_filename = name.split('.')[0] + '.html'
+            html_filename = ''.join(name.split('.')[:-1]) + '.html'
             content = Html2Image._prepare_html_string(
                 html, css_style_string
             )
