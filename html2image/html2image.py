@@ -21,6 +21,7 @@ browser_map = {
     'chrome': chrome.ChromeHeadless,
     'chromium': chrome.ChromeHeadless,
     'google-chrome': chrome.ChromeHeadless,
+    'google-chrome-stable': chrome.ChromeHeadless,
     'googlechrome': chrome.ChromeHeadless,
     'edge': edge.EdgeHeadless,
     'chrome-cdp': chrome_cdp.ChromeCDP,
