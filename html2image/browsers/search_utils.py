@@ -213,7 +213,8 @@ def find_chrome(user_given_executable=None):
             'chromium',
             'chromium-browser',
             'chrome',
-            'google-chrome'
+            'google-chrome',
+            'google-chrome-stable'
         ]
 
         for chrome_command in chrome_commands:

@@ -21,6 +21,7 @@ browser_map = {
     'chrome': chrome.ChromeHeadless,
     'chromium': chrome.ChromeHeadless,
     'google-chrome': chrome.ChromeHeadless,
+    'google-chrome-stable': chrome.ChromeHeadless,
     'googlechrome': chrome.ChromeHeadless,
     'edge': edge.EdgeHeadless,
     'chrome-cdp': chrome_cdp.ChromeCDP,
@@ -510,7 +511,8 @@ class Html2Image():
             name = save_as.pop(0)
             current_size = size.pop(0)
 
-            html_filename = name.split('.')[0] + '.html'
+            base_name, _ = os.path.splitext(name)
+            html_filename = base_name + '.html'
             content = Html2Image._prepare_html_string(
                 html, css_style_string
             )
