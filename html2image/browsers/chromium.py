@@ -4,7 +4,7 @@ import os
 import subprocess
 
 class ChromiumHeadless(Browser):
-    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False):
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, should_use_new_headless_mode=False):
         self.executable = executable
         if not flags:
             self.flags = [
@@ -16,6 +16,7 @@ class ChromiumHeadless(Browser):
 
         self.print_command = print_command
         self.disable_logging = disable_logging
+        self.should_use_new_headless_mode = should_use_new_headless_mode
 
     def screenshot(
         self,
@@ -58,9 +59,11 @@ class ChromiumHeadless(Browser):
 
         # command used to launch chrome in
         # headless mode and take a screenshot
+        headless_mode = 'new' if self.should_use_new_headless_mode else 'old'
+
         command = [
             f'{self.executable}',
-            '--headless',
+            f'--headless={headless_mode}',
             f'--screenshot={os.path.join(output_path, output_file)}',
             f'--window-size={size[0]},{size[1]}',
             *self.flags,

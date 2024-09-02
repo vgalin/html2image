@@ -160,8 +160,8 @@ class EdgeHeadless(ChromiumHeadless):
             + Whether or not to print the command used to take a screenshot.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False):
-        super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging)
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, should_use_new_headless_mode=False):
+        super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging, should_use_new_headless_mode=should_use_new_headless_mode)
 
     @property
     def executable(self):
