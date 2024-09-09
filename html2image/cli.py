@@ -40,6 +40,7 @@ def main():
     parser.add_argument('--chrome_path', required=False)
     # parser.add_argument('--firefox_path', required=False)
     parser.add_argument('--temp_path', required=False)
+    parser.add_argument('--custom_flags', required=False)
 
     args = parser.parse_args()
 
@@ -60,13 +61,15 @@ def main():
     if args.chrome_path:
         hti.chrome_path = args.chrome_path
 
+    if args.custom_flags:
+        hti.browser.flags = args.custom_flags
+
     if args.temp_path:
         hti.temp_path = args.temp_path
 
     paths = hti.screenshot(
         html_file=args.html, css_file=args.css, other_file=args.other,
-        url=args.url, save_as=args.save_as, size=args.size,
-        browser_executable=args.chrome_path,
+        url=args.url, save_as=args.save_as, size=args.size
     )
 
     if not args.quiet:

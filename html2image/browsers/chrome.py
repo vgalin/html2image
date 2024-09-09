@@ -114,7 +114,8 @@ def _find_chrome(user_given_executable=None):
             'chromium',
             'chromium-browser',
             'chrome',
-            'google-chrome'
+            'google-chrome',
+            'google-chrome-stable'
         ]
 
         for chrome_command in chrome_commands:
@@ -178,10 +179,14 @@ class ChromeHeadless(ChromiumHeadless):
             + Whether or not to print the command used to take a screenshot.
         - `disable_logging` : bool
             + Whether or not to disable Chrome's output.
+        - `use_new_headless` : bool, optional
+            + Whether or not to use the new headless mode.
+            + By default, the old headless mode is used.
+            + You can also keep the original behavior to backward compatibility by setting this to `None`.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False):
-        super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging)
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=False,):
+        super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging, use_new_headless=use_new_headless)
 
     @property
     def executable(self):
