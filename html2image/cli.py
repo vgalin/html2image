@@ -65,8 +65,7 @@ def main():
 
     paths = hti.screenshot(
         html_file=args.html, css_file=args.css, other_file=args.other,
-        url=args.url, save_as=args.save_as, size=args.size,
-        browser_executable=args.chrome_path,
+        url=args.url, save_as=args.save_as, size=args.size
     )
 
     if not args.quiet:
