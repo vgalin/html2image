@@ -297,6 +297,7 @@ You can call it by typing `hti` or `html2image` into a terminal.
 | -q, --quiet| Disable all CLI's outputs | `hti --quiet` |
 | -v, --verbose| More details, can help debugging | `hti --verbose` |
 | --chrome_path| Specify a different chrome path ||
+| --custom_flags| Specify custom browser flags | 
 | --temp_path| Specify a different temp path (where the files are loaded)||
 
 <br>
