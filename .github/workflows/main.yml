@@ -7,21 +7,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        # UV requires Python 3.8+ to run, but it can manage environments for older Python versions.
+        # actions/setup-python handles installing the target Python for the job.
+        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.12"]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python and UV
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          uv-version: 'latest'
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v1 # official action for UV
+        with:
+          # Optional: Pin to a specific UV version for more deterministic builds
+          # version: "0.1.20" # Example version, check latest if pinning
+          enable-cache: true # Optional: enable UV caching for faster builds
 
       - name: Install dependencies
         run: |
+          # Use --system to install into the Python environment set up by actions/setup-python.
           uv pip install --system -e .[test,lint]
         shell: bash
 
@@ -49,15 +58,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python and UV
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          uv-version: 'latest'
+          python-version: '3.12' # Use a recent Python for build tools
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v1
+        with:
+          enable-cache: true
 
       - name: Install build dependencies
-        run: uv pip install --system build # Hatchling will be installed as a dependency of `build`
-                                           # when it reads pyproject.toml
+        # Ensure 'build' is listed in your pyproject.toml [project.optional-dependencies.dev]
+        # or install it explicitly here.
+        run: uv pip install --system build
         shell: bash
 
       - name: Build package
