@@ -185,7 +185,7 @@ class ChromeHeadless(ChromiumHeadless):
             + You can also keep the original behavior to backward compatibility by setting this to `None`.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=False,):
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=None,):
         super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging, use_new_headless=use_new_headless)
 
     @property

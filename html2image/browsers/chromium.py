@@ -26,7 +26,7 @@ class ChromiumHeadless(Browser):
             + You can also keep the original behavior to backward compatibility by setting this to `None`.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=False,):
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=None,):
         self.executable = executable
         if not flags:
             self.flags = [
