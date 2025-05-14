@@ -408,6 +408,7 @@ class Html2Image():
         prepared_html = f"""\
         <html>
         <head>
+          <meta charset="UTF-8">
             <style>
                 {css_style_string}
             </style>
