@@ -540,6 +540,8 @@ class Html2Image():
                     output_file=name,
                     size=current_size,
                 )
+                if not self.keep_temp_files:
+                    self._remove_temp_file(os.path.basename(screenshot_target))                
             else:
                 raise FileNotFoundError(screenshot_target)
 
