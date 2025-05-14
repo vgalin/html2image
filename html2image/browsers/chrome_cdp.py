@@ -61,7 +61,7 @@ class ChromeCDP(CDPBrowser):
         if not self._ws:
             print(f'----------- http://localhost:{self.cdp_port}/json/version')
             r = requests.get(f'http://localhost:{self.cdp_port}/json')  # TODO use page websocket instead of browser one
-            print(f'{r.json()=}')
+            print(f'{r.json()}')
             print(f'Using ws url= {r.json()[0]["webSocketDebuggerUrl"]}')
             self._ws = create_connection(r.json()[0]['webSocketDebuggerUrl'])
             print('Successfully connected to ws.')
@@ -75,7 +75,7 @@ class ChromeCDP(CDPBrowser):
     def cdp_send(self, method, **params):
         """
         """
-        print(f'cdp_send: {method=} {params=}')
+        print(f'cdp_send: {method} {params}')
         return self.ws.send(
             json.dumps({
                 'id': self._id,
@@ -107,7 +107,7 @@ class ChromeCDP(CDPBrowser):
         while True:
             message = json.loads(self.ws.recv())
             method = message.get('method')
-            print(f'{method=}')
+            print(f'{method}')
             if method == 'Page.loadEventFired':
                 break
         
@@ -159,11 +159,11 @@ class ChromeCDP(CDPBrowser):
 
         while True:
             message = json.loads(self.ws.recv())
-            print(f'{message=}')
+            print(f'{message}')
             if 'result' in message and 'layoutViewport' in message['result']:
                 return message['result']
 
-    def print_pdf():
+    def print_pdf(self):
         # TODO : Page.printToPDF
         pass
 

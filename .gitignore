@@ -132,5 +132,5 @@ dmypy.json
 .vscode/
 tests_output/
 
-# .lock file not relevant for libraries
-poetry.lock 
+# uv
+uv.lock
