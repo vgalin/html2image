@@ -41,10 +41,15 @@ For more information about headless modes :
 -   (Firefox) [https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode](https://web.archive.org/web/20210604151145/https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode)
 
 ## Installation
-HTML2Image is published on PyPI and can be installed through pip:
+HTML2Image is published on PyPI and can be installed through `pip`:
 
 ```console
 pip install --upgrade html2image
+```
+
+Or with `uv`:
+```console
+uv pip install html2image
 ```
 
 In addition to this package, at least one of the following browsers **must** be installed on your machine :
@@ -317,15 +322,6 @@ You can load and execute a python script to use the package, or simply use the C
 
 On top of that, you can also use [volumes](https://docs.docker.com/storage/volumes/) to bind a container directory to your local machine directory, allowing you to retrieve the generated images, or even load some resources (HTML, CSS or Python files).
 
-## Testing
-
-Only basic testing is available at the moment. To run tests, install the requirements (Pillow) and run PyTest at the root of the project:
-``` console
-pip install -r requirements-test.txt
-python -m pytest
-```
-
-
 ## FAQ
 
 - Can I automatically take a full page screenshot?  
@@ -339,11 +335,52 @@ python -m pytest
 
 - Can I make a cookie modal disappear?  
 **Yes and no**. **No**, because there is no options to do it magically and [extensions are not supported in headless Chrome](https://bugs.chromium.org/p/chromium/issues/detail?id=706008#c5) (The [`I don't care about cookies`](https://www.i-dont-care-about-cookies.eu/) extension would have been useful in this case). **Yes**, because you can make any element of a page disappear by retrieving its source code, modifying it as you wish, and finally screenshotting the modified source code.
+
+
+## Contributing and Local Development
+
+If you want to contribute to `html2image` or run tests locally, follow these steps:
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/vgalin/html2image.git
+    cd html2image
+    ```
+
+2.  **Install [uv](https://github.com/astral-sh/uv)** by following the installation instructions on the `uv` GitHub page.
+
+3.  **Create and activate a virtual environment:**
+    ```bash
+    uv venv
+    source .venv/bin/activate  # On Linux/macOS
+    # .\.venv\Scripts\Activate.ps1  # On Windows PowerShell
+    # .\.venv\Scripts\activate.bat  # On Windows CMD
+    ```
+
+4.  **Install dependencies (including development tools):**
+    ```bash
+    uv pip install -e .[dev]
+    ```
+    This installs the package in editable mode along with all dependencies needed for testing and linting.
+
+### Running Tests
+Only basic testing is available at the moment.
+To run the test suite:
+```console
+pytest
+```
+Or, using `uv`'s runner:
+```console
+uv run pytest
+```
+
+
+
 ## TODO List
 -   A nice CLI (currently in a WIP state).
 -   Support for other browsers, such as Firefox, once their screenshot feature becomes operational.
 -   PDF generation?
--   Contributing, issue templates, pull request template, code of conduct.
+-   Issue templates, pull request template, code of conduct.
 
 ---
 

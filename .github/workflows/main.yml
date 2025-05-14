@@ -1,46 +1,68 @@
 name: CI
+
 on: [push, pull_request]
-#  pull_request:
-#    branches:
-#      - main
-#      - develop
-#      - 'releases/**'
-#  push:
-#    branches: 
-#      - main
-#      - develop
-#      - 'v**' # temporary
-  
+
 jobs:
   ci:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.6, 3.7, 3.8, 3.9, "3.10"]
-        poetry-version: [1.1.4]
-        os: [ubuntu-18.04, macos-latest, windows-latest]
+        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python and UV
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Python Poetry Action
-        uses: abatilo/actions-poetry@v2.1.0
-        with:
-          poetry-version: ${{ matrix.poetry-version }}
+          uv-version: 'latest'
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install flake8 pytest
-          pip install -r requirements.txt
-          pip install -r requirements-test.txt
+          uv pip install --system -e .[test,lint]
+        shell: bash
+
       - name: Flake8 linting
         run: |
-          # stop the build if there are Python syntax errors or undefined names
           python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
           python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      - name: Run python -m pytest
-        run: |
-          python -m pytest
+        shell: bash
+
+      - name: Run PyTest
+        run: python -m pytest
+        shell: bash
+
+  publish:
+    name: Build and publish to PyPI
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/html2image
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python and UV
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          uv-version: 'latest'
+
+      - name: Install build dependencies
+        run: uv pip install --system build # Hatchling will be installed as a dependency of `build`
+                                           # when it reads pyproject.toml
+        shell: bash
+
+      - name: Build package
+        run: python -m build # This will use hatchling as defined in pyproject.toml
+        shell: bash
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
