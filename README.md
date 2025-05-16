@@ -359,7 +359,7 @@ If you want to contribute to `html2image` or run tests locally, follow these ste
 
 4.  **Install dependencies (including development tools):**
     ```bash
-    uv pip install -e ".[dev]"
+    uv pip install -e .[dev]
     ```
     This installs the package in editable mode along with all dependencies needed for testing and linting.
 

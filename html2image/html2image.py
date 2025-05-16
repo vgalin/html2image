@@ -421,29 +421,6 @@ class Html2Image():
         """
         return dedent(prepared_html)
 
-    @staticmethod
-    def _prepare_css_str(css_file):
-        """ Creates a basic string fromatted from a css file.
-
-        Parameters
-        ----------
-        - `css_file`: str
-
-        Returns
-        -------
-        - str
-            The contents of each css file.
-
-        """
-        css_str = ""
-        for css in css_file:
-            temp_css_str = ''
-            with open(css, "r") as fd:
-                temp_css_str = fd.read()
-                css_str += temp_css_str + '\n'
-
-        return css_str
-
     def screenshot(
         self,
         html_str=[],  # html_str: Union[str, list] = [],
@@ -538,8 +515,7 @@ class Html2Image():
             base_name, _ = os.path.splitext(name)
             html_filename = base_name + '.html'
             content = Html2Image._prepare_html_string(
-                html, css_style_string if css_style_string != '' else Html2Image._prepare_css_str(
-                    css_file)
+                html, css_style_string
             )
             self.load_str(content=content, as_filename=html_filename)
             self.screenshot_loaded_file(
