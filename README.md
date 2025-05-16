@@ -283,31 +283,72 @@ For ease of use, some flags are set by default. However default flags are not us
 ```
 
 ## Using the CLI
-HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and URLs on the go.
-
-The CLI is a work in progress and may undergo changes.
-You can call it by typing `hti` or `html2image` into a terminal.
+HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and URLs on the go. You can call it by typing `hti` or `html2image` into a terminal.
 
 
-| argument | description | example |
-| - | - | - |
-| -h, --help | Shows the help message | `hti -h` |
-| -U, --urls | Screenshots a list of URLs | `hti -U https://www.python.org` |
-| -H, --html | Screenshots a list of HTML files | `hti -H file.html` |
-| -C, --css | Attaches a CSS files to the HTML ones | `hti -H file.html -C style.css` |
-| -O, --other | Screenshots a list of files of type "other" | `hti -O star.svg` |
-| -S, --save-as | A list of the screenshot filename(s)  | `hti -O star.svg -S star.png` |
-| -s, --size | A list of the screenshot size(s) | `hti -O star.svg -s 50,50`|
-| -o, --output_path| Change the output path of the screenshots (default is current working directory) | `hti star.svg -o screenshot_dir` |
-| -q, --quiet| Disable all CLI's outputs | `hti --quiet` |
-| -v, --verbose| More details, can help debugging | `hti --verbose` |
-| --chrome_path| Specify a different chrome path ||
-| --custom_flags| Specify custom browser flags | 
-| --temp_path| Specify a different temp path (where the files are loaded)||
+**Example Usage (quick start):**  
+Screenshot a URL with a specific output name and size:
+```bash
+hti --url https://example.com --save-as example_page.png --size 1280,720
+```
+
+Screenshot multiple HTML files, applying a common CSS file, and saving with custom names:
+```bash
+hti --html-file page1.html page2.html --css-file common_styles.css --save-as shot1.jpg shot2.jpg
+```
+
+Screenshot an HTML string with a custom browser flags and verbose output:
+```bash
+hti --html-string "<h1>Test</h1><p>Content</p>" --custom-flags '--no-sandbox' -v
+```
+
+**Html2Image Instance Configuration:**
+
+These arguments configure the underlying `Html2Image` instance.
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `-h, --help` | Show the help message and exit. | `hti --help`  |
+| `-o, --output-path PATH` | Directory to save screenshots. (Default: current working directory)| `hti --url example.com -o my_images/`  |
+| `--browser BROWSER`| Browser to use. Choices: `chrome`, `chromium`, `google-chrome`, `google-chrome-stable`, `googlechrome`, `edge`, `chrome-cdp`, `chromium-cdp`. (Default: `chrome`)| `hti --url example.com --browser edge` |
+| `--browser-executable EXECUTABLE_PATH` | Path to the browser executable. Auto-detected if not provided. | `hti --browser-executable /usr/bin/google-chrome-stable`|
+| `--cdp-port PORT`  | CDP port for CDP-enabled browsers (e.g., `chrome-cdp`). (Default: library-dependent)| `hti --browser chrome-cdp --cdp-port 9222 --url example.com`  |
+| `--temp-path TEMP_DIR_PATH` | Directory for temporary files. (Default: system temp directory in an `html2image` subfolder)  | `hti --html-file page.html --temp-path /my/tmp`|
+| `--keep-temp-files`| Do not delete temporary files after screenshot generation.| `hti --html-file page.html --keep-temp-files`  |
+| `--custom-flags [FLAG ...]` | Custom flags to pass to the browser (e.g., `'--no-sandbox' '--disable-gpu'`). If provided, these flags will be used. | `hti --url example.com --custom-flags '--no-sandbox' '--disable-gpu'` <br> `hti --url example.com --custom-flags '--no-sandbox --disable-gpu'` |
+
+**Screenshot Sources:**
+
+Specify what content to screenshot. At least one source type is required.
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `-U, --url [URL ...]` | URL(s) to screenshot. | `hti -U https://python.org https://example.com`|
+| `--html-file [FILE ...]` | HTML file(s) to screenshot. | `hti --html-file mypage.html another.html`  |
+| `--html-string [STRING ...]`| HTML string(s) to screenshot.  | `hti --html-string "<h1>Hello</h1>" "<h2>World</h2>"` |
+| `--css-file [FILE ...]`  | CSS file(s) to load. Used by HTML files or applied with HTML strings. | `hti --html-file page.html --css-file style1.css style2.css`  |
+| `--css-string [STRING ...]` | CSS string(s) to apply. Combined and used with HTML strings. | `hti --html-string "<h1>Hi</h1>" --css-string "body{color:red;}" "h1{font-size:40px;}"` |
+| `-O, --other-file [FILE ...]`  | Other file(s) to screenshot (e.g., SVG).| `hti -O star.svg`|
+
+**Screenshot Output Options:**
+
+Control how the screenshots are saved.
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `-S, --save-as [FILENAME ...]` | Filename(s) for output images. If not provided or fewer names than items, names are auto-generated (e.g., `screenshot.png`, `screenshot_0.png`). | `hti -U python.org example.com -S py.png ex.png`  |
+| `-s, --size [W,H ...]`| Size(s) for screenshots as `Width,Height`. If one W,H pair is given, it applies to all screenshots. If multiple W,H pairs are given, they apply to corresponding screenshots sequentially; if fewer pairs than items, the last pair is repeated. If omitted, the library's default (1920,1080) is used. Width and height must be positive integers. | `hti -U python.org --size 800,600` <br> `hti -U python.org example.com -s 800,600 1024,768` |
+
+**General Options:**
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `-q, --quiet`| Suppress informational output from html2image library (sets `disable_logging=True`). | `hti -U python.org -q` |
+| `-v, --verbose` | Enable verbose output, including browser commands if supported by the browser handler.  | `hti -U python.org -v` |  
 
 <br>
 
-### ... now within a Docker container !
+### Using a Docker Container
 
 You can also test the package and the CLI without having to install everything on your local machine, via a Docker container.
 
