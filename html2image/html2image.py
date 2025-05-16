@@ -389,7 +389,7 @@ class Html2Image():
         return sizes
 
     @staticmethod
-    def _prepare_html_string(html_body, css_style_string):
+    def _prepare_html_string(html_body, css_style_string) -> str:
         """ Creates a basic HTML string from an HTML body and a css string.
 
         Parameters
@@ -422,8 +422,8 @@ class Html2Image():
         return dedent(prepared_html)
 
     @staticmethod
-    def _prepare_css_str(css_file):
-        """ Creates a basic string fromatted from a css file.
+    def _prepare_css_string(css_file: list[str])-> str:
+        """ Creates a basic string fromatted from a list of css files.
 
         Parameters
         ----------
@@ -432,10 +432,11 @@ class Html2Image():
         Returns
         -------
         - str
-            The contents of each css file.
+            The concatenated content of each css files.
 
         """
-        css_str = ""
+
+        css_str = ''
         for css in css_file:
             temp_css_str = ''
             with open(css, "r") as fd:
@@ -443,6 +444,7 @@ class Html2Image():
                 css_str += temp_css_str + '\n'
 
         return css_str
+
 
     def screenshot(
         self,
@@ -455,7 +457,7 @@ class Html2Image():
         save_as='screenshot.png',
         size=[],
     ):
-        """ Takes a screeshot using different resources.
+        """ Takes a screenshot using different resources.
 
         Parameters
         ----------
@@ -465,10 +467,14 @@ class Html2Image():
             + Filepath(s) of HTML file(s) that will be screenshotted.
         - `css_str`: list of str or str
             + CSS string(s) that will be "associated" with the given
-            + HTML string(s)
+            + HTML string(s).
         - `css_file`: list of str or str
-            + CSS file(s) supposedly already mentionned by their filenames
-            + in the content of the `html_file`(s).
+            + Filepath(s) of CSS file(s). These files serve two purposes:
+            +   1. Their content is combined with `css_str` and embedded
+            +      directly when screenshotting `html_str` (HTML strings).
+            +   2. They are loaded into the temporary directory, making
+            +      them available to `html_file` (HTML files) that link to them
+            +      (e.g., via `<link rel="stylesheet" href="filename.css">`).
         - `other_file`: list of str or str
             + Filepath(s) of non-HTML file(s) that will be screenshotted.
         - `url`: list of str or str
@@ -500,47 +506,46 @@ class Html2Image():
 
         # convert each parameter into list
         # e.g: param=value becomes param=[value]
-        html_str = [html_str] if isinstance(html_str, str) else html_str
-        html_file = [html_file] if isinstance(html_file, str) else html_file
-        css_str = [css_str] if isinstance(css_str, str) else css_str
-        css_file = [css_file] if isinstance(css_file, str) else css_file
-        other_file = (
-            [other_file] if isinstance(other_file, str) else other_file
-        )
-        url = [url] if isinstance(url, str) else url
-        save_as = [save_as] if isinstance(save_as, str) else save_as
-        size = [size] if isinstance(size, tuple) else size
+        html_strings = [html_str] if isinstance(html_str, str) else html_str
+        html_files = [html_file] if isinstance(html_file, str) else html_file
+        css_strings = [css_str] if isinstance(css_str, str) else css_str
+        css_files = [css_file] if isinstance(css_file, str) else css_file
+        other_files = [other_file] if isinstance(other_file, str) else other_file
+        urls = [url] if isinstance(url, str) else url
+        save_as_filenames = [save_as] if isinstance(save_as, str) else save_as
+        sizes = [size] if isinstance(size, tuple) else size
 
         planned_screenshot_count = (
-            len(html_str) + len(html_file) + len(other_file) + len(url)
+            len(html_strings) + len(html_files) + len(other_files) + len(urls)
         )
-        save_as = Html2Image._extend_save_as_param(
-            save_as,
+        save_as_filenames = Html2Image._extend_save_as_param(
+            save_as_filenames,
             planned_screenshot_count,
         )
-        size = self._extend_size_param(size, planned_screenshot_count)
+        sizes = self._extend_size_param(sizes, planned_screenshot_count)
 
-        css_style_string = ""
+        css_style_string = '\n'.join(css_strings) + '\n'
 
-        for css in css_str:
-            css_style_string += css + '\n'
+        if css_files:
+            # add content from css_files, regardless of whether css_strings was present
+            css_style_string += Html2Image._prepare_css_string(css_files)
 
-        for css in css_file:
+
+        for css in css_files:
             if os.path.isfile(css):
                 self.load_file(src=css)
             else:
                 raise FileNotFoundError(css)
 
-        for html in html_str:
-            name = save_as.pop(0)
-            current_size = size.pop(0)
+        for html in html_strings:
+            name = save_as_filenames.pop(0)
+            current_size = sizes.pop(0)
 
             base_name, _ = os.path.splitext(name)
             html_filename = base_name + '.html'
-            content = Html2Image._prepare_html_string(
-                html, css_style_string if css_style_string != '' else Html2Image._prepare_css_str(
-                    css_file)
-            )
+
+            content = Html2Image._prepare_html_string(html, css_style_string)
+
             self.load_str(content=content, as_filename=html_filename)
             self.screenshot_loaded_file(
                 file=html_filename,
@@ -552,10 +557,10 @@ class Html2Image():
 
             screenshot_paths.append(os.path.join(self.output_path, name))
 
-        for screenshot_target in html_file + other_file:
+        for screenshot_target in html_files + other_files:
 
-            name = save_as.pop(0)
-            current_size = size.pop(0)
+            name = save_as_filenames.pop(0)
+            current_size = sizes.pop(0)
 
             if os.path.isfile(screenshot_target):
                 self.load_file(src=screenshot_target)
@@ -571,9 +576,9 @@ class Html2Image():
 
             screenshot_paths.append(os.path.join(self.output_path, name))
 
-        for target_url in url:
-            name = save_as.pop(0)
-            current_size = size.pop(0)
+        for target_url in urls:
+            name = save_as_filenames.pop(0)
+            current_size = sizes.pop(0)
 
             self.screenshot_url(
                 url=target_url,
