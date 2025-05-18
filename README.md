@@ -73,6 +73,7 @@ Multiple arguments can be passed to the constructor:
 -   `size` : 2-Tuple representing the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
 -   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 -   `keep_temp_files` : Pass True to this argument to not automatically remove temporary files created in `temp_path`. Default is False.
+-   `disable_logging` : Suppress stdout/stderr logs generated in the console by underlying browsers. 
 
 Example:
 ```python
@@ -343,7 +344,7 @@ Control how the screenshots are saved.
 
 | Argument | Description | Example |
 |----------|-------------|---------|
-| `-q, --quiet`| Suppress informational output from html2image library (sets `disable_logging=True`). | `hti -U python.org -q` |
+| `-q, --quiet`| Suppress stdout/stderr logs generated in the console by underlying browsers (sets `disable_logging=True`). | `hti -U python.org -q` |
 | `-v, --verbose` | Enable verbose output, including browser commands if supported by the browser handler.  | `hti -U python.org -v` |  
 
 <br>
