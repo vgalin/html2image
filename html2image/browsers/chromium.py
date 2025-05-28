@@ -32,6 +32,7 @@ class ChromiumHeadless(Browser):
             self.flags = [
                 '--default-background-color=00000000',
                 '--hide-scrollbars',
+                '--headless',
             ]
         else:
             self.flags = [flags] if isinstance(flags, str) else flags

@@ -26,6 +26,7 @@ class ChromeCDP(CDPBrowser):
             # the browser from running
             self.flags = [
                 '--hide-scrollbars',
+                '--headless',
             ]
         else:
             self.flags = [flags] if isinstance(flags, str) else flags
