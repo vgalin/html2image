@@ -96,7 +96,10 @@ class Html2Image():
 
         browser_class = browser_map[browser.lower()]
 
-        if isinstance(browser_class, CDPBrowser):
+        # browser_map stores classes, not instances. Use ``issubclass`` to
+        # check if the selected browser class supports the Chrome DevTools
+        # Protocol and therefore expects the ``cdp_port`` argument.
+        if issubclass(browser_class, CDPBrowser):
             self.browser = browser_class(
                 executable=browser_executable,
                 flags=custom_flags,
