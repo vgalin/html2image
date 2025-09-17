@@ -9,33 +9,38 @@ os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 TEST_BROWSERS = ["edGe", "cHrOme"]
 
+
 def test_bad_browser():
     with pytest.raises(ValueError):
-        Html2Image(browser='watergoupil')
+        Html2Image(browser="watergoupil")
+
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_good_browser(browser):
     Html2Image(browser=browser)
 
+
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_url(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
 
-    paths = hti.screenshot(url='https://www.python.org', save_as="pyorg.png")
+    paths = hti.screenshot(url="https://www.python.org", save_as="pyorg.png")
     img = Image.open(paths[0])
     assert (1920, 1080) == img.size  # default size
+
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_multiple_urls(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
     paths = hti.screenshot(
-        url=['https://www.python.org', "https://www.example.org/"],
+        url=["https://www.python.org", "https://www.example.org/"],
         save_as="mixed_urls.png",
     )
 
     for path in paths:
         img = Image.open(path)
         assert (1920, 1080) == img.size  # default size
+
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_url_custom_size(browser):
@@ -44,13 +49,14 @@ def test_screenshot_url_custom_size(browser):
     test_size = (334, 485)
 
     paths = hti.screenshot(
-        url='https://www.python.org',
+        url="https://www.python.org",
         save_as="pyorg_custom_size.png",
         size=test_size,
     )
 
     img = Image.open(paths[0])
     assert test_size == img.size  # default size
+
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_url_custom_sizes(browser):
@@ -64,9 +70,9 @@ def test_screenshot_url_custom_sizes(browser):
 
     paths = hti.screenshot(
         url=[
-            'https://www.python.org',
-            'https://www.wikipedia.org/',
-            'https://www.example.org/',
+            "https://www.python.org",
+            "https://www.wikipedia.org/",
+            "https://www.example.org/",
         ],
         save_as="mixed_urls_custom_sizes.png",
         size=test_sizes,
@@ -75,6 +81,7 @@ def test_screenshot_url_custom_sizes(browser):
     for wanted_size, path in zip(test_sizes, paths):
         img = Image.open(path)
         assert wanted_size == img.size
+
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_url_sizes_missing_custom_names(browser):
@@ -87,9 +94,9 @@ def test_screenshot_url_sizes_missing_custom_names(browser):
 
     paths = hti.screenshot(
         url=[
-            'https://www.python.org',
-            'https://www.wikipedia.org/',
-            'https://www.example.org/',
+            "https://www.python.org",
+            "https://www.wikipedia.org/",
+            "https://www.example.org/",
         ],
         save_as=[
             "python_100_100.png",
@@ -103,6 +110,7 @@ def test_screenshot_url_sizes_missing_custom_names(browser):
         img = Image.open(path)
         assert wanted_size == img.size
 
+
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_string(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
@@ -110,9 +118,7 @@ def test_screenshot_string(browser):
     html = "Hello"
     css = "body{background: blue; font-size: 50px;}"
 
-    paths = hti.screenshot(
-        html_str=html, css_str=css, save_as="blue_big_hello.png"
-    )
+    paths = hti.screenshot(html_str=html, css_str=css, save_as="blue_big_hello.png")
 
     img = Image.open(paths[0])
     pixels = img.load()
@@ -121,6 +127,7 @@ def test_screenshot_string(browser):
 
     # check colors at top left corner
     assert pixels[0, 0][:3] == (0, 0, 255)
+
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_string_different_sizes(browser):
@@ -135,22 +142,19 @@ def test_screenshot_string_different_sizes(browser):
     html = "Hello"
 
     paths = hti.screenshot(
-        html_str=[html]*3,
-        save_as="from_string_custom_size.png",
-        size=test_sizes
+        html_str=[html] * 3, save_as="from_string_custom_size.png", size=test_sizes
     )
 
     for wanted_size, path in zip(test_sizes, paths):
         img = Image.open(path)
         assert wanted_size == img.size
 
+
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_other_svg(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
 
-    paths = hti.screenshot(
-        other_file='./examples/star.svg', save_as="star_svg.png"
-    )
+    paths = hti.screenshot(other_file="./examples/star.svg", save_as="star_svg.png")
 
     img = Image.open(paths[0])
     pixels = img.load()
@@ -161,13 +165,14 @@ def test_screenshot_other_svg(browser):
     # for transparent PNG, the alpha channel will be 0
     assert pixels[0, 0][3] == 0  # check alpha channel for full transparency
 
+
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_file(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
 
     paths = hti.screenshot(
         html_file="./examples/blue_page.html",
-        css_file="./examples/blue_background.css", # this CSS file is linked in blue_page.html
+        css_file="./examples/blue_background.css",  # this CSS file is linked in blue_page.html
         save_as="from_file.png",
     )
 
@@ -178,6 +183,7 @@ def test_screenshot_file(browser):
 
     # check colors at top left corner
     assert pixels[0, 0][:3] == (0, 0, 255)  # blue + no transparency
+
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_file_different_sizes(browser):
@@ -190,9 +196,9 @@ def test_screenshot_file_different_sizes(browser):
     ]
 
     paths = hti.screenshot(
-        html_file=["./examples/blue_page.html"]*3,
+        html_file=["./examples/blue_page.html"] * 3,
         save_as="from_file_custom_size.png",
-        size=test_sizes
+        size=test_sizes,
     )
 
     for wanted_size, path in zip(test_sizes, paths):
@@ -210,7 +216,7 @@ def test_screenshot_html_str_with_css_file_only(browser):
     paths = hti.screenshot(
         html_str=html_content,
         css_file=css_file_path,
-        save_as="html_str_blue_bg_from_file.png"
+        save_as="html_str_blue_bg_from_file.png",
     )
 
     img = Image.open(paths[0])
@@ -220,11 +226,12 @@ def test_screenshot_html_str_with_css_file_only(browser):
     # Check top-left corner for blue background
     assert pixels[0, 0][:3] == (0, 0, 255)  # blue
 
+
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_html_str_with_css_str_and_css_file(browser):
     """Test html_str styled by both css_str (for a green block) and css_file (for blue body background)."""
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
-    
+
     # this CSS describes a green block, positioned absolutely,
     # using !important to ensure these styles apply
     css_string_content = """
@@ -237,7 +244,7 @@ def test_screenshot_html_str_with_css_str_and_css_file(browser):
         left: 75px !important;
     }
     """
-    
+
     css_file_path = "./examples/blue_background.css"
 
     # div that will be styled by css_string_content
@@ -245,15 +252,15 @@ def test_screenshot_html_str_with_css_str_and_css_file(browser):
 
     paths = hti.screenshot(
         html_str=html_content,
-        css_str=css_string_content, # Styles #green-block
-        css_file=css_file_path,     # Styles body background
+        css_str=css_string_content,  # Styles #green-block
+        css_file=css_file_path,  # Styles body background
         save_as="html_str_green_block_blue_bg.png",
-        size=(500,400),
+        size=(500, 400),
     )
 
     img = Image.open(paths[0])
     pixels = img.load()
-    assert (500,400) == img.size
+    assert (500, 400) == img.size
 
     # check body background color (blue)
     assert pixels[10, 10][:3] == (0, 0, 255)  # blue
@@ -261,7 +268,7 @@ def test_screenshot_html_str_with_css_str_and_css_file(browser):
     # check #green-block color (green from css_string_content)
     assert pixels[150, 125][:3] == (0, 255, 0)  # green
 
-      
+
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_html_str_with_multiple_css_files(browser):
     """Test html_str styled by multiple css_files using distinct background colors."""
@@ -287,15 +294,15 @@ def test_screenshot_html_str_with_multiple_css_files(browser):
     html_content = '<div id="red-block"></div>'
 
     css_file_paths = [
-        "./examples/blue_background.css", # sets body { background: blue; }
-        temp_css_filename                 # styles #red-block
+        "./examples/blue_background.css",  # sets body { background: blue; }
+        temp_css_filename,  # styles #red-block
     ]
 
     paths = hti.screenshot(
         html_str=html_content,
         css_file=css_file_paths,
         save_as="html_str_multi_css_blocks.png",
-        size=(400,300),
+        size=(400, 300),
     )
 
     # clean up temporary CSS file
@@ -304,42 +311,67 @@ def test_screenshot_html_str_with_multiple_css_files(browser):
 
     img = Image.open(paths[0])
     pixels = img.load()
-    assert (400,300) == img.size
+    assert (400, 300) == img.size
 
     # check body background color (blue)
     assert pixels[10, 10][:3] == (0, 0, 255)  # blue
 
     # check #green-block color (red from _temp_red_block.css)
     assert pixels[150, 125][:3] == (255, 0, 0)  # red
-    
+
+
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_extend_size_param(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
 
-    assert hti._extend_size_param([(50, 50)], 1) \
-        == [(50, 50)]
+    assert hti._extend_size_param([(50, 50)], 1) == [(50, 50)]
 
-    assert hti._extend_size_param([(50, 50)], 3) \
-        == [(50, 50), (50, 50), (50, 50)]
+    assert hti._extend_size_param([(50, 50)], 3) == [(50, 50), (50, 50), (50, 50)]
 
-    assert hti._extend_size_param([(50, 50), (70, 60), (80, 90)], 5) \
-        == [(50, 50), (70, 60), (80, 90), (80, 90), (80, 90)]
+    assert hti._extend_size_param([(50, 50), (70, 60), (80, 90)], 5) == [
+        (50, 50),
+        (70, 60),
+        (80, 90),
+        (80, 90),
+        (80, 90),
+    ]
 
-    assert hti._extend_size_param([], 3) \
-        == [(1920, 1080), (1920, 1080), (1920, 1080)]
+    assert hti._extend_size_param([], 3) == [(1920, 1080), (1920, 1080), (1920, 1080)]
+
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_extend_save_as_param(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
 
-    assert hti._extend_save_as_param(['a.png', 'b.png'], 2) == \
-        ['a.png', 'b.png']
+    assert hti._extend_save_as_param(["a.png", "b.png"], 2) == ["a.png", "b.png"]
 
-    assert hti._extend_save_as_param(['a.png', 'b.png'], 4) == \
-        ['a.png', 'b_0.png', 'b_1.png', 'b_2.png']
+    assert hti._extend_save_as_param(["a.png", "b.png"], 4) == [
+        "a.png",
+        "b_0.png",
+        "b_1.png",
+        "b_2.png",
+    ]
 
-    assert hti._extend_save_as_param(['a.png', 'b.png'], 0) == \
-        ['a.png', 'b.png']
+    assert hti._extend_save_as_param(["a.png", "b.png"], 0) == ["a.png", "b.png"]
 
-    assert hti._extend_save_as_param(['a.png', 'b.png', None, 65], 2) == \
-        ['a.png', 'b.png']
+    assert hti._extend_save_as_param(["a.png", "b.png", None, 65], 2) == [
+        "a.png",
+        "b.png",
+    ]
+
+
+@pytest.mark.parametrize("browser", TEST_BROWSERS)
+def test_force_device_scale_factor(browser):
+    hti = Html2Image(
+        browser=browser,
+        output_path=OUTPUT_PATH,
+        disable_logging=True,
+        force_device_scale_factor=2,
+    )
+
+    assert hti.force_device_scale_factor == "--force-device-scale-factor=2"
+    hti.screenshot(url="https://www.python.org", save_as="pyorg.png")
+    img = Image.open(
+        hti.screenshot(url="https://www.python.org", save_as="pyorg.png")[0]
+    )
+    assert (3840, 2160) == img.size  # default size

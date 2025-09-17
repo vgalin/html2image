@@ -74,6 +74,12 @@ def main():
         default=[],  # If not provided, defaults are used
         help="Custom flags to pass to the browser (e.g., '--no-sandbox' '--disable-gpu'). If provided, these flags will be used."
     )
+    group_hti_init.add_argument(
+        '--force-device-scale-factor',
+        type=int,
+        default=1,
+        help='Force device scale factor for Chromium-based browsers. Passed as --force-device-scale-factor=N.'
+    )
 
     # Screenshot sources arguments
     group_sources = parser.add_argument_group('Screenshot Sources (at least one type is required)')
@@ -154,6 +160,7 @@ def main():
         'disable_logging': args.quiet,
         'temp_path': args.temp_path,
         'keep_temp_files': args.keep_temp_files,
+        'force_device_scale_factor': args.force_device_scale_factor,
     }
 
     # Only pass cdp_port if a CDP browser is likely selected and port is given

@@ -18,61 +18,65 @@ from html2image.browsers.browser import Browser, CDPBrowser
 
 
 browser_map = {
-    'chrome': chrome.ChromeHeadless,
-    'chromium': chrome.ChromeHeadless,
-    'google-chrome': chrome.ChromeHeadless,
-    'google-chrome-stable': chrome.ChromeHeadless,
-    'googlechrome': chrome.ChromeHeadless,
-    'edge': edge.EdgeHeadless,
-    'chrome-cdp': chrome_cdp.ChromeCDP,
-    'chromium-cdp': chrome_cdp.ChromeCDP,
+    "chrome": chrome.ChromeHeadless,
+    "chromium": chrome.ChromeHeadless,
+    "google-chrome": chrome.ChromeHeadless,
+    "google-chrome-stable": chrome.ChromeHeadless,
+    "googlechrome": chrome.ChromeHeadless,
+    "edge": edge.EdgeHeadless,
+    "chrome-cdp": chrome_cdp.ChromeCDP,
+    "chromium-cdp": chrome_cdp.ChromeCDP,
     # 'firefox': firefox.FirefoxHeadless,
     # 'mozilla-firefox': firefox.FirefoxHeadless,
     # 'firefox-cdp': firefox_cdp.FirefoxCDP,
 }
 
 
-class Html2Image():
+class Html2Image:
     """
-        Allows the generation of images from
-        URLs and HTML/CSS files or strings.
+    Allows the generation of images from
+    URLs and HTML/CSS files or strings.
 
-        Parameters
-        ----------
-        - `browser`: str , optional
-            + Type of the browser that will be used to take screenshots.
-            + Default is Chrome.
+    Parameters
+    ----------
+    - `browser`: str , optional
+        + Type of the browser that will be used to take screenshots.
+        + Default is Chrome.
 
-        - `browser_executable` : str, optional
-            + Path to a browser executable.
+    - `browser_executable` : str, optional
+        + Path to a browser executable.
 
-        - `output_path` : str, optional
-            + Path to a directory in which the taken screenshots will be saved.
-            + Default is the current working directory.
+    - `output_path` : str, optional
+        + Path to a directory in which the taken screenshots will be saved.
+        + Default is the current working directory.
 
-        - `size` : (int, int), optional
-            + Size of the screenshots.
-            + Default is (1920, 1080).
+    - `size` : (int, int), optional
+        + Size of the screenshots.
+        + Default is (1920, 1080).
 
-        - `temp_path` : str, optional
-            + Path to a directory that will be used to store temporary files.
+    - `force_device_scale_factor` : int, optional
+        + Force device scale factor for the screenshots.
+        + Default is 1.
 
-        - `keep_temp_files` : bool, optional
-            + If True, will not automatically remove temporary files created.
+    - `temp_path` : str, optional
+        + Path to a directory that will be used to store temporary files.
 
-        - `custom_flags`: list of str or str, optional
-            + Additional custom flags for the headless browser.
+    - `keep_temp_files` : bool, optional
+        + If True, will not automatically remove temporary files created.
 
-        Raises
-        ------
-        - `FileNotFoundError`
-            + If an executable of the browser specified in the `browser`
-            parameter was not found.
+    - `custom_flags`: list of str or str, optional
+        + Additional custom flags for the headless browser.
+
+    Raises
+    ------
+    - `FileNotFoundError`
+        + If an executable of the browser specified in the `browser`
+        parameter was not found.
     """
 
     def __init__(
         self,
-        browser='chrome',
+        browser="chrome",
         browser_executable=None,
         browser_cdp_port=None,
         output_path=os.getcwd(),
@@ -81,32 +85,55 @@ class Html2Image():
         keep_temp_files=False,
         custom_flags=None,
         disable_logging=False,
+        force_device_scale_factor=None,
     ):
-
         if browser.lower() not in browser_map:
-            raise ValueError(
-                f'"{browser}" is not a browser known by HTML2Image.'
-            )
+            raise ValueError(f'"{browser}" is not a browser known by HTML2Image.')
 
         self.output_path = output_path
         self.size = size
+        if force_device_scale_factor is not None:
+            if not isinstance(force_device_scale_factor, int):
+                raise TypeError(f'"{force_device_scale_factor}" is not an integer.')
+            self.force_device_scale_factor = (
+                f"--force-device-scale-factor={force_device_scale_factor}"
+            )
+        else:
+            self.force_device_scale_factor = None
         self.temp_path = temp_path
         self.keep_temp_files = keep_temp_files
         self.browser: Browser = None
 
         browser_class = browser_map[browser.lower()]
 
+        # Normalize and inject force-device-scale-factor into flags
+        if custom_flags is None:
+            normalized_flags = []
+        elif isinstance(custom_flags, str):
+            normalized_flags = [custom_flags]
+        else:
+            normalized_flags = list(custom_flags)
+
+        if (
+            not any(
+                isinstance(flag, str) and flag.startswith("--force-device-scale-factor")
+                for flag in normalized_flags
+            )
+            and self.force_device_scale_factor is not None
+        ):
+            normalized_flags.append(self.force_device_scale_factor)
+
         if isinstance(browser_class, CDPBrowser):
             self.browser = browser_class(
                 executable=browser_executable,
-                flags=custom_flags,
+                flags=normalized_flags,
                 cdp_port=browser_cdp_port,
                 disable_logging=disable_logging,
             )
         else:
             self.browser = browser_class(
                 executable=browser_executable,
-                flags=custom_flags,
+                flags=normalized_flags,
                 disable_logging=disable_logging,
             )
 
@@ -117,8 +144,8 @@ class Html2Image():
     @temp_path.setter
     def temp_path(self, value):
         if value is None:
-            temp_dir = os.environ['TMP'] if os.name == 'nt' else '/tmp'
-            temp_dir = os.path.join(temp_dir, 'html2image')
+            temp_dir = os.environ["TMP"] if os.name == "nt" else "/tmp"
+            temp_dir = os.path.join(temp_dir, "html2image")
         else:
             temp_dir = value
 
@@ -159,11 +186,11 @@ class Html2Image():
             + Filename as which the given string will be saved.
 
         """
-        with open(os.path.join(self.temp_path, as_filename), 'wb') as f:
-            f.write(content.encode('utf-8'))
+        with open(os.path.join(self.temp_path, as_filename), "wb") as f:
+            f.write(content.encode("utf-8"))
 
     def load_file(self, src, as_filename=None):
-        """ 'Loads' a file that html2image can use later to take a screenshot.
+        """'Loads' a file that html2image can use later to take a screenshot.
 
         Behind the scenes, the file found at `src` is:
         -   eventually renamed, if the `as_filename` parameter is specified;
@@ -186,7 +213,7 @@ class Html2Image():
         shutil.copyfile(src, dest)
 
     def _remove_temp_file(self, filename):
-        """ Removes a file in the tmp directory.
+        """Removes a file in the tmp directory.
 
         This function is used after a temporary file is created in order to
         load an HTML string.
@@ -200,10 +227,8 @@ class Html2Image():
         """
         os.remove(os.path.join(self.temp_path, filename))
 
-    def screenshot_loaded_file(
-        self, file, output_file='screenshot.png', size=None
-    ):
-        """ Takes a screenshot of a *previously loaded* file or string.
+    def screenshot_loaded_file(self, file, output_file="screenshot.png", size=None):
+        """Takes a screenshot of a *previously loaded* file or string.
 
         Parameters
         ----------
@@ -222,7 +247,7 @@ class Html2Image():
 
         file = os.path.join(self.temp_path, file)
 
-        if os.path.dirname(output_file) != '':
+        if os.path.dirname(output_file) != "":
             raise ValueError(
                 "the output_file parameter should be a filename "
                 "and not a path.\nChange the output path by "
@@ -236,8 +261,8 @@ class Html2Image():
             size=size,
         )
 
-    def screenshot_url(self, url, output_file='screenshot.png', size=None):
-        """ Takes a screenshot of a given URL.
+    def screenshot_url(self, url, output_file="screenshot.png", size=None):
+        """Takes a screenshot of a given URL.
 
         The given URL should be well formed or it may result in undefined
         behaviors when an headless browser will open it.
@@ -260,7 +285,7 @@ class Html2Image():
             + method is called.
         """
 
-        if os.path.dirname(output_file) != '':
+        if os.path.dirname(output_file) != "":
             raise ValueError(
                 "the output_file parameter should be a filename "
                 "and not a path.\nChange the output path by "
@@ -268,15 +293,12 @@ class Html2Image():
             )
 
         self.browser.screenshot(
-            output_path=self.output_path,
-            output_file=output_file,
-            input=url,
-            size=size
+            output_path=self.output_path, output_file=output_file, input=url, size=size
         )
 
     @staticmethod
     def _extend_save_as_param(save_as, desired_length):
-        """ Extend the save_as parameter of the `screenshot()` method.
+        """Extend the save_as parameter of the `screenshot()` method.
 
         So we do not run out of filenames.
 
@@ -314,21 +336,20 @@ class Html2Image():
             return save_as
 
         missing_name_count = desired_length - len(save_as)
-        filename, extention = save_as[-1].split('.')
+        filename, extention = save_as[-1].split(".")
 
         # remove last object as it will be replaced
         # from filename.extention to filename_0.extention
         save_as.pop()
 
-        save_as.extend([
-            f'{filename}_{i}.{extention}'
-            for i in range(missing_name_count + 1)
-        ])
+        save_as.extend(
+            [f"{filename}_{i}.{extention}" for i in range(missing_name_count + 1)]
+        )
 
         return save_as
 
     def _extend_size_param(self, sizes, desired_length):
-        """ Extend the size parameter of the `screenshot()` method.
+        """Extend the size parameter of the `screenshot()` method.
 
         So we do not run out of sizes.
         If the given the `sizes` parameter is an empty list, the list
@@ -363,34 +384,25 @@ class Html2Image():
         """
 
         # get rid of anything that is not a string
-        sizes = [
-            size for size in sizes
-            if isinstance(size, tuple) and len(size) == 2
-        ]
+        sizes = [size for size in sizes if isinstance(size, tuple) and len(size) == 2]
 
         if desired_length <= len(sizes):
             return sizes
 
         # if no size specified, then use default size
         if len(sizes) == 0:
-            return [
-                self.size
-                for i in range(desired_length)
-            ]
+            return [self.size for i in range(desired_length)]
 
         missing_size_count = desired_length - len(sizes)
         last_size = sizes[-1]
 
-        sizes.extend([
-            last_size
-            for i in range(missing_size_count)
-        ])
+        sizes.extend([last_size for i in range(missing_size_count)])
 
         return sizes
 
     @staticmethod
     def _prepare_html_string(html_body, css_style_string) -> str:
-        """ Creates a basic HTML string from an HTML body and a css string.
+        """Creates a basic HTML string from an HTML body and a css string.
 
         Parameters
         ----------
@@ -422,8 +434,8 @@ class Html2Image():
         return dedent(prepared_html)
 
     @staticmethod
-    def _prepare_css_string(css_file: list[str])-> str:
-        """ Creates a basic string fromatted from a list of css files.
+    def _prepare_css_string(css_file: list[str]) -> str:
+        """Creates a basic string fromatted from a list of css files.
 
         Parameters
         ----------
@@ -436,15 +448,14 @@ class Html2Image():
 
         """
 
-        css_str = ''
+        css_str = ""
         for css in css_file:
-            temp_css_str = ''
+            temp_css_str = ""
             with open(css, "r") as fd:
                 temp_css_str = fd.read()
-                css_str += temp_css_str + '\n'
+                css_str += temp_css_str + "\n"
 
         return css_str
-
 
     def screenshot(
         self,
@@ -454,10 +465,10 @@ class Html2Image():
         css_file=[],
         other_file=[],
         url=[],
-        save_as='screenshot.png',
+        save_as="screenshot.png",
         size=[],
     ):
-        """ Takes a screenshot using different resources.
+        """Takes a screenshot using different resources.
 
         Parameters
         ----------
@@ -524,12 +535,11 @@ class Html2Image():
         )
         sizes = self._extend_size_param(sizes, planned_screenshot_count)
 
-        css_style_string = '\n'.join(css_strings) + '\n'
+        css_style_string = "\n".join(css_strings) + "\n"
 
         if css_files:
             # add content from css_files, regardless of whether css_strings was present
             css_style_string += Html2Image._prepare_css_string(css_files)
-
 
         for css in css_files:
             if os.path.isfile(css):
@@ -542,7 +552,7 @@ class Html2Image():
             current_size = sizes.pop(0)
 
             base_name, _ = os.path.splitext(name)
-            html_filename = base_name + '.html'
+            html_filename = base_name + ".html"
 
             content = Html2Image._prepare_html_string(html, css_style_string)
 
@@ -558,7 +568,6 @@ class Html2Image():
             screenshot_paths.append(os.path.join(self.output_path, name))
 
         for screenshot_target in html_files + other_files:
-
             name = save_as_filenames.pop(0)
             current_size = sizes.pop(0)
 
@@ -570,7 +579,7 @@ class Html2Image():
                     size=current_size,
                 )
                 if not self.keep_temp_files:
-                    self._remove_temp_file(os.path.basename(screenshot_target))                
+                    self._remove_temp_file(os.path.basename(screenshot_target))
             else:
                 raise FileNotFoundError(screenshot_target)
 
@@ -597,5 +606,5 @@ class Html2Image():
         self.browser.__exit__(*exc)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
