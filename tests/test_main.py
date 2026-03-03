@@ -8,6 +8,33 @@ OUTPUT_PATH = "tests_output"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 TEST_BROWSERS = ["edGe", "cHrOme"]
+ISSUE177_BROWSERS = ["chrome", "chrome-cdp"]
+
+
+def _is_red(rgba):
+    r, g, b, a = rgba
+    return a > 180 and r >= 170 and g <= 95 and b <= 95
+
+
+def _strip_metrics(img):
+    rgba_img = img.convert("RGBA")
+    w, h = rgba_img.size
+    cx = w // 2
+    cy = h // 2
+
+    max_red_y = -1
+    for y in range(h):
+        if _is_red(rgba_img.getpixel((cx, y))):
+            max_red_y = y
+
+    max_red_x = -1
+    for x in range(w):
+        if _is_red(rgba_img.getpixel((x, cy))):
+            max_red_x = x
+
+    bottom_strip = h - (max_red_y + 1)
+    right_strip = w - (max_red_x + 1)
+    return max(0, bottom_strip), max(0, right_strip)
 
 def test_bad_browser():
     with pytest.raises(ValueError):
@@ -16,6 +43,98 @@ def test_bad_browser():
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_good_browser(browser):
     Html2Image(browser=browser)
+
+
+def test_chrome_headless_alias_maps_to_legacy_backend():
+    hti = Html2Image(browser='chrome-headless')
+    assert type(hti.browser).__name__ == 'ChromeHeadless'
+
+
+def test_cdp_port_forwarded():
+    hti = Html2Image(browser='chrome-cdp', browser_cdp_port=9555)
+    assert hti.browser.cdp_port == 9555
+
+
+def test_cdp_port_forwarded_for_default_chrome_backend():
+    hti = Html2Image(browser='chrome', browser_cdp_port=9555)
+    assert hti.browser.cdp_port == 9555
+
+
+def test_screenshot_string_chrome_cdp():
+    hti = Html2Image(
+        browser='chrome-cdp',
+        output_path=OUTPUT_PATH,
+        disable_logging=True,
+    )
+
+    paths = hti.screenshot(
+        html_str='Hello from CDP',
+        save_as='cdp_hello.png',
+        size=(320, 240),
+    )
+
+    img = Image.open(paths[0])
+    assert (320, 240) == img.size
+
+
+@pytest.mark.parametrize("browser", ISSUE177_BROWSERS)
+def test_issue177_exact_size_contract(browser):
+    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+    paths = hti.screenshot(
+        html_str='<body style="margin:0;background:green"></body>',
+        save_as=f'issue177_size_{browser}.png',
+        size=(800, 480),
+    )
+    img = Image.open(paths[0])
+    assert img.size == (800, 480)
+
+
+@pytest.mark.parametrize("browser", ISSUE177_BROWSERS)
+def test_issue177_no_bottom_strip_100vh(browser):
+    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+    paths = hti.screenshot(
+        html_str=(
+            '<style>html,body{margin:0;padding:0;overflow:hidden;}'
+            '#fill{width:100vw;height:100vh;background:#ff0000;}</style>'
+            '<div id="fill"></div>'
+        ),
+        save_as=f'issue177_viewport_{browser}.png',
+        size=(800, 480),
+    )
+
+    img = Image.open(paths[0])
+    assert img.size == (800, 480)
+    bottom_strip, right_strip = _strip_metrics(img)
+    assert bottom_strip <= 2
+    assert right_strip <= 2
+
+
+@pytest.mark.parametrize("browser", ISSUE177_BROWSERS)
+def test_issue177_svg_transparent_background(browser):
+    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+    paths = hti.screenshot(
+        other_file='./examples/star.svg',
+        save_as=f'issue177_svg_alpha_{browser}.png',
+        size=(500, 500),
+    )
+
+    img = Image.open(paths[0]).convert("RGBA")
+    assert img.size == (500, 500)
+    assert img.getpixel((0, 0))[3] == 0
+
+
+@pytest.mark.parametrize("browser", ISSUE177_BROWSERS)
+def test_issue177_jpg_output_format(browser):
+    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+    paths = hti.screenshot(
+        html_str='<body style="margin:0;background:#00aa00"></body>',
+        save_as=f'issue177_jpg_{browser}.jpg',
+        size=(640, 360),
+    )
+
+    img = Image.open(paths[0])
+    assert img.size == (640, 360)
+    assert img.format == "JPEG"
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_url(browser):

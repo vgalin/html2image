@@ -67,7 +67,9 @@ hti = Html2Image()
 
 Multiple arguments can be passed to the constructor:
 
--   `browser` :  Browser that will be used, can be set to `'chrome'` (default) or `'edge'`.
+-   `browser` : Browser used to take screenshots. Common values are `'chrome'` (default), `'edge'`, `'chrome-cdp'`, and `'chromium-cdp'`.
+    `'chrome'` now uses the CDP backend by default to keep screenshot dimensions pixel-exact on HiDPI displays.
+    Use `'chrome-headless'` to force the legacy CLI `--screenshot` backend.
 -   `browser_executable` : The path or the command that can be used to find the executable of a specific browser.
 -   `output_path` : Path to the folder to which taken screenshots will be outputted. Default is the current working directory of your python program.
 -   `size` : 2-Tuple representing the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
@@ -267,10 +269,15 @@ hti.screenshot(url='http://example.org')
 For ease of use, some flags are set by default. However default flags are not used if you decide to specify `custom_flags` or change the value of `browser.flags`:
 
 ```python
-# Taking a look at the default flags
+# Taking a look at the default flags (default Chrome/CDP backend)
 >>> hti = Html2Image()
 >>> hti.browser.flags
-['--default-background-color=000000', '--hide-scrollbars']
+['--hide-scrollbars']
+
+# Legacy Chrome CLI backend
+>>> legacy = Html2Image(browser='chrome-headless')
+>>> legacy.browser.flags
+['--default-background-color=00000000', '--hide-scrollbars', '--force-device-scale-factor=1']
 
 # Changing the value of browser.flags gets rid of the default flags.
 >>> hti.browser.flags = ['--1', '--2']
@@ -282,6 +289,19 @@ For ease of use, some flags are set by default. However default flags are not us
 >>> hti.browser.flags
 ['--a', '--b']
 ```
+
+### Chrome/CDP backend notes
+
+- `'chrome'` uses the CDP backend by default.
+- To force CDP explicitly:
+
+```python
+hti = Html2Image(browser='chrome-cdp')
+```
+
+- Use `'chrome-headless'` for the legacy CLI `--screenshot` backend.
+- On modern Chromium versions, CDP keeps `size=(W, H)` pixel-accurate and avoids extra blank strips that can appear with full-viewport layouts in legacy CLI headless mode.
+- With CDP, PNG captures preserve transparency (useful for SVG/logo rendering), while `.jpg` / `.jpeg` outputs are captured as JPEG.
 
 ## Using the CLI
 HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and URLs on the go. You can call it by typing `hti` or `html2image` into a terminal.
@@ -311,9 +331,9 @@ These arguments configure the underlying `Html2Image` instance.
 |----------|-------------|---------|
 | `-h, --help` | Show the help message and exit. | `hti --help`  |
 | `-o, --output-path PATH` | Directory to save screenshots. (Default: current working directory)| `hti --url example.com -o my_images/`  |
-| `--browser BROWSER`| Browser to use. Choices: `chrome`, `chromium`, `google-chrome`, `google-chrome-stable`, `googlechrome`, `edge`, `chrome-cdp`, `chromium-cdp`. (Default: `chrome`)| `hti --url example.com --browser edge` |
+| `--browser BROWSER`| Browser to use. Choices: `chrome`, `chromium`, `google-chrome`, `google-chrome-stable`, `googlechrome`, `chrome-headless`, `edge`, `chrome-cdp`, `chromium-cdp`. (Default: `chrome`)| `hti --url example.com --browser edge` |
 | `--browser-executable EXECUTABLE_PATH` | Path to the browser executable. Auto-detected if not provided. | `hti --browser-executable /usr/bin/google-chrome-stable`|
-| `--cdp-port PORT`  | CDP port for CDP-enabled browsers (e.g., `chrome-cdp`). (Default: library-dependent)| `hti --browser chrome-cdp --cdp-port 9222 --url example.com`  |
+| `--cdp-port PORT`  | CDP port for CDP-enabled browsers (e.g., `chrome` or `chrome-cdp`). (Default: library-dependent)| `hti --browser chrome --cdp-port 9222 --url example.com`  |
 | `--temp-path TEMP_DIR_PATH` | Directory for temporary files. (Default: system temp directory in an `html2image` subfolder)  | `hti --html-file page.html --temp-path /my/tmp`|
 | `--keep-temp-files`| Do not delete temporary files after screenshot generation.| `hti --html-file page.html --keep-temp-files`  |
 | `--custom-flags [FLAG ...]` | Custom flags to pass to the browser (e.g., `'--no-sandbox' '--disable-gpu'`). If provided, these flags will be used. | `hti --url example.com --custom-flags '--no-sandbox' '--disable-gpu'` <br> `hti --url example.com --custom-flags '--no-sandbox --disable-gpu'` |
