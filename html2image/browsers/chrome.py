@@ -175,6 +175,7 @@ class ChromeHeadless(ChromiumHeadless):
             + Default flags are :
                 - '--default-background-color=00000000'
                 - '--hide-scrollbars'
+                - '--force-device-scale-factor=1'
         - `print_command` : bool
             + Whether or not to print the command used to take a screenshot.
         - `disable_logging` : bool
@@ -182,11 +183,25 @@ class ChromeHeadless(ChromiumHeadless):
         - `use_new_headless` : bool, optional
             + Whether or not to use the new headless mode.
             + By default, the old headless mode is used.
-            + You can also keep the original behavior to backward compatibility by setting this to `None`.
+            + You can also keep the original behavior for backward
+              compatibility by setting this to `None`.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=None,):
-        super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging, use_new_headless=use_new_headless)
+    def __init__(
+        self,
+        executable=None,
+        flags=None,
+        print_command=False,
+        disable_logging=False,
+        use_new_headless=None,
+    ):
+        super().__init__(
+            executable=executable,
+            flags=flags,
+            print_command=print_command,
+            disable_logging=disable_logging,
+            use_new_headless=use_new_headless,
+        )
 
     @property
     def executable(self):

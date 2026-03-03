@@ -18,11 +18,14 @@ from html2image.browsers.browser import Browser, CDPBrowser
 
 
 browser_map = {
-    'chrome': chrome.ChromeHeadless,
-    'chromium': chrome.ChromeHeadless,
-    'google-chrome': chrome.ChromeHeadless,
-    'google-chrome-stable': chrome.ChromeHeadless,
-    'googlechrome': chrome.ChromeHeadless,
+    # Chrome/Chromium - default to the CDP backend for correct viewport rendering.
+    # Use 'chrome-headless' to get the legacy CLI (--screenshot) path if needed.
+    'chrome': chrome_cdp.ChromeCDP,
+    'chromium': chrome_cdp.ChromeCDP,
+    'google-chrome': chrome_cdp.ChromeCDP,
+    'google-chrome-stable': chrome_cdp.ChromeCDP,
+    'googlechrome': chrome_cdp.ChromeCDP,
+    'chrome-headless': chrome.ChromeHeadless,   # legacy CLI path
     'edge': edge.EdgeHeadless,
     'chrome-cdp': chrome_cdp.ChromeCDP,
     'chromium-cdp': chrome_cdp.ChromeCDP,
@@ -41,7 +44,11 @@ class Html2Image():
         ----------
         - `browser`: str , optional
             + Type of the browser that will be used to take screenshots.
-            + Default is Chrome.
+            + Default is ``'chrome'``, which uses the Chrome DevTools Protocol
+              (CDP) backend for pixel-accurate screenshots.
+            + Use ``'chrome-headless'`` for the legacy ``--screenshot`` CLI path
+              (faster startup, but viewport-filling content such as ``100vh``
+              may show a blank strip at the bottom due to a Chrome limitation).
 
         - `browser_executable` : str, optional
             + Path to a browser executable.
@@ -96,12 +103,15 @@ class Html2Image():
 
         browser_class = browser_map[browser.lower()]
 
-        if isinstance(browser_class, CDPBrowser):
+        if issubclass(browser_class, CDPBrowser):
+            cdp_kwargs = {}
+            if browser_cdp_port is not None:
+                cdp_kwargs['cdp_port'] = browser_cdp_port
             self.browser = browser_class(
                 executable=browser_executable,
                 flags=custom_flags,
-                cdp_port=browser_cdp_port,
                 disable_logging=disable_logging,
+                **cdp_kwargs,
             )
         else:
             self.browser = browser_class(
@@ -198,7 +208,10 @@ class Html2Image():
             + Filename of the file to be removed
             + (path is the temp_path directory)
         """
-        os.remove(os.path.join(self.temp_path, filename))
+        try:
+            os.remove(os.path.join(self.temp_path, filename))
+        except FileNotFoundError:
+            pass
 
     def screenshot_loaded_file(
         self, file, output_file='screenshot.png', size=None
@@ -599,3 +612,4 @@ class Html2Image():
 
 if __name__ == '__main__':
     pass
+

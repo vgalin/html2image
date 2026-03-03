@@ -39,8 +39,12 @@ def main():
     # TODO : this list is duplicated from browser_map in html2image.py
     browser_choices = [
         'chrome', 'chromium', 'google-chrome', 'google-chrome-stable',
-        'googlechrome', 'edge', 'chrome-cdp', 'chromium-cdp'
+        'googlechrome', 'chrome-headless', 'edge', 'chrome-cdp', 'chromium-cdp'
     ]
+    cdp_browser_choices = {
+        'chrome', 'chromium', 'google-chrome', 'google-chrome-stable',
+        'googlechrome', 'chrome-cdp', 'chromium-cdp',
+    }
     group_hti_init.add_argument(
         '--browser',
         default='chrome',
@@ -56,7 +60,7 @@ def main():
         '--cdp-port',
         type=int,
         default=None,
-        help='CDP port for CDP-enabled browsers (e.g., chrome-cdp). Default is library-dependent.'
+        help='CDP port for CDP-enabled browsers (e.g., chrome or chrome-cdp). Default is library-dependent.'
     )
     group_hti_init.add_argument(
         '--temp-path',
@@ -157,9 +161,10 @@ def main():
     }
 
     # Only pass cdp_port if a CDP browser is likely selected and port is given
-    if args.cdp_port and 'cdp' in args.browser.lower():
+    browser_name = args.browser.lower()
+    if args.cdp_port is not None and browser_name in cdp_browser_choices:
         hti_kwargs['browser_cdp_port'] = args.cdp_port
-    elif args.cdp_port:
+    elif args.cdp_port is not None:
         print(
             f"Warning: --cdp-port ({args.cdp_port}) was specified, but the selected browser ('{args.browser}') might not be a CDP browser."
         )

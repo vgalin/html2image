@@ -16,6 +16,7 @@ class ChromiumHeadless(Browser):
             + Default flags are :
                 - '--default-background-color=00000000'
                 - '--hide-scrollbars'
+                - '--force-device-scale-factor=1'
         - `print_command` : bool
             + Whether or not to print the command used to take a screenshot.
         - `disable_logging` : bool
@@ -32,6 +33,7 @@ class ChromiumHeadless(Browser):
             self.flags = [
                 '--default-background-color=00000000',
                 '--hide-scrollbars',
+                '--force-device-scale-factor=1',
             ]
         else:
             self.flags = [flags] if isinstance(flags, str) else flags
