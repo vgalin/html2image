@@ -1,5 +1,7 @@
 import sys
 
+import pytest
+
 import html2image.cli as cli
 
 
@@ -74,3 +76,74 @@ def test_cli_does_not_forward_cdp_port_for_chrome_headless(
 
     stdout = capsys.readouterr().out
     assert "might not be a CDP browser" in stdout
+
+
+def test_cli_forwards_bidi_port_for_firefox_bidi(monkeypatch):
+    captured = {}
+
+    class FakeHtml2Image:
+        def __init__(self, **kwargs):
+            captured["init_kwargs"] = kwargs
+            self.browser = type("FakeBrowser", (), {})()
+
+        def screenshot(self, **kwargs):
+            captured["screenshot_kwargs"] = kwargs
+            return ["fake.png"]
+
+    monkeypatch.setattr(cli, "Html2Image", FakeHtml2Image)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "hti",
+            "--browser",
+            "firefox-bidi",
+            "--bidi-port",
+            "9333",
+            "--url",
+            "https://example.com",
+            "--quiet",
+        ],
+    )
+
+    cli.main()
+
+    assert captured["init_kwargs"]["browser"] == "firefox-bidi"
+    assert captured["init_kwargs"]["browser_bidi_port"] == 9333
+
+
+def test_cli_does_not_forward_bidi_port_for_chrome(monkeypatch, capsys):
+    captured = {}
+
+    class FakeHtml2Image:
+        def __init__(self, **kwargs):
+            captured["init_kwargs"] = kwargs
+            self.browser = type("FakeBrowser", (), {})()
+
+        def screenshot(self, **kwargs):
+            captured["screenshot_kwargs"] = kwargs
+            return ["fake.png"]
+
+    monkeypatch.setattr(cli, "Html2Image", FakeHtml2Image)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "hti",
+            "--browser",
+            "chrome",
+            "--bidi-port",
+            "9333",
+            "--url",
+            "https://example.com",
+            "--quiet",
+        ],
+    )
+
+    cli.main()
+
+    assert captured["init_kwargs"]["browser"] == "chrome"
+    assert "browser_bidi_port" not in captured["init_kwargs"]
+
+    stdout = capsys.readouterr().out
+    assert "might not be a BiDi browser" in stdout

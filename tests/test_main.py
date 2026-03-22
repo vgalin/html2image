@@ -462,3 +462,53 @@ def test_extend_save_as_param(browser):
 
     assert hti._extend_save_as_param(['a.png', 'b.png', None, 65], 2) == \
         ['a.png', 'b.png']
+
+
+def test_firefox_bidi_alias_maps_to_firefox_bidi_backend():
+    hti = Html2Image(browser='firefox-bidi')
+    assert type(hti.browser).__name__ == 'FirefoxBiDi'
+
+
+def test_firefox_headless_alias_maps_to_firefox_headless_screenshot():
+    hti = Html2Image(browser='firefox-headless')
+    assert type(hti.browser).__name__ == 'FirefoxHeadlessScreenshot'
+
+
+def test_bidi_port_forwarded():
+    hti = Html2Image(browser='firefox-bidi', browser_bidi_port=9333)
+    assert hti.browser._bidi_port == 9333
+
+
+def test_bidi_port_not_forwarded_to_cdp_browser():
+    hti = Html2Image(browser='chrome-cdp', browser_bidi_port=9333)
+    assert not hasattr(hti.browser, '_bidi_port')
+
+
+def test_edge_cdp_alias_maps_to_edge_cdp_backend():
+    hti = Html2Image(browser='edge-cdp')
+    assert type(hti.browser).__name__ == 'EdgeCDP'
+
+
+def test_edge_cdp_port_forwarded():
+    hti = Html2Image(browser='edge-cdp', browser_cdp_port=9444)
+    assert hti.browser.cdp_port == 9444
+
+
+def test_edge_headless_alias_maps_to_edge_headless_backend():
+    hti = Html2Image(browser='edge-headless')
+    assert type(hti.browser).__name__ == 'EdgeHeadless'
+
+
+def test_edge_default_maps_to_cdp():
+    hti = Html2Image(browser='edge')
+    assert type(hti.browser).__name__ == 'EdgeCDP'
+
+
+def test_firefox_alias_maps_to_firefox_bidi():
+    hti = Html2Image(browser='firefox')
+    assert type(hti.browser).__name__ == 'FirefoxBiDi'
+
+
+def test_mozilla_firefox_alias_maps_to_firefox_bidi():
+    hti = Html2Image(browser='mozilla-firefox')
+    assert type(hti.browser).__name__ == 'FirefoxBiDi'

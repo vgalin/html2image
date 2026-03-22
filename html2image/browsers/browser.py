@@ -41,3 +41,11 @@ class CDPBrowser(Browser):
 
     def __init__(self, flags, cdp_port, disable_logging):
         pass
+
+
+class BiDiBrowser(Browser):
+    """A web browser that can be interacted with via WebDriver BiDi protocol.
+    """
+
+    def __init__(self, flags, bidi_port, disable_logging):
+        pass

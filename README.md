@@ -56,6 +56,7 @@ In addition to this package, at least one of the following browsers **must** be 
 -   Google Chrome (Windows, MacOS)
 -   Chromium Browser (Linux)
 -   Microsoft Edge
+-   Mozilla Firefox
 
 ## Usage
 
@@ -67,9 +68,7 @@ hti = Html2Image()
 
 Multiple arguments can be passed to the constructor:
 
--   `browser` : Browser used to take screenshots. Common values are `'chrome'` (default), `'edge'`, `'chrome-cdp'`, and `'chromium-cdp'`.
-    `'chrome'` now uses the CDP backend by default to keep screenshot dimensions pixel-exact on HiDPI displays.
-    Use `'chrome-headless'` to force the legacy CLI `--screenshot` backend.
+-   `browser` : Browser used to take screenshots. Default is `'chrome'` (CDP backend). See the [Browser support](#browser-support) section below for all available values.
 -   `browser_executable` : The path or the command that can be used to find the executable of a specific browser.
 -   `output_path` : Path to the folder to which taken screenshots will be outputted. Default is the current working directory of your python program.
 -   `size` : 2-Tuple representing the size of the screenshots that will be taken. Default value is `(1920, 1080)`.
@@ -290,18 +289,30 @@ For ease of use, some flags are set by default. However default flags are not us
 ['--a', '--b']
 ```
 
-### Chrome/CDP backend notes
+### Browser support
 
-- `'chrome'` uses the CDP backend by default.
-- To force CDP explicitly:
+| Browser | Aliases | Protocol | PNG | JPEG | SVG transparency | Exact viewport |
+|---------|---------|----------|:---:|:----:|:----------------:|:--------------:|
+| Chrome | `chrome`, `chrome-cdp`, `chromium`, `chromium-cdp`, `google-chrome` | CDP | ✓ | ✓ | ✓ | ✓ |
+| Chrome (legacy) | `chrome-headless` | CLI | ✓ | ✓ | ✓ | ~ |
+| Edge | `edge`, `edge-cdp` | CDP | ✓ | ✓ | ✓ | ✓ |
+| Edge (legacy) | `edge-headless` | CLI | ✓ | ✓ | ✓ | ~ |
+| Firefox | `firefox`, `mozilla-firefox`, `firefox-bidi` | BiDi | ✓ | ✓ | ⚠ | ✓ |
+| Firefox (legacy) | `firefox-headless` | CLI | ✓ | ✗ | ⚠ | ~ |
+
+**Legend:**
+- ✓ supported — ✗ not supported — ~ approximate (CLI headless may add a thin strip on some layouts)
+- ⚠ known limitation: transparent backgrounds in standalone SVG files are rendered as opaque white
+
+CDP and BiDi backends also accept a `browser_cdp_port` / `browser_bidi_port` parameter to fix the debugging port:
 
 ```python
-hti = Html2Image(browser='chrome-cdp')
-```
+# Fix the CDP port for Chrome or Edge
+hti = Html2Image(browser='chrome', browser_cdp_port=9222)
 
-- Use `'chrome-headless'` for the legacy CLI `--screenshot` backend.
-- On modern Chromium versions, CDP keeps `size=(W, H)` pixel-accurate and avoids extra blank strips that can appear with full-viewport layouts in legacy CLI headless mode.
-- With CDP, PNG captures preserve transparency (useful for SVG/logo rendering), while `.jpg` / `.jpeg` outputs are captured as JPEG.
+# Fix the BiDi port for Firefox
+hti = Html2Image(browser='firefox', browser_bidi_port=9333)
+```
 
 ## Using the CLI
 HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and URLs on the go. You can call it by typing `hti` or `html2image` into a terminal.
@@ -331,9 +342,10 @@ These arguments configure the underlying `Html2Image` instance.
 |----------|-------------|---------|
 | `-h, --help` | Show the help message and exit. | `hti --help`  |
 | `-o, --output-path PATH` | Directory to save screenshots. (Default: current working directory)| `hti --url example.com -o my_images/`  |
-| `--browser BROWSER`| Browser to use. Choices: `chrome`, `chromium`, `google-chrome`, `google-chrome-stable`, `googlechrome`, `chrome-headless`, `edge`, `chrome-cdp`, `chromium-cdp`. (Default: `chrome`)| `hti --url example.com --browser edge` |
+| `--browser BROWSER`| Browser to use. Choices: `chrome`, `chromium`, `google-chrome`, `google-chrome-stable`, `googlechrome`, `chrome-headless`, `edge`, `edge-cdp`, `edge-headless`, `chrome-cdp`, `chromium-cdp`, `firefox`, `mozilla-firefox`, `firefox-bidi`, `firefox-headless`. (Default: `chrome`)| `hti --url example.com --browser firefox` |
 | `--browser-executable EXECUTABLE_PATH` | Path to the browser executable. Auto-detected if not provided. | `hti --browser-executable /usr/bin/google-chrome-stable`|
-| `--cdp-port PORT`  | CDP port for CDP-enabled browsers (e.g., `chrome` or `chrome-cdp`). (Default: library-dependent)| `hti --browser chrome --cdp-port 9222 --url example.com`  |
+| `--cdp-port PORT`  | CDP port for CDP-enabled browsers (Chrome, Edge). (Default: library-dependent)| `hti --browser chrome --cdp-port 9222 --url example.com`  |
+| `--bidi-port PORT` | BiDi port for BiDi-enabled browsers (Firefox). (Default: auto-selected) | `hti --browser firefox --bidi-port 9333 --url example.com` |
 | `--temp-path TEMP_DIR_PATH` | Directory for temporary files. (Default: system temp directory in an `html2image` subfolder)  | `hti --html-file page.html --temp-path /my/tmp`|
 | `--keep-temp-files`| Do not delete temporary files after screenshot generation.| `hti --html-file page.html --keep-temp-files`  |
 | `--custom-flags [FLAG ...]` | Custom flags to pass to the browser (e.g., `'--no-sandbox' '--disable-gpu'`). If provided, these flags will be used. | `hti --url example.com --custom-flags '--no-sandbox' '--disable-gpu'` <br> `hti --url example.com --custom-flags '--no-sandbox --disable-gpu'` |
@@ -439,8 +451,6 @@ uv run pytest
 
 
 ## TODO List
--   A nice CLI (currently in a WIP state).
--   Support for other browsers, such as Firefox, once their screenshot feature becomes operational.
 -   PDF generation?
 -   Issue templates, pull request template, code of conduct.
 
