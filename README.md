@@ -301,8 +301,12 @@ For ease of use, some flags are set by default. However default flags are not us
 | Firefox (legacy) | `firefox-headless` | CLI | ✓ | ✗ | ⚠ | ~ |
 
 **Legend:**
-- ✓ supported — ✗ not supported — ~ approximate (CLI headless may add a thin strip on some layouts)
+- ✓ supported
+- ✗ not supported
+- ~ approximate (CLI headless may add an unwanted strip on some layouts)
 - ⚠ known limitation: transparent backgrounds in standalone SVG files are rendered as opaque white
+
+Chrome CDP is currently the default backend.
 
 CDP and BiDi backends also accept a `browser_cdp_port` / `browser_bidi_port` parameter to fix the debugging port:
 
