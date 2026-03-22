@@ -310,12 +310,12 @@ def find_firefox(user_given_executable=None):
                 [user_given_executable, '--version']
             ).decode('utf-8').lower()
 
-            if 'Mozilla Firefox' in version_output:
+            if 'mozilla firefox' in version_output:
                 return user_given_executable
             else:
                 print(
                     'Could not validate Firefox executable',
-                    '(--version does not contains "Mozilla Firefox").'
+                    '(--version does not contain "Mozilla Firefox").'
                 )
         except Exception:
             pass
@@ -367,6 +367,6 @@ def find_firefox(user_given_executable=None):
 
     # Couldn't find an executable (or OS not in Windows, Linux or Mac)
     raise FileNotFoundError(
-        'Could not find a Chrome executable on this '
+        'Could not find a Firefox executable on this '
         'machine, please specify it yourself.'
     )

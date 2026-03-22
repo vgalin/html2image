@@ -13,8 +13,8 @@ import shutil
 
 from textwrap import dedent
 
-from html2image.browsers import chrome, chrome_cdp, edge  # , firefox, firefox_cdp
-from html2image.browsers.browser import Browser, CDPBrowser
+from html2image.browsers import chrome, chrome_cdp, edge, edge_cdp, firefox, firefox_bidi
+from html2image.browsers.browser import Browser, CDPBrowser, BiDiBrowser
 
 
 browser_map = {
@@ -26,12 +26,16 @@ browser_map = {
     'google-chrome-stable': chrome_cdp.ChromeCDP,
     'googlechrome': chrome_cdp.ChromeCDP,
     'chrome-headless': chrome.ChromeHeadless,   # legacy CLI path
-    'edge': edge.EdgeHeadless,
+    'edge': edge_cdp.EdgeCDP,
+    'edge-cdp': edge_cdp.EdgeCDP,
+    'edge-headless': edge.EdgeHeadless,
     'chrome-cdp': chrome_cdp.ChromeCDP,
     'chromium-cdp': chrome_cdp.ChromeCDP,
-    # 'firefox': firefox.FirefoxHeadless,
-    # 'mozilla-firefox': firefox.FirefoxHeadless,
-    # 'firefox-cdp': firefox_cdp.FirefoxCDP,
+    # Firefox
+    'firefox': firefox_bidi.FirefoxBiDi,
+    'mozilla-firefox': firefox_bidi.FirefoxBiDi,
+    'firefox-bidi': firefox_bidi.FirefoxBiDi,
+    'firefox-headless': firefox.FirefoxHeadlessScreenshot,
 }
 
 
@@ -82,6 +86,7 @@ class Html2Image():
         browser='chrome',
         browser_executable=None,
         browser_cdp_port=None,
+        browser_bidi_port=None,
         output_path=os.getcwd(),
         size=(1920, 1080),
         temp_path=None,
@@ -112,6 +117,16 @@ class Html2Image():
                 flags=custom_flags,
                 disable_logging=disable_logging,
                 **cdp_kwargs,
+            )
+        elif issubclass(browser_class, BiDiBrowser):
+            bidi_kwargs = {}
+            if browser_bidi_port is not None:
+                bidi_kwargs['bidi_port'] = browser_bidi_port
+            self.browser = browser_class(
+                executable=browser_executable,
+                flags=custom_flags,
+                disable_logging=disable_logging,
+                **bidi_kwargs,
             )
         else:
             self.browser = browser_class(

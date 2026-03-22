@@ -39,11 +39,16 @@ def main():
     # TODO : this list is duplicated from browser_map in html2image.py
     browser_choices = [
         'chrome', 'chromium', 'google-chrome', 'google-chrome-stable',
-        'googlechrome', 'chrome-headless', 'edge', 'chrome-cdp', 'chromium-cdp'
+        'googlechrome', 'chrome-headless', 'edge', 'edge-cdp', 'edge-headless',
+        'chrome-cdp', 'chromium-cdp',
+        'firefox', 'mozilla-firefox', 'firefox-bidi', 'firefox-headless',
     ]
     cdp_browser_choices = {
         'chrome', 'chromium', 'google-chrome', 'google-chrome-stable',
-        'googlechrome', 'chrome-cdp', 'chromium-cdp',
+        'googlechrome', 'chrome-cdp', 'chromium-cdp', 'edge', 'edge-cdp',
+    }
+    bidi_browser_choices = {
+        'firefox', 'mozilla-firefox', 'firefox-bidi',
     }
     group_hti_init.add_argument(
         '--browser',
@@ -61,6 +66,12 @@ def main():
         type=int,
         default=None,
         help='CDP port for CDP-enabled browsers (e.g., chrome or chrome-cdp). Default is library-dependent.'
+    )
+    group_hti_init.add_argument(
+        '--bidi-port',
+        type=int,
+        default=None,
+        help='BiDi port for BiDi-enabled browsers (e.g., firefox-bidi). Default is auto-selected.'
     )
     group_hti_init.add_argument(
         '--temp-path',
@@ -160,13 +171,20 @@ def main():
         'keep_temp_files': args.keep_temp_files,
     }
 
-    # Only pass cdp_port if a CDP browser is likely selected and port is given
+    # Only pass cdp_port / bidi_port if the selected browser matches the protocol
     browser_name = args.browser.lower()
     if args.cdp_port is not None and browser_name in cdp_browser_choices:
         hti_kwargs['browser_cdp_port'] = args.cdp_port
     elif args.cdp_port is not None:
         print(
             f"Warning: --cdp-port ({args.cdp_port}) was specified, but the selected browser ('{args.browser}') might not be a CDP browser."
+        )
+
+    if args.bidi_port is not None and browser_name in bidi_browser_choices:
+        hti_kwargs['browser_bidi_port'] = args.bidi_port
+    elif args.bidi_port is not None:
+        print(
+            f"Warning: --bidi-port ({args.bidi_port}) was specified, but the selected browser ('{args.browser}') might not be a BiDi browser."
         )
 
     try:
