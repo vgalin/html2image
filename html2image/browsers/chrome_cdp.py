@@ -14,19 +14,27 @@ import time
 from urllib.parse import urlparse
 
 import requests
-from websocket import WebSocketTimeoutException, create_connection
+from websocket import (
+    WebSocketConnectionClosedException,
+    WebSocketTimeoutException,
+    create_connection,
+)
 
 logger = logging.getLogger(__name__)
 
 # Default timeout (in seconds) for waiting on CDP responses
 CDP_TIMEOUT = 30
 
+# Chrome only honors this flag along with its `--screenshot` flag, so the
+# CDP backend reads its value and applies it through the protocol instead.
+VIRTUAL_TIME_BUDGET_FLAG = '--virtual-time-budget='
+
 
 class ChromeCDP(CDPBrowser):
 
     def __init__(
         self, executable=None, flags=None,
-        print_command=False, cdp_port=9222,
+        print_command=False, cdp_port=None,
         disable_logging=False,
     ):
         self.executable = executable
@@ -45,6 +53,7 @@ class ChromeCDP(CDPBrowser):
         self._session_id = None  # CDP session ID from Target.attachToTarget
         self.proc = None  # Headless browser Popen object
         self._user_data_dir = None
+        self._current_port = None
 
         self.__id = 0
 
@@ -78,28 +87,35 @@ class ChromeCDP(CDPBrowser):
     def _start_chrome(self):
         """Launch a headless Chrome instance with CDP enabled.
 
-        If Chrome is already running (self.proc is not None and alive),
-        this is a no-op.
+        If Chrome was already started, this is a no-op.
         """
-        if self.proc is not None and self.proc.poll() is None:
-            return  # Already running
+        # self.proc cannot tell if Chrome is running: the launched process
+        # may hand over to another one and exit (Edge does so on Windows).
+        if self._user_data_dir is not None:
+            return  # Already started
 
         self._user_data_dir = tempfile.mkdtemp(prefix='html2image_cdp_')
+        self._current_port = self.cdp_port
+
+        requested_port = self.cdp_port if self.cdp_port is not None else 0
 
         if not self.disable_logging:
             logger.info(
                 'Starting headless Chrome with --remote-debugging-port=%s.',
-                self.cdp_port,
+                requested_port,
             )
 
-        launch_flags = list(self.flags)
+        launch_flags = [
+            flag for flag in self.flags
+            if not flag.startswith(VIRTUAL_TIME_BUDGET_FLAG)
+        ]
         if '--remote-allow-origins=*' not in launch_flags:
             launch_flags.append('--remote-allow-origins=*')
 
         command = [
             f'{self.executable}',
             '--window-size=1920,1080',
-            f'--remote-debugging-port={self.cdp_port}',
+            f'--remote-debugging-port={requested_port}',
             f'--user-data-dir={self._user_data_dir}',
             '--headless=new',
             '--no-first-run',
@@ -118,6 +134,15 @@ class ChromeCDP(CDPBrowser):
 
         self.proc = subprocess.Popen(command, **popen_kwargs, shell=False)
 
+    def _get_current_port(self):
+        if self._current_port is not None:
+            return self._current_port
+
+        active_port_file = Path(self._user_data_dir, 'DevToolsActivePort')
+        port_line = active_port_file.read_text(encoding='utf-8').splitlines()[0]
+        self._current_port = int(port_line)
+        return self._current_port
+
     def _connect_ws(self):
         """Connect to Chrome's browser-level CDP WebSocket and attach to a page target.
 
@@ -131,9 +156,10 @@ class ChromeCDP(CDPBrowser):
 
         for attempt in range(max_retries):
             try:
+                current_port = self._get_current_port()
                 # Get the browser-level WebSocket URL from /json/version
                 response = requests.get(
-                    f'http://127.0.0.1:{self.cdp_port}/json/version',
+                    f'http://127.0.0.1:{current_port}/json/version',
                     timeout=2,
                 )
                 version_info = response.json()
@@ -168,8 +194,13 @@ class ChromeCDP(CDPBrowser):
                     )
                     time.sleep(retry_delay)
                 else:
+                    port_description = (
+                        self._current_port
+                        if self._current_port is not None
+                        else 'an automatically assigned port'
+                    )
                     raise RuntimeError(
-                        f'Could not connect to Chrome CDP on port {self.cdp_port} '
+                        f'Could not connect to Chrome CDP on port {port_description} '
                         f'after {max_retries} attempts. Is Chrome running?'
                     ) from error
 
@@ -272,6 +303,10 @@ class ChromeCDP(CDPBrowser):
                         f'CDP error {error.get("code")}: {error.get("message")}'
                     )
 
+                if message.get('method') == 'Inspector.detached':
+                    reason = message.get('params', {}).get('reason')
+                    raise RuntimeError(f'Chrome page was lost: {reason}')
+
                 logger.debug('CDP recv: %s', message)
                 result = predicate(message)
                 if result:
@@ -294,10 +329,12 @@ class ChromeCDP(CDPBrowser):
         """Wait for Page.navigate response and page-load completion together.
 
         This avoids missing a fast load event between two separate waits.
+        Only the load event of the document created by this navigation is
+        taken into account, events of a previous page are ignored.
         """
         deadline = time.time() + timeout
         nav_result = None
-        page_loaded = False
+        loaded_documents = set()
 
         self.ws.settimeout(timeout)
         try:
@@ -321,6 +358,10 @@ class ChromeCDP(CDPBrowser):
                         f'CDP error {error.get("code")}: {error.get("message")}'
                     )
 
+                if message.get('method') == 'Inspector.detached':
+                    reason = message.get('params', {}).get('reason')
+                    raise RuntimeError(f'Chrome page was lost: {reason}')
+
                 logger.debug('CDP recv: %s', message)
 
                 if message.get('id') == nav_id:
@@ -329,13 +370,19 @@ class ChromeCDP(CDPBrowser):
                     if error_text:
                         return nav_result
 
-                if message.get('method') in (
-                    'Page.loadEventFired',
-                    'Page.frameStoppedLoading',
-                ):
-                    page_loaded = True
+                    # No document is loaded when navigating within the
+                    # current one (e.g. to another anchor of the same page).
+                    if 'loaderId' not in nav_result.get('result', {}):
+                        return nav_result
 
-                if nav_result and page_loaded:
+                if message.get('method') == 'Page.lifecycleEvent':
+                    params = message['params']
+                    if params['name'] == 'load':
+                        loaded_documents.add(params['loaderId'])
+
+                if nav_result and (
+                    nav_result['result'].get('loaderId') in loaded_documents
+                ):
                     return nav_result
         except (TimeoutError, socket.timeout, WebSocketTimeoutException):
             raise TimeoutError(
@@ -343,6 +390,31 @@ class ChromeCDP(CDPBrowser):
             )
         finally:
             self.ws.settimeout(None)
+
+    def _virtual_time_budget(self):
+        """Return the value of the `--virtual-time-budget` flag, if set."""
+        for flag in self.flags:
+            if flag.startswith(VIRTUAL_TIME_BUDGET_FLAG):
+                return int(flag[len(VIRTUAL_TIME_BUDGET_FLAG):])
+        return None
+
+    def _spend_virtual_time(self, budget):
+        """Let the page run for `budget` milliseconds of virtual time."""
+        self.cdp_send(
+            'Emulation.setVirtualTimePolicy',
+            policy='pauseIfNetworkFetchesPending',
+            budget=budget,
+        )
+        self._recv_until(
+            lambda msg: msg.get('method') == 'Emulation.virtualTimeBudgetExpired'
+        )
+
+        # Virtual time is paused once the budget is spent.
+        resume_id = self.cdp_send(
+            'Emulation.setVirtualTimePolicy',
+            policy='advance',
+        )
+        self._wait_for_result(resume_id)
 
     def screenshot(
         self,
@@ -355,13 +427,19 @@ class ChromeCDP(CDPBrowser):
 
         See: https://chromedevtools.github.io/devtools-protocol/
         """
-        auto_started = self.proc is None or self.proc.poll() is not None
+        auto_started = self._ws is None
         if auto_started:
             self.__enter__()
 
         try:
             enable_id = self.cdp_send('Page.enable')
             self._wait_for_result(enable_id)
+
+            lifecycle_id = self.cdp_send(
+                'Page.setLifecycleEventsEnabled',
+                enabled=True,
+            )
+            self._wait_for_result(lifecycle_id)
 
             # Set viewport metrics before navigation so layout-sensitive pages
             # compute against the final viewport dimensions.
@@ -389,6 +467,10 @@ class ChromeCDP(CDPBrowser):
             logger.debug('Page loaded.')
             disable_id = self.cdp_send('Page.disable')
             self._wait_for_result(disable_id)
+
+            virtual_time_budget = self._virtual_time_budget()
+            if virtual_time_budget:
+                self._spend_virtual_time(virtual_time_budget)
 
             logger.debug('Capturing screenshot...')
 
@@ -443,9 +525,25 @@ class ChromeCDP(CDPBrowser):
 
             with open(os.path.join(output_path, output_file), 'wb') as file_obj:
                 file_obj.write(base64.b64decode(img_data))
+        except Exception:
+            # A failed screenshot can leave the page unusable (e.g. with a
+            # navigation still pending), so the session starts afresh.
+            if not auto_started:
+                self.__exit__()
+                self.__enter__()
+            raise
         finally:
             if auto_started:
                 self.__exit__()
+
+    def _wait_for_close(self, timeout=5):
+        """Wait for Chrome to close the WebSocket, which it does on exit."""
+        self._ws.settimeout(timeout)
+        try:
+            while True:
+                self._ws.recv()
+        except WebSocketConnectionClosedException:
+            pass
 
     def __enter__(self):
         """Start a headless Chrome instance with CDP enabled."""
@@ -462,7 +560,7 @@ class ChromeCDP(CDPBrowser):
         if not self.disable_logging:
             logger.info(
                 'Closing headless Chrome instance on port %s.',
-                self.cdp_port,
+                self._current_port,
             )
 
         # Close WebSocket and CDP connection
@@ -471,6 +569,7 @@ class ChromeCDP(CDPBrowser):
                 # Browser.close is a browser-level command, send without sessionId
                 self._session_id = None
                 self.cdp_send('Browser.close')
+                self._wait_for_close()
                 self._ws.close()
                 logger.debug('Closed CDP and WebSocket connections.')
             except Exception:
@@ -516,3 +615,4 @@ class ChromeCDP(CDPBrowser):
                 self._user_data_dir = None
 
         self.proc = None
+        self._current_port = None

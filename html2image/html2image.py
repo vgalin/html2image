@@ -12,6 +12,7 @@ import os
 import shutil
 
 from textwrap import dedent
+from typing import List
 
 from html2image.browsers import chrome, chrome_cdp, edge, edge_cdp, firefox, firefox_bidi
 from html2image.browsers.browser import Browser, CDPBrowser, BiDiBrowser
@@ -184,6 +185,8 @@ class Html2Image():
             + Filename as which the given string will be saved.
 
         """
+        self._check_filename(as_filename)
+
         with open(os.path.join(self.temp_path, as_filename), 'wb') as f:
             f.write(content.encode('utf-8'))
 
@@ -207,8 +210,32 @@ class Html2Image():
         if as_filename is None:
             as_filename = os.path.basename(src)
 
+        self._check_filename(as_filename)
+
         dest = os.path.join(self.temp_path, as_filename)
         shutil.copyfile(src, dest)
+
+    @staticmethod
+    def _check_filename(filename):
+        """ Checks that a filename is not a path.
+
+        This prevents files from being written outside of the
+        directories defined in the `temp_path` and `output_path` attributes.
+
+        Parameters
+        ----------
+        - `filename`: str
+            + Filename to check.
+
+        Raises
+        ------
+        - `ValueError`
+            + If `filename` contains a directory.
+        """
+        if os.path.dirname(filename) != '':
+            raise ValueError(
+                f'"{filename}" should be a filename and not a path.'
+            )
 
     def _remove_temp_file(self, filename):
         """ Removes a file in the tmp directory.
@@ -450,7 +477,7 @@ class Html2Image():
         return dedent(prepared_html)
 
     @staticmethod
-    def _prepare_css_string(css_file: list[str])-> str:
+    def _prepare_css_string(css_file: List[str]) -> str:
         """ Creates a basic string fromatted from a list of css files.
 
         Parameters
@@ -524,6 +551,8 @@ class Html2Image():
         Raises
         ------
         - `FileNotFoundError`
+        - `ValueError`
+            + If a name given in `save_as` is a path and not a filename.
         """
 
         # TODO / NOTE : This does not pose any problem for now but setting
@@ -551,6 +580,9 @@ class Html2Image():
             planned_screenshot_count,
         )
         sizes = self._extend_size_param(sizes, planned_screenshot_count)
+
+        for name in save_as_filenames:
+            self._check_filename(name)
 
         css_style_string = '\n'.join(css_strings) + '\n'
 

@@ -9,6 +9,7 @@ from PIL import Image
 
 import os
 import pytest
+import socket
 
 OUTPUT_PATH = "tests_output"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -96,6 +97,26 @@ def test_edge_cdp_context_manager_reuse():
     for path, expected_size in zip(paths, sizes):
         img = Image.open(path)
         assert img.size == expected_size
+
+
+def test_edge_cdp_context_manager_keeps_one_browser():
+    hti = _make_hti("edge-cdp")
+
+    with hti:
+        user_data_dir = hti.browser._user_data_dir
+        cdp_port = hti.browser._current_port
+
+        for i in range(3):
+            hti.screenshot(
+                html_str='<body style="margin:0;background:red"></body>',
+                save_as=f"edge_cdp_same_browser_{i}.png",
+                size=(320, 240),
+            )
+            assert hti.browser._user_data_dir == user_data_dir
+
+    # Edge is closed: nothing listens on its debugging port anymore.
+    with pytest.raises(OSError):
+        socket.create_connection(("127.0.0.1", cdp_port), timeout=2).close()
 
 
 def test_edge_cdp_url():
