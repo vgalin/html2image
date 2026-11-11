@@ -35,12 +35,13 @@ jobs:
         # Oldest and newest supported Python on every OS,
         # versions in between on Ubuntu only.
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.9", "3.14"]
+        python-version: ["3.9", "3.15"]
         include:
           - {os: ubuntu-latest, python-version: "3.10"}
           - {os: ubuntu-latest, python-version: "3.11"}
           - {os: ubuntu-latest, python-version: "3.12"}
           - {os: ubuntu-latest, python-version: "3.13"}
+          - {os: ubuntu-latest, python-version: "3.14"}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
