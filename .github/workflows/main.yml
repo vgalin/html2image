@@ -58,6 +58,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra test
 
+      # Recent Ubuntu versions forbid unprivileged user namespaces, which the
+      # sandbox of Chromium-based browsers needs to start.
+      - name: Allow the browser sandbox
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       # TEMPORARY: find out why Chrome and Edge do not start on Ubuntu.
       - name: Debug browsers
         if: runner.os == 'Linux' && matrix.python-version == '3.13'
