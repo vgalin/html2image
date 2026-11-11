@@ -1,8 +1,13 @@
 from html2image import Html2Image
+from html2image.browsers.chrome_cdp import ChromeCDP
+from pathlib import Path
 from PIL import Image, ImageChops
+from websocket import WebSocketTimeoutException
 
+import json
 import pytest
 import os
+import socket
 
 OUTPUT_PATH = "tests_output"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -58,6 +63,11 @@ def test_cdp_port_forwarded():
 def test_cdp_port_forwarded_for_default_chrome_backend():
     hti = Html2Image(browser='chrome', browser_cdp_port=9555)
     assert hti.browser.cdp_port == 9555
+
+
+def test_default_chrome_cdp_port_is_automatic():
+    hti = Html2Image(browser='chrome')
+    assert hti.browser.cdp_port is None
 
 
 def test_screenshot_string_chrome_cdp():
@@ -512,3 +522,219 @@ def test_firefox_alias_maps_to_firefox_bidi():
 def test_mozilla_firefox_alias_maps_to_firefox_bidi():
     hti = Html2Image(browser='mozilla-firefox')
     assert type(hti.browser).__name__ == 'FirefoxBiDi'
+
+
+@pytest.mark.parametrize("save_as", ["../escaped.png", os.path.abspath("escaped.png")])
+def test_screenshot_save_as_path_writes_nothing(tmp_path, save_as):
+    temp_path = tmp_path / "temp"
+    hti = Html2Image(temp_path=str(temp_path), output_path=OUTPUT_PATH)
+
+    with pytest.raises(ValueError):
+        hti.screenshot(html_str="Hello", save_as=save_as)
+
+    assert not (tmp_path / "escaped.html").exists()
+    assert not os.path.exists("escaped.html")
+
+
+def test_load_str_rejects_path(tmp_path):
+    temp_path = tmp_path / "temp"
+    hti = Html2Image(temp_path=str(temp_path), output_path=OUTPUT_PATH)
+
+    with pytest.raises(ValueError):
+        hti.load_str("Hello", as_filename="../escaped.html")
+
+    assert not (tmp_path / "escaped.html").exists()
+
+
+def test_load_file_rejects_path(tmp_path):
+    temp_path = tmp_path / "temp"
+    hti = Html2Image(temp_path=str(temp_path), output_path=OUTPUT_PATH)
+
+    with pytest.raises(ValueError):
+        hti.load_file("./examples/blue_page.html", as_filename="../escaped.html")
+
+    assert not (tmp_path / "escaped.html").exists()
+
+
+@pytest.mark.parametrize(
+    "browser", ["chrome-headless", "edge-headless", "firefox-headless"]
+)
+def test_cli_backends_reject_input_read_as_flag(tmp_path, browser):
+    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+    injected_output = tmp_path / "injected.png"
+
+    with pytest.raises(ValueError):
+        hti.screenshot(
+            url=f"--screenshot={injected_output}",
+            save_as=f"flag_as_url_{browser}.png",
+        )
+
+    assert not injected_output.exists()
+
+
+def test_chrome_instances_use_different_cdp_ports():
+    first = Html2Image(browser="chrome", output_path=OUTPUT_PATH, disable_logging=True)
+    second = Html2Image(browser="chrome", output_path=OUTPUT_PATH, disable_logging=True)
+
+    with first, second:
+        assert first.browser._current_port != second.browser._current_port
+
+        for hti, color, rgb in [
+            (first, "red", (255, 0, 0)),
+            (second, "blue", (0, 0, 255)),
+            (first, "red", (255, 0, 0)),
+        ]:
+            paths = hti.screenshot(
+                html_str=f'<body style="margin:0;background:{color}"></body>',
+                save_as=f"cdp_two_instances_{color}.png",
+                size=(320, 240),
+            )
+            img = Image.open(paths[0]).convert("RGB")
+            assert img.getpixel((0, 0)) == rgb
+
+
+def test_chrome_cdp_virtual_time_budget():
+    hti = Html2Image(
+        browser="chrome",
+        output_path=OUTPUT_PATH,
+        disable_logging=True,
+        custom_flags=["--virtual-time-budget=5000", "--hide-scrollbars"],
+    )
+    html = (
+        '<body style="margin:0;background:red"><script>'
+        "setTimeout(() => { document.body.style.background = 'blue' }, 1500)"
+        "</script></body>"
+    )
+
+    with hti:
+        for i in range(2):
+            paths = hti.screenshot(
+                html_str=html,
+                save_as=f"cdp_virtual_time_{i}.png",
+                size=(320, 240),
+            )
+            img = Image.open(paths[0]).convert("RGB")
+            assert img.getpixel((0, 0)) == (0, 0, 255)
+
+
+class FakeWebSocket:
+    """Replays CDP messages, then times out like an idle connection."""
+
+    def __init__(self, messages):
+        self.messages = [json.dumps(message) for message in messages]
+
+    def settimeout(self, timeout):
+        pass
+
+    def recv(self):
+        if not self.messages:
+            raise WebSocketTimeoutException()
+        return self.messages.pop(0)
+
+
+PREVIOUS_PAGE_EVENTS = [
+    {"method": "Page.loadEventFired", "params": {}},
+    {"method": "Page.frameStoppedLoading", "params": {"frameId": "main"}},
+    {
+        "method": "Page.lifecycleEvent",
+        "params": {"frameId": "main", "loaderId": "previous", "name": "load"},
+    },
+]
+NAVIGATION_RESULT = {"id": 1, "result": {"frameId": "main", "loaderId": "requested"}}
+
+
+def test_cdp_navigation_ignores_load_events_of_previous_page():
+    browser = ChromeCDP()
+    browser._ws = FakeWebSocket(PREVIOUS_PAGE_EVENTS + [NAVIGATION_RESULT])
+
+    with pytest.raises(TimeoutError):
+        browser._wait_for_navigation_complete(1, timeout=1)
+
+
+def test_cdp_navigation_completes_on_load_event_of_requested_page():
+    browser = ChromeCDP()
+    browser._ws = FakeWebSocket(PREVIOUS_PAGE_EVENTS + [
+        NAVIGATION_RESULT,
+        {
+            "method": "Page.lifecycleEvent",
+            "params": {"frameId": "main", "loaderId": "requested", "name": "load"},
+        },
+    ])
+
+    assert browser._wait_for_navigation_complete(1, timeout=1) == NAVIGATION_RESULT
+
+
+def test_cdp_navigation_within_same_document_completes():
+    browser = ChromeCDP()
+    navigation_result = {"id": 1, "result": {"frameId": "main"}}
+    browser._ws = FakeWebSocket([navigation_result])
+
+    assert browser._wait_for_navigation_complete(1, timeout=1) == navigation_result
+
+
+def test_chrome_cdp_screenshot_url_then_its_anchor():
+    hti = Html2Image(browser="chrome", output_path=OUTPUT_PATH, disable_logging=True)
+    hti.load_file("./examples/blue_page.html", as_filename="anchor_page.html")
+    page = os.path.join(hti.temp_path, "anchor_page.html")
+
+    with hti:
+        user_data_dir = hti.browser._user_data_dir
+
+        for anchor in ["", "#first", "#second"]:
+            paths = hti.screenshot(
+                url=Path(page).as_uri() + anchor,
+                save_as="cdp_anchor.png",
+                size=(320, 240),
+            )
+            img = Image.open(paths[0])
+            assert img.size == (320, 240)
+
+        # no failed screenshot restarted the browser
+        assert hti.browser._user_data_dir == user_data_dir
+
+    hti._remove_temp_file("anchor_page.html")
+
+
+def test_cdp_lost_page_raises_immediately():
+    browser = ChromeCDP()
+    browser._ws = FakeWebSocket([
+        {"method": "Inspector.detached", "params": {"reason": "Render process gone."}},
+        {"id": 1, "result": {}},
+    ])
+
+    with pytest.raises(RuntimeError, match="Render process gone"):
+        browser._wait_for_result(1, timeout=1)
+
+
+@pytest.fixture
+def unresponsive_url():
+    """URL of a local server that accepts connections but never answers."""
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(5)
+    yield f"http://127.0.0.1:{server.getsockname()[1]}/"
+    server.close()
+
+
+def test_cdp_session_recovers_after_navigation_timeout(monkeypatch, unresponsive_url):
+    hti = Html2Image(browser="chrome", output_path=OUTPUT_PATH, disable_logging=True)
+
+    wait_for_navigation = hti.browser._wait_for_navigation_complete
+    monkeypatch.setattr(
+        hti.browser,
+        "_wait_for_navigation_complete",
+        lambda nav_id: wait_for_navigation(nav_id, timeout=2),
+    )
+
+    with hti:
+        with pytest.raises(TimeoutError):
+            hti.screenshot(url=unresponsive_url, save_as="cdp_timeout.png")
+
+        paths = hti.screenshot(
+            html_str='<body style="margin:0;background:blue"></body>',
+            save_as="cdp_after_timeout.png",
+            size=(320, 240),
+        )
+
+    img = Image.open(paths[0]).convert("RGB")
+    assert img.getpixel((0, 0)) == (0, 0, 255)

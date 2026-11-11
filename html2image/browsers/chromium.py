@@ -68,11 +68,17 @@ class ChromiumHeadless(Browser):
             ------
             - `ValueError`
                 + If the value of `size` is incorrect.
-                + If `input` is empty.
+                + If `input` is empty or starts with "-".
         """
 
         if not input:
             raise ValueError('The `input` parameter is empty.')
+
+        if input.startswith('-'):
+            raise ValueError(
+                f'Could not screenshot "{input}":\n'
+                'An input starting with "-" would be read as a browser flag.'
+            )
 
         if size[0] < 1 or size[1] < 1:
             raise ValueError(

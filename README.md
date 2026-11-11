@@ -263,6 +263,8 @@ hti = Html2Image(
 hti.screenshot(url='http://example.org')
 ```
 
+The CDP backends (`chrome`, `edge`) do not pass this flag to the browser: once the page is loaded, they let it run for the given amount of virtual time through the protocol, then take the screenshot. The legacy CLI backends (`chrome-headless`, `edge-headless`) pass the flag to the browser as is. This flag has no effect with Firefox.
+
 - **Default flags**
 
 For ease of use, some flags are set by default. However default flags are not used if you decide to specify `custom_flags` or change the value of `browser.flags`:
@@ -308,7 +310,9 @@ For ease of use, some flags are set by default. However default flags are not us
 
 Chrome CDP is currently the default backend.
 
-CDP and BiDi backends also accept a `browser_cdp_port` / `browser_bidi_port` parameter to fix the debugging port:
+CDP and BiDi backends choose a free debugging port automatically. They also
+accept a `browser_cdp_port` / `browser_bidi_port` parameter when a fixed port
+is required:
 
 ```python
 # Fix the CDP port for Chrome or Edge
@@ -348,7 +352,7 @@ These arguments configure the underlying `Html2Image` instance.
 | `-o, --output-path PATH` | Directory to save screenshots. (Default: current working directory)| `hti --url example.com -o my_images/`  |
 | `--browser BROWSER`| Browser to use. Choices: `chrome`, `chromium`, `google-chrome`, `google-chrome-stable`, `googlechrome`, `chrome-headless`, `edge`, `edge-cdp`, `edge-headless`, `chrome-cdp`, `chromium-cdp`, `firefox`, `mozilla-firefox`, `firefox-bidi`, `firefox-headless`. (Default: `chrome`)| `hti --url example.com --browser firefox` |
 | `--browser-executable EXECUTABLE_PATH` | Path to the browser executable. Auto-detected if not provided. | `hti --browser-executable /usr/bin/google-chrome-stable`|
-| `--cdp-port PORT`  | CDP port for CDP-enabled browsers (Chrome, Edge). (Default: library-dependent)| `hti --browser chrome --cdp-port 9222 --url example.com`  |
+| `--cdp-port PORT`  | Fixed CDP port for CDP-enabled browsers (Chrome, Edge). (Default: automatic) | `hti --browser chrome --cdp-port 9222 --url example.com`  |
 | `--bidi-port PORT` | BiDi port for BiDi-enabled browsers (Firefox). (Default: auto-selected) | `hti --browser firefox --bidi-port 9333 --url example.com` |
 | `--temp-path TEMP_DIR_PATH` | Directory for temporary files. (Default: system temp directory in an `html2image` subfolder)  | `hti --html-file page.html --temp-path /my/tmp`|
 | `--keep-temp-files`| Do not delete temporary files after screenshot generation.| `hti --html-file page.html --keep-temp-files`  |
