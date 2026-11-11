@@ -1,82 +1,84 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master, develop]
+    tags: ["*"]
+  pull_request:
+
+# A new push to the same branch or pull request cancels the previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  ci:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+
+      # Syntax errors and undefined names only.
+      - name: Flake8
+        run: uvx flake8 html2image tests --select=E9,F63,F7,F82 --show-source --statistics
+
+  test:
+    name: test (${{ matrix.python-version }}, ${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        # UV requires Python 3.8+ to run, but it can manage environments for older Python versions.
-        # actions/setup-python handles installing the target Python for the job.
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        # Oldest and newest supported Python on every OS,
+        # versions in between on Ubuntu only.
         os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.9", "3.14"]
+        include:
+          - {os: ubuntu-latest, python-version: "3.10"}
+          - {os: ubuntu-latest, python-version: "3.11"}
+          - {os: ubuntu-latest, python-version: "3.12"}
+          - {os: ubuntu-latest, python-version: "3.13"}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # uv installs the requested Python itself, so that the matrix does not
+      # depend on the versions shipped with the runner images.
+      - uses: astral-sh/setup-uv@v10
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Set up UV
-        uses: astral-sh/setup-uv@v1 # official action for UV
-        with:
-          # Optional: Pin to a specific UV version for more deterministic builds
-          # version: "0.1.20" # Example version, check latest if pinning
-          enable-cache: true # Optional: enable UV caching for faster builds
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
 
       - name: Install dependencies
-        run: |
-          # Use --system to install into the Python environment set up by actions/setup-python.
-          uv pip install --system -e .[test,lint]
-        shell: bash
+        run: uv sync --extra test
 
-      - name: Flake8 linting
-        run: |
-          python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-        shell: bash
-
-      - name: Run PyTest
-        run: python -m pytest
-        shell: bash
+      - name: Run tests
+        run: uv run pytest
 
   publish:
     name: Build and publish to PyPI
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [lint, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/p/html2image
     permissions:
-      id-token: write
+      id-token: write  # PyPI trusted publishing
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12' # Use a recent Python for build tools
-
-      - name: Set up UV
-        uses: astral-sh/setup-uv@v1
-        with:
-          enable-cache: true
-
-      - name: Install build dependencies
-        # Ensure 'build' is listed in your pyproject.toml [project.optional-dependencies.dev]
-        # or install it explicitly here.
-        run: uv pip install --system build
-        shell: bash
+      - uses: astral-sh/setup-uv@v10
 
       - name: Build package
-        run: python -m build # This will use hatchling as defined in pyproject.toml
-        shell: bash
+        run: uv build
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
