@@ -151,7 +151,7 @@ class ChromeCDP(CDPBrowser):
         # Auto-start Chrome if not running
         self._start_chrome()
 
-        max_retries = 10
+        max_retries = 30
         retry_delay = 0.5
 
         for attempt in range(max_retries):
