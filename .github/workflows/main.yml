@@ -64,31 +64,6 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-      # TEMPORARY: find out why Chrome and Edge do not start on Ubuntu.
-      - name: Debug browsers
-        if: runner.os == 'Linux' && matrix.python-version == '3.13'
-        continue-on-error: true
-        run: |
-          for name in chromium chromium-browser google-chrome google-chrome-stable microsoft-edge firefox; do
-            echo "$name -> $(command -v $name || echo absent)"
-          done
-          uv run python -c "from html2image.browsers.search_utils import find_chrome; print('find_chrome:', find_chrome())"
-          exe=$(uv run python -c "from html2image.browsers.search_utils import find_chrome; print(find_chrome())")
-          ls -l "$(command -v "$exe" || echo "$exe")" || true
-          "$exe" --version || true
-          for extra in "" "--no-sandbox"; do
-            echo "=== launch with: '$extra' ==="
-            dir=$(mktemp -d)
-            timeout 8 "$exe" --window-size=1920,1080 --remote-debugging-port=9222 \
-              --user-data-dir="$dir" --headless=new --no-first-run \
-              --no-default-browser-check $extra > "$dir/out.log" 2>&1 &
-            sleep 5
-            curl -s -m 2 http://127.0.0.1:9222/json/version || echo "no CDP answer"
-            wait || true
-            echo "--- browser output ---"
-            head -40 "$dir/out.log"
-          done
-
       - name: Run tests
         run: uv run pytest
 
