@@ -64,6 +64,34 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
+      # TEMPORARY: measure how long the first start of each browser takes.
+      - name: Debug browser startup
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          for exe in chromium microsoft-edge chromium microsoft-edge; do
+            echo "=== $exe ==="
+            dir=$(mktemp -d)
+            start=$(date +%s.%N)
+            "$exe" --window-size=1920,1080 --remote-debugging-port=9222 \
+              --user-data-dir="$dir" --headless=new --no-first-run \
+              --no-default-browser-check --allow-file-access-from-files \
+              '--remote-allow-origins=*' > "$dir/out.log" 2>&1 &
+            pid=$!
+            answered=no
+            for i in $(seq 1 120); do
+              if curl -s -m 2 -o /dev/null http://127.0.0.1:9222/json/version; then
+                answered=yes; break
+              fi
+              kill -0 $pid 2>/dev/null || { echo "process exited"; break; }
+              sleep 0.5
+            done
+            echo "answered=$answered after $(echo "$(date +%s.%N) - $start" | bc) s"
+            kill $pid 2>/dev/null; wait $pid 2>/dev/null; echo "exit code: $?"
+            echo "--- browser output ---"
+            head -30 "$dir/out.log"
+          done
+
       - name: Run tests
         run: uv run pytest
 
