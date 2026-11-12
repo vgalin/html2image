@@ -201,7 +201,7 @@ class FirefoxBiDi(BiDiBrowser):
             {},
         ]
 
-        max_retries = 20
+        max_retries = 40
         retry_delay = 0.5
         last_error = None
 

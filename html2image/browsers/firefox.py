@@ -72,6 +72,12 @@ class FirefoxHeadlessScreenshot(Browser):
 
         width, height = size if size else (1920, 1080)
 
+        if input.startswith('-'):
+            raise ValueError(
+                f'Could not screenshot "{input}":\n'
+                'An input starting with "-" would be read as a browser flag.'
+            )
+
         ext = os.path.splitext(output_file)[1].lower()
         if ext in ('.jpg', '.jpeg'):
             raise ValueError(

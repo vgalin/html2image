@@ -10,9 +10,9 @@ For feedback, usage and to learn more, see https://github.com/vgalin/html2image
 
 import os
 import shutil
-from typing import List
 
 from textwrap import dedent
+from typing import List
 
 from html2image.browsers import chrome, chrome_cdp, edge, edge_cdp, firefox, firefox_bidi
 from html2image.browsers._page_fit_common import (
@@ -191,6 +191,8 @@ class Html2Image():
             + Filename as which the given string will be saved.
 
         """
+        self._check_filename(as_filename)
+
         with open(os.path.join(self.temp_path, as_filename), 'wb') as f:
             f.write(content.encode('utf-8'))
 
@@ -214,8 +216,32 @@ class Html2Image():
         if as_filename is None:
             as_filename = os.path.basename(src)
 
+        self._check_filename(as_filename)
+
         dest = os.path.join(self.temp_path, as_filename)
         shutil.copyfile(src, dest)
+
+    @staticmethod
+    def _check_filename(filename):
+        """ Checks that a filename is not a path.
+
+        This prevents files from being written outside of the
+        directories defined in the `temp_path` and `output_path` attributes.
+
+        Parameters
+        ----------
+        - `filename`: str
+            + Filename to check.
+
+        Raises
+        ------
+        - `ValueError`
+            + If `filename` contains a directory.
+        """
+        if os.path.dirname(filename) != '':
+            raise ValueError(
+                f'"{filename}" should be a filename and not a path.'
+            )
 
     def _remove_temp_file(self, filename):
         """ Removes a file in the tmp directory.
@@ -651,6 +677,7 @@ class Html2Image():
               positive finite float.
             + If full_page_profile or full_page_fixed_elements is unknown.
             + If full_page_max_pixels is neither a positive integer nor None.
+            + If a name given in `save_as` is a path and not a filename.
         """
 
         if full_page:
@@ -685,6 +712,9 @@ class Html2Image():
             planned_screenshot_count,
         )
         sizes = self._extend_size_param(sizes, planned_screenshot_count)
+
+        for name in save_as_filenames:
+            self._check_filename(name)
 
         css_style_string = '\n'.join(css_strings) + '\n'
 
