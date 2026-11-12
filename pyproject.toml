@@ -13,7 +13,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
@@ -28,7 +27,7 @@ classifiers = [
     "Topic :: Software Development :: User Interfaces",
     "Topic :: Multimedia :: Graphics :: Graphics Conversion",
 ]
-requires-python = ">=3.6"
+requires-python = ">=3.7"
 
 dependencies = [
     "websocket-client~=1.0",
@@ -42,6 +41,10 @@ Issues = "https://github.com/vgalin/html2image/issues"
 Changelog = "https://github.com/vgalin/html2image/releases"
 
 [project.optional-dependencies]
+full-page = [
+    "pyvips>=2.2.1",
+    "pyvips-binary>=8.15.0",
+]
 test = [
     "Pillow>=8.2.0",
     "pytest",
@@ -50,7 +53,7 @@ lint = [
     "flake8",
 ]
 dev = [
-    "html2image[test,lint]",
+    "html2image[full-page,test,lint]",
     "build",
     "twine",
 ]

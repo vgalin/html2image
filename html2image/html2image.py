@@ -10,10 +10,17 @@ For feedback, usage and to learn more, see https://github.com/vgalin/html2image
 
 import os
 import shutil
+from typing import List
 
 from textwrap import dedent
 
 from html2image.browsers import chrome, chrome_cdp, edge, edge_cdp, firefox, firefox_bidi
+from html2image.browsers._page_fit_common import (
+    DEFAULT_MAX_PIXELS,
+    validate_fixed_element_mode,
+    validate_full_page_profile,
+    validate_stability_timeout,
+)
 from html2image.browsers.browser import Browser, CDPBrowser, BiDiBrowser
 
 
@@ -229,7 +236,9 @@ class Html2Image():
             pass
 
     def screenshot_loaded_file(
-        self, file, output_file='screenshot.png', size=None
+        self, file, output_file='screenshot.png', size=None, full_page=False,
+        full_page_stability_timeout=None, full_page_profile='robust',
+        full_page_fixed_elements='auto', full_page_max_pixels=DEFAULT_MAX_PIXELS,
     ):
         """ Takes a screenshot of a *previously loaded* file or string.
 
@@ -248,6 +257,13 @@ class Html2Image():
             method is called.
         """
 
+        if full_page:
+            self._validate_full_page_backend()
+            Html2Image._validate_full_page_stability_timeout(full_page_stability_timeout)
+            Html2Image._validate_full_page_profile(full_page_profile)
+            Html2Image._validate_full_page_fixed_elements(full_page_fixed_elements)
+            Html2Image._validate_full_page_max_pixels(full_page_max_pixels)
+
         file = os.path.join(self.temp_path, file)
 
         if os.path.dirname(output_file) != '':
@@ -257,14 +273,28 @@ class Html2Image():
                 "modifying the output_path attribute."
             )
 
+        full_page_options = {}
+        if full_page:
+            full_page_options = {
+                'full_page': True,
+                'full_page_stability_timeout': full_page_stability_timeout,
+                'full_page_profile': full_page_profile,
+                'full_page_fixed_elements': full_page_fixed_elements,
+                'full_page_max_pixels': full_page_max_pixels,
+            }
+
         self.browser.screenshot(
             output_path=self.output_path,
             output_file=output_file,
             input=file,
             size=size,
+            **full_page_options,
         )
 
-    def screenshot_url(self, url, output_file='screenshot.png', size=None):
+    def screenshot_url(self, url, output_file='screenshot.png', size=None, full_page=False,
+                       full_page_stability_timeout=None, full_page_profile='robust',
+                       full_page_fixed_elements='auto',
+                       full_page_max_pixels=DEFAULT_MAX_PIXELS):
         """ Takes a screenshot of a given URL.
 
         The given URL should be well formed or it may result in undefined
@@ -288,6 +318,13 @@ class Html2Image():
             + method is called.
         """
 
+        if full_page:
+            self._validate_full_page_backend()
+            Html2Image._validate_full_page_stability_timeout(full_page_stability_timeout)
+            Html2Image._validate_full_page_profile(full_page_profile)
+            Html2Image._validate_full_page_fixed_elements(full_page_fixed_elements)
+            Html2Image._validate_full_page_max_pixels(full_page_max_pixels)
+
         if os.path.dirname(output_file) != '':
             raise ValueError(
                 "the output_file parameter should be a filename "
@@ -295,12 +332,52 @@ class Html2Image():
                 "modifying the output_path attribute."
             )
 
+        full_page_options = {}
+        if full_page:
+            full_page_options = {
+                'full_page': True,
+                'full_page_stability_timeout': full_page_stability_timeout,
+                'full_page_profile': full_page_profile,
+                'full_page_fixed_elements': full_page_fixed_elements,
+                'full_page_max_pixels': full_page_max_pixels,
+            }
+
         self.browser.screenshot(
             output_path=self.output_path,
             output_file=output_file,
             input=url,
-            size=size
+            size=size,
+            **full_page_options,
         )
+
+    def _validate_full_page_backend(self) -> None:
+        if not isinstance(self.browser, (CDPBrowser, BiDiBrowser)):
+            raise ValueError(
+                "full_page=True requires ChromeCDP, EdgeCDP, or FirefoxBiDi"
+            )
+
+    @staticmethod
+    def _validate_full_page_stability_timeout(value):
+        validate_stability_timeout(value)
+
+    @staticmethod
+    def _validate_full_page_profile(value: str) -> None:
+        validate_full_page_profile(value)
+
+    @staticmethod
+    def _validate_full_page_fixed_elements(value: str) -> None:
+        validate_fixed_element_mode(value)
+
+    @staticmethod
+    def _validate_full_page_max_pixels(value) -> None:
+        if value is None:
+            return
+
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(
+                "full_page_max_pixels must be a strictly positive integer "
+                f"or None (got {value!r})"
+            )
 
     @staticmethod
     def _extend_save_as_param(save_as, desired_length):
@@ -450,7 +527,7 @@ class Html2Image():
         return dedent(prepared_html)
 
     @staticmethod
-    def _prepare_css_string(css_file: list[str])-> str:
+    def _prepare_css_string(css_file: List[str]) -> str:
         """ Creates a basic string fromatted from a list of css files.
 
         Parameters
@@ -484,6 +561,11 @@ class Html2Image():
         url=[],
         save_as='screenshot.png',
         size=[],
+        full_page=False,
+        full_page_stability_timeout=None,
+        full_page_profile='robust',
+        full_page_fixed_elements='auto',
+        full_page_max_pixels=DEFAULT_MAX_PIXELS,
     ):
         """ Takes a screenshot using different resources.
 
@@ -515,6 +597,45 @@ class Html2Image():
         - `size`: list of (int, int) or (int, int) tuple
             + Size(s) of the screenshot(s) that will be taken when the
             + method is called.
+            + With full_page=True, the width is both the canonical layout
+              viewport width and the final image width. The height remains the
+              rendering viewport height: it can affect responsive CSS, lazy
+              loading and capture time, and is the natural minimum for a short
+              page, but it does not cap the final image height.
+        - `full_page`: bool, optional
+            + If True, captures the full page height rather than just the
+            + visible viewport. Requires a protocol backend (ChromeCDP,
+            + EdgeCDP or FirefoxBiDi). Default is False.
+        - `full_page_stability_timeout`: float or None, optional
+            + Budget in seconds applied to each DOM/layout stabilisation pass
+            + (initial measurement and any post-warmup re-measurement).
+            + Controls how long html2image waits for page dimensions to stop
+            + changing — not the total operation duration.
+            + Must be a strictly positive finite float. None uses the built-in
+            + default (~2.8 s). Only relevant when full_page=True.
+        - `full_page_profile`: str, optional
+            + Capture strategy used when full_page=True.
+            + 'robust' (default): exhaustive lazy warmup, pre-scroll per tile,
+              bottom-paint warmup (Firefox). Maximises correctness. Slowest.
+            + 'balanced': standard lazy warmup (8 steps x 130 ms), no per-tile
+              pre-scroll, no bottom-paint warmup. Good trade-off for most pages.
+            + 'fast': single JS snapshot, no lazy probe, no warmup. Fastest.
+              It may produce partial captures on pages that load content
+              dynamically on scroll (lazy feeds, intersection observers). The
+              fixed/sticky policy below applies independently of the profile.
+              Use fast only when the page is already fully rendered at load.
+            + Only relevant when full_page=True.
+        - `full_page_fixed_elements`: str, optional
+            + How fixed and sticky elements are handled in tiled captures.
+            + 'auto' (default) keeps top- and bottom-anchored elements once;
+              'preserve' leaves browser rendering untouched; 'first' or 'last'
+              keeps them only on that tile; 'hide' removes them from all tiles.
+            + Only relevant when full_page=True.
+        - `full_page_max_pixels`: int or None, optional
+            + Maximum final image area (width x height). The default is
+              100,000,000 pixels. Exceeding it raises an explicit error instead
+              of returning a truncated image. Use None to disable the limit.
+            + Only relevant when full_page=True.
 
         Returns
         -------
@@ -524,7 +645,20 @@ class Html2Image():
         Raises
         ------
         - `FileNotFoundError`
+        - `ValueError`
+            + If full_page=True is used with a non-protocol backend.
+            + If full_page_stability_timeout is not None and is not a strictly
+              positive finite float.
+            + If full_page_profile or full_page_fixed_elements is unknown.
+            + If full_page_max_pixels is neither a positive integer nor None.
         """
+
+        if full_page:
+            self._validate_full_page_backend()
+            Html2Image._validate_full_page_stability_timeout(full_page_stability_timeout)
+            Html2Image._validate_full_page_profile(full_page_profile)
+            Html2Image._validate_full_page_fixed_elements(full_page_fixed_elements)
+            Html2Image._validate_full_page_max_pixels(full_page_max_pixels)
 
         # TODO / NOTE : This does not pose any problem for now but setting
         # mutables (here empty lists) as default arguments of a function
@@ -575,13 +709,20 @@ class Html2Image():
             content = Html2Image._prepare_html_string(html, css_style_string)
 
             self.load_str(content=content, as_filename=html_filename)
-            self.screenshot_loaded_file(
-                file=html_filename,
-                output_file=name,
-                size=current_size,
-            )
-            if not self.keep_temp_files:
-                self._remove_temp_file(html_filename)
+            try:
+                self.screenshot_loaded_file(
+                    file=html_filename,
+                    output_file=name,
+                    size=current_size,
+                    full_page=full_page,
+                    full_page_stability_timeout=full_page_stability_timeout,
+                    full_page_profile=full_page_profile,
+                    full_page_fixed_elements=full_page_fixed_elements,
+                    full_page_max_pixels=full_page_max_pixels,
+                )
+            finally:
+                if not self.keep_temp_files:
+                    self._remove_temp_file(html_filename)
 
             screenshot_paths.append(os.path.join(self.output_path, name))
 
@@ -592,13 +733,20 @@ class Html2Image():
 
             if os.path.isfile(screenshot_target):
                 self.load_file(src=screenshot_target)
-                self.screenshot_loaded_file(
-                    file=os.path.basename(screenshot_target),
-                    output_file=name,
-                    size=current_size,
-                )
-                if not self.keep_temp_files:
-                    self._remove_temp_file(os.path.basename(screenshot_target))                
+                try:
+                    self.screenshot_loaded_file(
+                        file=os.path.basename(screenshot_target),
+                        output_file=name,
+                        size=current_size,
+                        full_page=full_page,
+                        full_page_stability_timeout=full_page_stability_timeout,
+                        full_page_profile=full_page_profile,
+                        full_page_fixed_elements=full_page_fixed_elements,
+                        full_page_max_pixels=full_page_max_pixels,
+                    )
+                finally:
+                    if not self.keep_temp_files:
+                        self._remove_temp_file(os.path.basename(screenshot_target))
             else:
                 raise FileNotFoundError(screenshot_target)
 
@@ -612,6 +760,11 @@ class Html2Image():
                 url=target_url,
                 output_file=name,
                 size=current_size,
+                full_page=full_page,
+                full_page_stability_timeout=full_page_stability_timeout,
+                full_page_profile=full_page_profile,
+                full_page_fixed_elements=full_page_fixed_elements,
+                full_page_max_pixels=full_page_max_pixels,
             )
             screenshot_paths.append(os.path.join(self.output_path, name))
 

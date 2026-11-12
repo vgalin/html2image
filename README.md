@@ -52,6 +52,16 @@ Or with `uv`:
 uv pip install html2image
 ```
 
+Long full-page captures may need to assemble several browser screenshots. Install
+the optional `pyvips` support when you use that fallback:
+
+```console
+pip install "html2image[full-page]"
+```
+
+`pyvips` is only required when stitching is actually needed. A full-page capture
+that the browser can produce directly does not require this extra.
+
 In addition to this package, at least one of the following browsers **must** be installed on your machine :
 -   Google Chrome (Windows, MacOS)
 -   Chromium Browser (Linux)
@@ -132,6 +142,54 @@ hti.screenshot(other_file='star.svg')
 ```python
 hti.screenshot(other_file='star.svg', size=(500, 500))
 ```
+
+### Full-page screenshots
+
+Protocol backends (`chrome`, `chromium`, `edge` and `firefox`) can capture the
+complete document instead of stopping at the visible viewport:
+
+```python
+hti.screenshot(
+    url='https://www.python.org',
+    save_as='python_org_full.png',
+    size=(1280, 720),
+    full_page=True,
+)
+```
+
+With `full_page=True`, `size` does not describe a fixed output rectangle. Its
+width is the canonical layout viewport width and the final image width. Its
+height is the browser viewport height used to render and scroll the page. The
+final image grows to the document height, so the requested height is a natural
+minimum for a short page, not a maximum. Changing the viewport height can change
+`vh`-based layouts, lazy loading, the number of captured tiles and the overall
+capture time.
+
+The loading profile controls the trade-off between speed and best-effort page
+completeness:
+
+- `full_page_profile='fast'` skips stability and lazy-loading warmups. Use it for
+  static pages that are already fully rendered.
+- `full_page_profile='balanced'` performs a moderate warmup suitable for most
+  pages.
+- `full_page_profile='robust'` is the default and performs the most exhaustive
+  warmup. It is slower, but still cannot guarantee completion for every
+  application or infinite feed.
+
+`full_page_stability_timeout` is the budget for each layout-stability pass, not
+a deadline for the complete screenshot operation. The `fast` profile does not
+use stability passes.
+
+For tiled captures, `full_page_fixed_elements='auto'` avoids repeating fixed or
+sticky UI and keeps top- and bottom-anchored elements once. Advanced fallback
+modes are `preserve` (do not intervene), `first`, `last`, and `hide`.
+
+`full_page_max_pixels` limits the final image area to 100,000,000 pixels by
+default. Crossing the limit raises an explicit error rather than returning a
+truncated image. Set a larger positive integer to raise the limit, or `None` to
+disable it. Disabling the limit can make a capture consume substantial memory
+and time. The exception can be caught as
+`html2image.FullPageCaptureLimitError`.
 
 ---
 
@@ -403,7 +461,9 @@ On top of that, you can also use [volumes](https://docs.docker.com/storage/volum
 ## FAQ
 
 - Can I automatically take a full page screenshot?  
-**Sadly no**, it is not easily possible. Html2Image relies on the headless mode of Chrome/Chromium browsers to take screenshots and there is no way to "ask" for a full page screenshot at the moment. If you know a way (by estimating the page size for example), please open an issue or a discussion!
+**Yes.** Use a protocol backend and pass `full_page=True`; see
+[Full-page screenshots](#full-page-screenshots). The legacy command-line
+backends do not support this mode.
 
 - Can I add delay before taking a screenshot?   
 **Yes** you can, please take a look at the `Change browser flags` section of the readme.

@@ -512,3 +512,355 @@ def test_firefox_alias_maps_to_firefox_bidi():
 def test_mozilla_firefox_alias_maps_to_firefox_bidi():
     hti = Html2Image(browser='mozilla-firefox')
     assert type(hti.browser).__name__ == 'FirefoxBiDi'
+
+
+# ---------------------------------------------------------------------------
+# full_page unit tests (no browser required)
+# ---------------------------------------------------------------------------
+
+def test_full_page_default_is_false():
+    """full_page defaults to False — signature check without instantiating a browser."""
+    import inspect
+    from html2image.html2image import Html2Image as _H2I
+    sig = inspect.signature(_H2I.screenshot)
+    assert 'full_page' in sig.parameters
+    assert sig.parameters['full_page'].default is False
+
+
+@pytest.mark.parametrize("backend", ['chrome-headless', 'edge-headless', 'firefox-headless'])
+def test_full_page_raises_on_headless_backends(backend):
+    """full_page=True must raise NotImplementedError on CLI headless backends."""
+    try:
+        hti = Html2Image(browser=backend, output_path=OUTPUT_PATH, disable_logging=True)
+    except FileNotFoundError:
+        pytest.skip(f"'{backend}' executable not found on this machine")
+    with pytest.raises(ValueError):
+        hti.screenshot(
+            html_str='<p>hi</p>',
+            save_as='_full_page_headless_guard.png',
+            size=(800, 600),
+            full_page=True,
+        )
+
+
+def test_full_page_propagated_to_browser_screenshot(monkeypatch):
+    """screenshot() must pass full_page down to browser.screenshot()."""
+    received: dict = {}
+
+    def _fake_screenshot(**kwargs):
+        received.update(kwargs)
+
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+
+    hti.screenshot(
+        url='https://example.com',
+        save_as='_propagation_test.png',
+        size=(800, 600),
+        full_page=True,
+    )
+    assert received.get('full_page') is True
+
+
+def test_full_page_false_preserves_the_historical_browser_call(monkeypatch):
+    """Disabled page-fit must not add kwargs to custom browser calls."""
+    received: dict = {}
+
+    def _fake_screenshot(**kwargs):
+        received.update(kwargs)
+
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+
+    hti.screenshot(
+        url='https://example.com',
+        save_as='_propagation_test_false.png',
+        size=(800, 600),
+    )
+    assert 'full_page' not in received
+    assert 'full_page_stability_timeout' not in received
+    assert 'full_page_profile' not in received
+
+
+def test_full_page_stability_timeout_propagated(monkeypatch):
+    """screenshot() must pass full_page_stability_timeout down to browser.screenshot()."""
+    received: dict = {}
+
+    def _fake_screenshot(**kwargs):
+        received.update(kwargs)
+
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+
+    hti.screenshot(
+        url='https://example.com',
+        save_as='_timeout_propagation_test.png',
+        size=(800, 600),
+        full_page=True,
+        full_page_stability_timeout=7.5,
+    )
+    assert received.get('full_page_stability_timeout') == 7.5
+
+
+@pytest.mark.parametrize("bad_value", [
+    0,
+    -1,
+    -0.1,
+    float('nan'),
+    float('inf'),
+    float('-inf'),
+    "5",
+    [],
+    True,
+])
+def test_full_page_stability_timeout_validation(bad_value):
+    """Invalid full_page_stability_timeout values must raise ValueError."""
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    with pytest.raises((ValueError, TypeError)):
+        hti.screenshot(
+            url='https://example.com',
+            save_as='_timeout_validation_test.png',
+            full_page=True,
+            full_page_stability_timeout=bad_value,
+        )
+
+
+def test_full_page_stability_timeout_validation_screenshot_url():
+    """screenshot_url() must validate full_page_stability_timeout at the public boundary."""
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    with pytest.raises(ValueError):
+        hti.screenshot_url(
+            url='https://example.com',
+            output_file='_timeout_url_test.png',
+            full_page=True,
+            full_page_stability_timeout=-1,
+        )
+
+
+def test_full_page_stability_timeout_validation_screenshot_loaded_file(tmp_path):
+    """screenshot_loaded_file() must validate full_page_stability_timeout at the public boundary."""
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    # Write a minimal HTML file into temp_path so the path join doesn't matter;
+    # validation must fire before any file I/O.
+    dummy = tmp_path / "dummy.html"
+    dummy.write_text("<html></html>")
+    hti.temp_path = str(tmp_path)
+    with pytest.raises(ValueError):
+        hti.screenshot_loaded_file(
+            file='dummy.html',
+            output_file='_timeout_loaded_test.png',
+            full_page=True,
+            full_page_stability_timeout=True,
+        )
+
+
+def test_full_page_stability_timeout_none_is_valid(monkeypatch):
+    """None (default) must not raise and must be forwarded as-is."""
+    received: dict = {}
+
+    def _fake_screenshot(**kwargs):
+        received.update(kwargs)
+
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+
+    hti.screenshot(
+        url='https://example.com',
+        save_as='_timeout_none_test.png',
+        full_page=True,
+        full_page_stability_timeout=None,
+    )
+    assert received.get('full_page_stability_timeout') is None
+
+
+# ---------------------------------------------------------------------------
+# full_page_profile tests
+# ---------------------------------------------------------------------------
+
+def test_full_page_profile_valid_values():
+    for p in ('robust', 'balanced', 'fast'):
+        Html2Image._validate_full_page_profile(p)  # doit passer sans exception
+
+
+def test_full_page_profile_invalid_raises():
+    with pytest.raises(ValueError, match="full_page_profile"):
+        Html2Image._validate_full_page_profile('turbo')
+
+
+def test_full_page_profile_default_is_robust():
+    import inspect
+    sig = inspect.signature(Html2Image.screenshot)
+    assert sig.parameters['full_page_profile'].default == 'robust'
+
+
+def test_screenshot_rejects_unknown_profile():
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    with pytest.raises(ValueError, match="full_page_profile"):
+        hti.screenshot(
+            html_str='<p>x</p>',
+            save_as='_profile_validation_test.png',
+            full_page=True,
+            full_page_profile='turbo',
+        )
+
+
+def test_full_page_profile_propagated(monkeypatch):
+    received = {}
+
+    def _fake_screenshot(**kw):
+        received.update(kw)
+
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+    hti.screenshot(
+        url='https://example.com',
+        save_as='_profile_propagated_test.png',
+        full_page=True,
+        full_page_profile='balanced',
+    )
+    assert received.get('full_page_profile') == 'balanced'
+
+
+def test_full_page_profile_validation_screenshot_url():
+    """screenshot_url() doit valider full_page_profile à la frontière publique."""
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    with pytest.raises(ValueError, match="full_page_profile"):
+        hti.screenshot_url(
+            url='https://example.com',
+            output_file='_profile_url_test.png',
+            full_page=True,
+            full_page_profile='turbo',
+        )
+
+
+def test_full_page_profile_validation_screenshot_loaded_file(tmp_path):
+    """screenshot_loaded_file() doit valider full_page_profile à la frontière publique."""
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    dummy = tmp_path / "dummy.html"
+    dummy.write_text("<html></html>")
+    hti.temp_path = str(tmp_path)
+    with pytest.raises(ValueError, match="full_page_profile"):
+        hti.screenshot_loaded_file(
+            file='dummy.html',
+            output_file='_profile_loaded_test.png',
+            full_page=True,
+            full_page_profile='turbo',
+        )
+
+
+def test_pyvips_import_error_message(monkeypatch):
+    """ImportError raised when pyvips is absent must include the install hint."""
+    import sys
+    import html2image.browsers._page_fit_common as common
+
+    # Simulate pyvips not being installed by setting its sys.modules entry to None
+    monkeypatch.setitem(sys.modules, 'pyvips', None)
+
+    with pytest.raises(ImportError, match='html2image\\[full-page\\]'):
+        common.import_pyvips_for_stitching()
+
+
+# ---------------------------------------------------------------------------
+# full_page resource and fixed-element policy tests
+# ---------------------------------------------------------------------------
+
+def test_full_page_policy_defaults_are_public():
+    import inspect
+
+    signature = inspect.signature(Html2Image.screenshot)
+    assert signature.parameters['full_page_fixed_elements'].default == 'auto'
+    assert signature.parameters['full_page_max_pixels'].default == 100_000_000
+
+
+@pytest.mark.parametrize(
+    'mode', ['auto', 'preserve', 'first', 'last', 'hide']
+)
+def test_full_page_fixed_element_modes_are_valid(mode):
+    Html2Image._validate_full_page_fixed_elements(mode)
+
+
+@pytest.mark.parametrize('mode', ['repeat', '', None, 1, True])
+def test_full_page_fixed_element_mode_validation(mode):
+    with pytest.raises(ValueError, match='full_page_fixed_elements'):
+        Html2Image._validate_full_page_fixed_elements(mode)
+
+
+@pytest.mark.parametrize('value', [1, 100_000_000, None])
+def test_full_page_max_pixels_valid_values(value):
+    Html2Image._validate_full_page_max_pixels(value)
+
+
+@pytest.mark.parametrize('value', [0, -1, 1.5, '1000', True])
+def test_full_page_max_pixels_validation(value):
+    with pytest.raises(ValueError, match='full_page_max_pixels'):
+        Html2Image._validate_full_page_max_pixels(value)
+
+
+def test_full_page_policy_options_are_propagated(monkeypatch):
+    received = {}
+
+    def _fake_screenshot(**kwargs):
+        received.update(kwargs)
+
+    hti = Html2Image(
+        browser='chrome-cdp',
+        output_path=OUTPUT_PATH,
+        disable_logging=True,
+    )
+    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+
+    hti.screenshot(
+        url='https://example.com',
+        save_as='_full_page_policy_propagation.png',
+        full_page=True,
+        full_page_fixed_elements='last',
+        full_page_max_pixels=None,
+    )
+
+    assert received['full_page_fixed_elements'] == 'last'
+    assert received['full_page_max_pixels'] is None
+
+
+def test_full_page_false_does_not_forward_new_policy_options(monkeypatch):
+    received = {}
+
+    def _fake_screenshot(**kwargs):
+        received.update(kwargs)
+
+    hti = Html2Image(
+        browser='chrome-cdp',
+        output_path=OUTPUT_PATH,
+        disable_logging=True,
+    )
+    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+
+    hti.screenshot(
+        url='https://example.com',
+        save_as='_non_full_page_policy_propagation.png',
+    )
+
+    assert 'full_page_fixed_elements' not in received
+    assert 'full_page_max_pixels' not in received
+
+
+def test_temporary_html_is_removed_when_full_page_capture_fails(monkeypatch):
+    hti = Html2Image(
+        browser='chrome-cdp',
+        output_path=OUTPUT_PATH,
+        disable_logging=True,
+    )
+
+    def _raise(**kwargs):
+        raise RuntimeError('capture failed')
+
+    monkeypatch.setattr(hti.browser, 'screenshot', _raise)
+    temporary_name = '_full_page_cleanup_failure.html'
+
+    with pytest.raises(RuntimeError, match='capture failed'):
+        hti.screenshot(
+            html_str='<p>temporary</p>',
+            save_as='_full_page_cleanup_failure.png',
+            full_page=True,
+        )
+
+    assert not os.path.exists(os.path.join(hti.temp_path, temporary_name))

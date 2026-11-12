@@ -59,8 +59,17 @@ class FirefoxHeadlessScreenshot(Browser):
         output_path,
         output_file='screenshot.png',
         size=(1920, 1080),
+        full_page=False,
+        full_page_stability_timeout=None,
+        full_page_profile='robust',
     ):
         """Take a screenshot using Firefox's --screenshot CLI flag."""
+        if full_page:
+            raise ValueError(
+                'full_page=True is not supported by this backend. '
+                'Use ChromeCDP, EdgeCDP or FirefoxBiDi instead.'
+            )
+
         width, height = size if size else (1920, 1080)
 
         ext = os.path.splitext(output_file)[1].lower()

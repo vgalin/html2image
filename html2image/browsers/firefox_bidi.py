@@ -1,4 +1,5 @@
 from .browser import BiDiBrowser
+from ._page_fit_common import DEFAULT_MAX_PIXELS
 from .search_utils import find_firefox
 
 import base64
@@ -336,11 +337,37 @@ class FirefoxBiDi(BiDiBrowser):
         output_path,
         output_file='screenshot.png',
         size=(1920, 1080),
+        full_page=False,
+        full_page_stability_timeout=None,
+        full_page_profile='robust',
+        full_page_fixed_elements='auto',
+        full_page_max_pixels=DEFAULT_MAX_PIXELS,
     ):
         """Take a screenshot using Firefox via WebDriver BiDi."""
         auto_started = self.proc is None or self.proc.poll() is not None
         if auto_started:
             self.__enter__()
+
+        if full_page:
+            try:
+                from . import _firefox_page_fit
+                width, height = size if size else (1920, 1080)
+                _firefox_page_fit.capture_full_page(
+                    self,
+                    self._normalize_input(input),
+                    output_path,
+                    output_file,
+                    width,
+                    height,
+                    stability_timeout=full_page_stability_timeout,
+                    profile=full_page_profile,
+                    fixed_elements=full_page_fixed_elements,
+                    max_pixels=full_page_max_pixels,
+                )
+            finally:
+                if auto_started:
+                    self.__exit__()
+            return
 
         try:
             width, height = size if size else (1920, 1080)
