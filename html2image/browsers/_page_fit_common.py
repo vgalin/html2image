@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import struct
 from dataclasses import dataclass
@@ -14,6 +15,106 @@ VALID_FIXED_ELEMENT_MODES = frozenset(
     {"auto", "preserve", "first", "last", "hide"}
 )
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+# A fixed or sticky element that is too small to be seen is ignored. Its
+# content counts, since it can overflow an element that has no size itself.
+_IS_OVERLAY_JS = r"""
+const isOverlay = (element) => {
+  const style = getComputedStyle(element);
+  if (style.position !== 'fixed' && style.position !== 'sticky') return false;
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  const rect = element.getBoundingClientRect();
+  return Math.max(rect.width, element.scrollWidth) >= 4
+    && Math.max(rect.height, element.scrollHeight) >= 4;
+};
+"""
+
+OVERLAY_COUNT_JS = r"""
+(() => {
+  %s
+  return [...document.querySelectorAll('*')].filter(isOverlay).length;
+})()
+""" % _IS_OVERLAY_JS
+
+_SHOW_OVERLAYS_JS = r"""
+(() => {
+  %s
+  const [key, mode, first, last] = %%s;
+  const registry = window[key] || (window[key] = {entries: [], seen: new WeakSet()});
+  const properties = ['opacity', 'transition', 'position', 'top', 'bottom'];
+
+  // The page is scanned again for every tile: scrolling can load new elements
+  // or make an existing one fixed.
+  for (const element of document.querySelectorAll('*')) {
+    if (registry.seen.has(element) || !isOverlay(element)) continue;
+    registry.seen.add(element);
+    const saved = {};
+    for (const property of properties) {
+      saved[property] = [
+        element.style.getPropertyValue(property),
+        element.style.getPropertyPriority(property)
+      ];
+    }
+    const rect = element.getBoundingClientRect();
+    const topDistance = Math.abs(rect.top);
+    const bottomDistance = Math.abs(window.innerHeight - rect.bottom);
+    const sticky = getComputedStyle(element).position === 'sticky';
+    if (sticky && mode === 'auto') {
+      // A sticky element stays where it is in the flow of the page.
+      element.style.setProperty('position', 'relative', 'important');
+      element.style.setProperty('top', 'auto', 'important');
+      element.style.setProperty('bottom', 'auto', 'important');
+    }
+    registry.entries.push({
+      element, saved, sticky, bottom: bottomDistance + 1 < topDistance
+    });
+  }
+
+  for (const {element, saved, sticky, bottom} of registry.entries) {
+    let visible;
+    if (mode === 'hide') visible = false;
+    else if (mode === 'first') visible = first;
+    else if (mode === 'last') visible = last;
+    else if (sticky) visible = true;
+    else visible = bottom ? last : first;
+    // Unlike `visibility`, `opacity` cannot be overridden by a descendant.
+    for (const [property, value] of [['opacity', '0'], ['transition', 'none']]) {
+      if (!visible) element.style.setProperty(property, value, 'important');
+      else if (saved[property][0]) element.style.setProperty(property, ...saved[property]);
+      else element.style.removeProperty(property);
+    }
+  }
+})()
+""" % _IS_OVERLAY_JS
+
+_RESTORE_OVERLAYS_JS = r"""
+(() => {
+  const key = %s;
+  for (const {element, saved} of (window[key] || {entries: []}).entries) {
+    for (const [property, [value, priority]] of Object.entries(saved)) {
+      if (value) element.style.setProperty(property, value, priority);
+      else element.style.removeProperty(property);
+    }
+  }
+  delete window[key];
+})()
+"""
+
+
+def show_overlays_js(key: str, mode: str, first: bool, last: bool) -> str:
+    """Return the script showing fixed and sticky elements as ``mode`` asks.
+
+    ``first`` and ``last`` tell whether the tile about to be captured is the
+    first or the last one. The elements found are remembered under
+    ``window[key]`` until `restore_overlays_js` is run.
+    """
+    return _SHOW_OVERLAYS_JS % json.dumps([key, mode, first, last])
+
+
+def restore_overlays_js(key: str) -> str:
+    """Return the script undoing every change made by `show_overlays_js`."""
+    return _RESTORE_OVERLAYS_JS % json.dumps(key)
 
 
 class FullPageCaptureLimitError(RuntimeError):

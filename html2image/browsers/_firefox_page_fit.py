@@ -9,21 +9,23 @@ capture is preferred and tiling is only a validated fallback.
 from __future__ import annotations
 
 import base64
-import json
 import math
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
+    OVERLAY_COUNT_JS,
     TileSegment,
     enforce_pixel_budget,
     image_dimensions,
     import_pyvips_for_stitching,
     next_tile_height,
     output_format_from_filename,
+    restore_overlays_js,
+    show_overlays_js,
     stitch_tiles,
     validate_fixed_element_mode,
     validate_full_page_profile,
@@ -91,139 +93,6 @@ _SCROLL_HEIGHT_JS = (
 _SCROLL_Y_JS = (
     "Math.max(0, Math.round(window.scrollY || window.pageYOffset || 0))"
 )
-
-_FIXED_FEATURES_JS = r"""
-(() => {
-  const result = { fixed_visible: 0, sticky_visible: 0 };
-  for (const el of document.querySelectorAll("*")) {
-    const style = window.getComputedStyle(el);
-    if (!style || style.display === "none" || style.visibility === "hidden") continue;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 4 || rect.height < 4) continue;
-    if (style.position === "fixed") result.fixed_visible += 1;
-    if (style.position === "sticky") result.sticky_visible += 1;
-  }
-  return result;
-})()
-""".strip()
-
-# Overlay state lives only on window, not in user DOM attributes.  Inline
-# visibility values and priorities are restored exactly after the capture.
-_PREPARE_OVERLAYS_JS_TEMPLATE = r"""
-(() => {
-  const key = __H2I_OVERLAY_STATE_KEY__;
-  const normalizeSticky = __H2I_NORMALIZE_STICKY__;
-  if (window[key]) return window[key].counts;
-  const entries = [];
-  const counts = { top: 0, bottom: 0, ambiguous: 0 };
-  for (const el of document.querySelectorAll("*")) {
-    const style = window.getComputedStyle(el);
-    if (!style || !["fixed", "sticky"].includes(style.position)) continue;
-    if (style.display === "none" || style.visibility === "hidden") continue;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 4 || rect.height < 4) continue;
-    const topDistance = Math.abs(rect.top);
-    const bottomDistance = Math.abs(window.innerHeight - rect.bottom);
-    let category = "ambiguous";
-    if (topDistance + 1 < bottomDistance) category = "top";
-    if (bottomDistance + 1 < topDistance) category = "bottom";
-    entries.push({
-      el,
-      category,
-      normalizedSticky: normalizeSticky && style.position === "sticky",
-      visibility: el.style.getPropertyValue("visibility"),
-      visibilityPriority: el.style.getPropertyPriority("visibility"),
-      position: el.style.getPropertyValue("position"),
-      positionPriority: el.style.getPropertyPriority("position"),
-      top: el.style.getPropertyValue("top"),
-      topPriority: el.style.getPropertyPriority("top"),
-      bottom: el.style.getPropertyValue("bottom"),
-      bottomPriority: el.style.getPropertyPriority("bottom")
-    });
-    counts[category] += 1;
-  }
-  for (const entry of entries) {
-    if (!entry.normalizedSticky) continue;
-    entry.el.style.setProperty("position", "relative", "important");
-    entry.el.style.setProperty("top", "auto", "important");
-    entry.el.style.setProperty("bottom", "auto", "important");
-  }
-  window[key] = { entries, counts };
-  return counts;
-})()
-""".strip()
-
-_RESTORE_OVERLAYS_JS_TEMPLATE = r"""
-(() => {
-  const key = __H2I_OVERLAY_STATE_KEY__;
-  const state = window[key];
-  if (!state) return 0;
-  const restoreProperty = (entry, name, valueName, priorityName) => {
-    if (entry[valueName]) {
-      entry.el.style.setProperty(name, entry[valueName], entry[priorityName]);
-    } else {
-      entry.el.style.removeProperty(name);
-    }
-  };
-  for (const entry of state.entries) {
-    restoreProperty(entry, "visibility", "visibility", "visibilityPriority");
-    restoreProperty(entry, "position", "position", "positionPriority");
-    restoreProperty(entry, "top", "top", "topPriority");
-    restoreProperty(entry, "bottom", "bottom", "bottomPriority");
-  }
-  const count = state.entries.length;
-  delete window[key];
-  return count;
-})()
-""".strip()
-
-
-def _overlay_state_script(
-    template: str,
-    state_key: str,
-    *,
-    normalize_sticky: bool = False,
-) -> str:
-    script = template.replace(
-        "__H2I_OVERLAY_STATE_KEY__",
-        json.dumps(state_key),
-    )
-    return script.replace(
-        "__H2I_NORMALIZE_STICKY__",
-        "true" if normalize_sticky else "false",
-    )
-
-
-def _overlay_visibility_js(
-    state_key: str,
-    visible_categories: Sequence[str],
-) -> str:
-    categories = json.dumps(list(visible_categories))
-    encoded_state_key = json.dumps(state_key)
-    return rf"""
-(() => {{
-  const state = window[{encoded_state_key}];
-  if (!state) return 0;
-  const visible = new Set({categories});
-  let hidden = 0;
-  for (const entry of state.entries) {{
-    if (entry.normalizedSticky || visible.has(entry.category)) {{
-      if (entry.visibility) {{
-        entry.el.style.setProperty(
-          "visibility", entry.visibility, entry.visibilityPriority
-        );
-      }} else {{
-        entry.el.style.removeProperty("visibility");
-      }}
-    }} else {{
-      entry.el.style.setProperty("visibility", "hidden", "important");
-      hidden += 1;
-    }}
-  }}
-  return hidden;
-}})()
-""".strip()
-
 
 def _decode_remote_value(remote_value: Any) -> Any:
     """Decode a BiDi typed remote value into ordinary Python values."""
@@ -480,64 +349,22 @@ def _bottom_paint_warmup(browser: Any) -> None:
     _sleep_ms(90)
 
 
-def _overlay_features(browser: Any) -> Tuple[int, int]:
-    features = _evaluate(browser, _FIXED_FEATURES_JS) or {}
-    return (
-        int(features.get("fixed_visible") or 0),
-        int(features.get("sticky_visible") or 0),
-    )
+def _overlay_count(browser: Any) -> int:
+    return int(_evaluate(browser, OVERLAY_COUNT_JS) or 0)
 
 
-def _prepare_overlays(
+def _show_overlays(
     browser: Any,
-    state_key: str,
-    *,
-    normalize_sticky: bool = False,
-) -> None:
-    _evaluate(
-        browser,
-        _overlay_state_script(
-            _PREPARE_OVERLAYS_JS_TEMPLATE,
-            state_key,
-            normalize_sticky=normalize_sticky,
-        ),
-    )
-
-
-def _set_visible_overlay_categories(
-    browser: Any,
-    state_key: str,
-    categories: Sequence[str],
-) -> None:
-    _evaluate(browser, _overlay_visibility_js(state_key, categories))
-
-
-def _restore_overlays(browser: Any, state_key: str) -> None:
-    _evaluate(
-        browser,
-        _overlay_state_script(_RESTORE_OVERLAYS_JS_TEMPLATE, state_key),
-    )
-
-
-def _visible_categories_for_tile(
+    key: str,
     mode: str,
     first: bool,
     last: bool,
-) -> Tuple[str, ...]:
-    if mode == "hide":
-        return ()
-    if mode == "first":
-        return ("top", "bottom", "ambiguous") if first else ()
-    if mode == "last":
-        return ("top", "bottom", "ambiguous") if last else ()
-    if mode == "auto":
-        visible = []
-        if first:
-            visible.extend(("top", "ambiguous"))
-        if last:
-            visible.append("bottom")
-        return tuple(visible)
-    return ("top", "bottom", "ambiguous")
+) -> None:
+    _evaluate(browser, show_overlays_js(key, mode, first, last))
+
+
+def _restore_overlays(browser: Any, key: str) -> None:
+    _evaluate(browser, restore_overlays_js(key))
 
 
 def _try_document_capture(
@@ -593,52 +420,24 @@ def _capture_tiled_viewport(
 ) -> bytes:
     # Fail before capturing every tile when the optional stitcher is absent.
     import_pyvips_for_stitching()
-    prepare_overlays = fixed_elements != "preserve"
-    if prepare_overlays:
-        _prepare_overlays(
-            browser,
-            overlay_state_key,
-            normalize_sticky=fixed_elements == "auto",
-        )
-
-    def show_overlays(y: int, height: int) -> None:
-        if prepare_overlays:
-            _set_visible_overlay_categories(
-                browser,
-                overlay_state_key,
-                _visible_categories_for_tile(
-                    fixed_elements,
-                    first=y == 0,
-                    last=y + height == total_height,
-                ),
-            )
-
     plan = []
     tiles = []
     y = 0
     try:
         while y < total_height:
-            height = next_tile_height(
-                y, total_height, viewport_height, viewport_height, fixed_elements
-            )
-            show_overlays(y, height)
             _scroll_to(browser, y)
             _sleep_ms(_TILE_SCROLL_WAIT_MS)
 
             # Scrolling can change the height of a page (a header that
             # collapses, content loaded on demand). The tiles follow the page
             # as it is now, not as it was when first measured.
-            measured_height = _read_document_height(browser, viewport_height)
-            if measured_height != total_height:
-                total_height = measured_height
-                enforce_pixel_budget(width, total_height, max_pixels)
-                if y >= total_height:
-                    break
-                height = next_tile_height(
-                    y, total_height, viewport_height, viewport_height,
-                    fixed_elements,
-                )
-                show_overlays(y, height)
+            total_height = _read_document_height(browser, viewport_height)
+            enforce_pixel_budget(width, total_height, max_pixels)
+            if y >= total_height:
+                break
+            height = next_tile_height(
+                y, total_height, viewport_height, viewport_height, fixed_elements
+            )
 
             # Firefox captures the viewport, which stops short of ``y`` at the
             # end of the page: the top of the tile is then cropped.
@@ -653,6 +452,14 @@ def _capture_tiled_viewport(
             if height <= 0:
                 break
 
+            if fixed_elements != "preserve":
+                _show_overlays(
+                    browser,
+                    overlay_state_key,
+                    fixed_elements,
+                    first=y == 0,
+                    last=y + height == total_height,
+                )
             tile = _capture_screenshot_bytes(browser, origin="viewport")
             tile_width, tile_height = image_dimensions(tile)
             if (tile_width, tile_height) != (width, viewport_height):
@@ -673,8 +480,7 @@ def _capture_tiled_viewport(
             )
             y += height
     finally:
-        if prepare_overlays:
-            _restore_overlays(browser, overlay_state_key)
+        _restore_overlays(browser, overlay_state_key)
 
     return stitch_tiles(tiles, plan, width, y, output_format)
 
@@ -792,8 +598,7 @@ def capture_full_page(
         _scroll_top(browser)
         _sleep_ms(_PRE_CAPTURE_SETTLE_MS)
 
-        fixed_count, sticky_count = _overlay_features(browser)
-        overlay_count = fixed_count + sticky_count
+        overlay_count = _overlay_count(browser)
         force_tiling = (
             total_height > viewport_height
             and fixed_elements in {"auto", "last"}
@@ -802,9 +607,14 @@ def capture_full_page(
 
         if not force_tiling:
             if fixed_elements == "hide" and overlay_count > 0:
-                _prepare_overlays(browser, overlay_state_key)
+                _show_overlays(
+                    browser,
+                    overlay_state_key,
+                    "hide",
+                    first=True,
+                    last=True,
+                )
                 overlay_state_prepared = True
-                _set_visible_overlay_categories(browser, overlay_state_key, ())
             image_bytes, document_diagnostic = _try_document_capture(
                 browser,
                 expected_width=width,

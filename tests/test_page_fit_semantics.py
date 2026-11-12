@@ -184,6 +184,56 @@ def test_full_page_fixed_element_policies(browser, tmp_path):
     assert hidden_blue == []
 
 
+_HARD_TO_HIDE_FIXED_ELEMENTS = {
+    # A descendant can opt out of the `visibility` of its fixed ancestor.
+    "visible-descendant": """
+<div style="position:fixed; top:0; left:0; width:100%; height:20px">
+  <div style="visibility:visible; height:20px; background:#ff0000"></div>
+</div>""",
+    # The fixed element itself has no height, its content overflows.
+    "empty-container": """
+<div style="position:fixed; top:0; left:0; width:100%; height:0">
+  <div style="height:20px; background:#ff0000"></div>
+</div>""",
+    # The element only becomes fixed once the page is scrolled.
+    "fixed-on-scroll": """
+<div id="bar" style="position:absolute; top:0; left:0; width:100%;
+                     height:20px; background:#ff0000"></div>
+<script>
+  addEventListener('scroll', () => {
+    bar.style.position = scrollY > 0 ? 'fixed' : 'absolute';
+  });
+</script>""",
+}
+
+
+@pytest.mark.parametrize(
+    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
+)
+@pytest.mark.parametrize("case", list(_HARD_TO_HIDE_FIXED_ELEMENTS))
+def test_full_page_auto_shows_fixed_element_once(browser, case, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    output = hti.screenshot(
+        html_str=(
+            '<!doctype html><body style="margin:0; height:2500px">'
+            # An ordinary fixed element, so that the page is captured in tiles.
+            '<div style="position:fixed; bottom:0; left:0; width:100%;'
+            ' height:20px; background:#0000ff"></div>'
+            + _HARD_TO_HIDE_FIXED_ELEMENTS[case]
+        ),
+        save_as=f"fixed-once-{case}.png",
+        size=(400, 600),
+        full_page=True,
+        full_page_profile="fast",
+    )[0]
+
+    red_rows, size = _rows_with_color(output, (255, 0, 0))
+    assert size == (400, 2500)
+    assert red_rows == list(range(20))
+
+
 def _sticky_only_html():
     return """<!doctype html>
 <style>

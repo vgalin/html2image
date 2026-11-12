@@ -7,7 +7,6 @@ native CDP capture; long documents are captured in bounded regions and stitched.
 from __future__ import annotations
 
 import base64
-import json
 import math
 import time
 import uuid
@@ -16,12 +15,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
+    OVERLAY_COUNT_JS,
     TileSegment,
     enforce_pixel_budget,
     image_dimensions,
     import_pyvips_for_stitching,
     next_tile_height,
     output_format_from_filename,
+    restore_overlays_js,
+    show_overlays_js,
     stitch_tiles,
     validate_fixed_element_mode,
     validate_full_page_profile,
@@ -375,129 +377,22 @@ def _overlay_registry_key() -> str:
 
 
 def _overlay_count(browser: Any) -> int:
-    count = _evaluate(
-        browser,
-        r"""
-(() => {
-  let count = 0;
-  for (const element of document.querySelectorAll('*')) {
-    const style = getComputedStyle(element);
-    if (style.position !== 'fixed' && style.position !== 'sticky') continue;
-    if (style.display === 'none' || style.visibility === 'hidden') continue;
-    const rect = element.getBoundingClientRect();
-    if (rect.width < 4 || rect.height < 4) continue;
-    count += 1;
-  }
-  return count;
-})()
-""".strip(),
-    )
-    return int(count or 0)
+    return int(_evaluate(browser, OVERLAY_COUNT_JS) or 0)
 
 
-def _install_overlay_registry(browser: Any, key: str, normalize_sticky: bool) -> None:
-    script = r"""
-(() => {
-  const key = %s;
-  const entries = [];
-  const properties = ['visibility', 'position', 'top', 'bottom'];
-  const remember = (element) => {
-    const style = getComputedStyle(element);
-    if (style.position !== 'fixed' && style.position !== 'sticky') return;
-    if (style.display === 'none' || style.visibility === 'hidden') return;
-    const rect = element.getBoundingClientRect();
-    if (rect.width < 4 || rect.height < 4) return;
-    const saved = {};
-    for (const property of properties) {
-      saved[property] = {
-        value: element.style.getPropertyValue(property),
-        priority: element.style.getPropertyPriority(property)
-      };
-    }
-    const topDistance = Math.abs(rect.top);
-    const bottomDistance = Math.abs(window.innerHeight - rect.bottom);
-    let anchor = 'ambiguous';
-    if (topDistance + 1 < bottomDistance) anchor = 'top';
-    if (bottomDistance + 1 < topDistance) anchor = 'bottom';
-    entries.push({element, saved, kind: style.position, anchor});
-  };
-  document.querySelectorAll('*').forEach(remember);
-  window[key] = {entries};
-  if (%s) {
-    for (const entry of entries) {
-      if (entry.kind !== 'sticky') continue;
-      entry.element.style.setProperty('position', 'relative', 'important');
-      entry.element.style.setProperty('top', 'auto', 'important');
-      entry.element.style.setProperty('bottom', 'auto', 'important');
-    }
-  }
-  return entries.length;
-})()
-""" % (json.dumps(key), "true" if normalize_sticky else "false")
-    _evaluate(browser, script)
-
-
-def _set_overlay_visibility(
+def _show_overlays(
     browser: Any,
     key: str,
     mode: str,
     first: bool,
     last: bool,
 ) -> None:
-    script = r"""
-(() => {
-  const registry = window[%s];
-  if (!registry) return 0;
-  const mode = %s;
-  const first = %s;
-  const last = %s;
-  let visibleCount = 0;
-  for (const entry of registry.entries) {
-    let visible;
-    if (mode === 'hide') visible = false;
-    else if (mode === 'first') visible = first;
-    else if (mode === 'last') visible = last;
-    else if (entry.kind === 'sticky') visible = true;
-    else if (entry.anchor === 'bottom') visible = last;
-    else visible = first;
-    entry.element.style.setProperty(
-      'visibility', visible ? 'visible' : 'hidden', 'important'
-    );
-    if (visible) visibleCount += 1;
-  }
-  return visibleCount;
-})()
-""" % (
-        json.dumps(key),
-        json.dumps(mode),
-        "true" if first else "false",
-        "true" if last else "false",
-    )
-    _evaluate(browser, script)
+    _evaluate(browser, show_overlays_js(key, mode, first, last))
 
 
 def _restore_overlays(browser: Any, key: Optional[str]) -> None:
-    if key is None:
-        return
-    script = r"""
-(() => {
-  const key = %s;
-  const registry = window[key];
-  if (!registry) return false;
-  for (const entry of registry.entries) {
-    for (const [property, saved] of Object.entries(entry.saved)) {
-      if (saved.value) {
-        entry.element.style.setProperty(property, saved.value, saved.priority);
-      } else {
-        entry.element.style.removeProperty(property);
-      }
-    }
-  }
-  delete window[key];
-  return true;
-})()
-""" % json.dumps(key)
-    _evaluate(browser, script)
+    if key is not None:
+        _evaluate(browser, restore_overlays_js(key))
 
 
 def _capture_tiled(
@@ -516,31 +411,12 @@ def _capture_tiled(
     registry_key: Optional[str] = None
     if fixed_elements != "preserve":
         registry_key = _overlay_registry_key()
-        _install_overlay_registry(
-            browser,
-            registry_key,
-            normalize_sticky=fixed_elements == "auto",
-        )
-
-    def show_overlays(y: int, height: int) -> None:
-        if registry_key is not None:
-            _set_overlay_visibility(
-                browser,
-                registry_key,
-                fixed_elements,
-                first=y == 0,
-                last=y + height == total_height,
-            )
 
     plan: List[TileSegment] = []
     tiles: List[bytes] = []
     y = 0
     try:
         while y < total_height:
-            height = next_tile_height(
-                y, total_height, tile_height, viewport_height, fixed_elements
-            )
-            show_overlays(y, height)
             _scroll_to(browser, y)
             _wait_for_paint(browser)
             if profile != "fast":
@@ -549,18 +425,22 @@ def _capture_tiled(
             # Scrolling can change the height of a page (a header that
             # collapses, content loaded on demand). The tiles follow the page
             # as it is now, not as it was when first measured.
-            measured_height = _measure_once(browser, viewport_height)
-            if measured_height != total_height:
-                total_height = measured_height
-                enforce_pixel_budget(width, total_height, max_pixels)
-                if y >= total_height:
-                    break
-                height = next_tile_height(
-                    y, total_height, tile_height, viewport_height, fixed_elements
-                )
-                show_overlays(y, height)
-                _wait_for_paint(browser)
+            total_height = _measure_once(browser, viewport_height)
+            enforce_pixel_budget(width, total_height, max_pixels)
+            if y >= total_height:
+                break
+            height = next_tile_height(
+                y, total_height, tile_height, viewport_height, fixed_elements
+            )
 
+            if registry_key is not None:
+                _show_overlays(
+                    browser,
+                    registry_key,
+                    fixed_elements,
+                    first=y == 0,
+                    last=y + height == total_height,
+                )
             tile = _capture_region(
                 browser,
                 x=0,
@@ -638,8 +518,7 @@ def capture_full_page(
 
         if fixed_elements == "hide":
             hidden_registry = _overlay_registry_key()
-            _install_overlay_registry(browser, hidden_registry, normalize_sticky=False)
-            _set_overlay_visibility(
+            _show_overlays(
                 browser,
                 hidden_registry,
                 "hide",
@@ -685,7 +564,7 @@ def capture_full_page(
                 viewport_height,
                 total_height,
                 profile,
-                fixed_elements if fixed_elements != "hide" else "preserve",
+                fixed_elements,
                 output_format,
                 max_pixels,
             )
