@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import struct
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 
 DEFAULT_MAX_PIXELS = 100_000_000
@@ -133,34 +133,29 @@ def enforce_pixel_budget(
     return pixel_count
 
 
-def build_tile_plan(total_height: int, tile_height: int) -> List[TileSegment]:
-    """Cover ``[0, total_height)`` exactly once with vertical segments."""
-    if total_height <= 0 or tile_height <= 0:
-        raise ValueError("total_height and tile_height must be positive")
-
-    plan = []
-    y = 0
-    while y < total_height:
-        content_height = min(tile_height, total_height - y)
-        plan.append(
-            TileSegment(
-                capture_y=y,
-                capture_height=content_height,
-                paste_y=y,
-                content_height=content_height,
-            )
-        )
-        y += content_height
-
-    validate_tile_plan(plan, total_height)
-    return plan
+def next_tile_height(
+    y: int,
+    total_height: int,
+    tile_height: int,
+    viewport_height: int,
+    fixed_elements: str,
+) -> int:
+    """Return the height of the tile starting at ``y``."""
+    remaining = total_height - y
+    if fixed_elements != "last":
+        return min(tile_height, remaining)
+    # The final tile is the whole last viewport, so that an element fixed at
+    # its top is part of the image.
+    if remaining <= viewport_height:
+        return remaining
+    return min(tile_height, remaining - viewport_height)
 
 
 def validate_tile_plan(
     plan: Sequence[TileSegment],
     total_height: int,
 ) -> None:
-    """Check ordering and exact coverage before any browser work starts."""
+    """Check ordering and exact coverage of the captured tiles."""
     if not plan:
         raise ValueError("tile plan must not be empty")
 

@@ -67,11 +67,24 @@ def test_stability_timeout_accepts_none_and_positive_numbers():
     assert common.validate_stability_timeout(2) == 2.0
 
 
-def test_tile_plan_covers_document_exactly_once():
-    plan = common.build_tile_plan(total_height=1_501, tile_height=720)
-    assert [segment.content_height for segment in plan] == [720, 720, 61]
-    assert [segment.paste_y for segment in plan] == [0, 720, 1_440]
-    common.validate_tile_plan(plan, 1_501)
+def _tile_heights(total_height, fixed_elements):
+    heights = []
+    while sum(heights) < total_height:
+        heights.append(
+            common.next_tile_height(
+                sum(heights), total_height, 720, 720, fixed_elements
+            )
+        )
+    return heights
+
+
+def test_tiles_cover_document_exactly_once():
+    assert _tile_heights(1_501, "auto") == [720, 720, 61]
+
+
+def test_last_tile_is_a_whole_viewport_when_fixed_elements_are_kept_last():
+    assert _tile_heights(1_501, "last") == [720, 61, 720]
+    assert _tile_heights(500, "last") == [500]
 
 
 def test_tile_plan_validation_rejects_gap():
@@ -90,7 +103,11 @@ def test_tile_plan_validation_rejects_crop_beyond_capture():
 
 
 def test_arrayjoin_is_used_only_when_short_padding_is_at_the_end():
-    regular = common.build_tile_plan(12, 5)
+    regular = [
+        common.TileSegment(0, 5, 0, 5),
+        common.TileSegment(5, 5, 5, 5),
+        common.TileSegment(10, 2, 10, 2),
+    ]
     bottom_aligned = [
         common.TileSegment(0, 5, 0, 5),
         common.TileSegment(5, 2, 5, 2),
@@ -126,14 +143,14 @@ def test_firefox_document_capture_rejects_wrong_encoded_format(monkeypatch):
 
 
 def test_stitch_tiles_validates_tile_count_before_importing_pyvips():
-    plan = common.build_tile_plan(10, 5)
+    plan = [common.TileSegment(0, 5, 0, 5), common.TileSegment(5, 5, 5, 5)]
     with pytest.raises(RuntimeError, match="Expected 2 screenshot tiles, got 1"):
         common.stitch_tiles([b"not-an-image"], plan, 10, 10, "png")
 
 
 def test_stitch_tiles_preserves_png_alpha_and_dimensions():
     pytest.importorskip("pyvips")
-    plan = common.build_tile_plan(10, 5)
+    plan = [common.TileSegment(0, 5, 0, 5), common.TileSegment(5, 5, 5, 5)]
     top = _encoded_image("PNG", size=(7, 5), mode="RGBA", color=(255, 0, 0, 0))
     bottom = _encoded_image("PNG", size=(7, 5), mode="RGBA", color=(0, 0, 255, 128))
 
@@ -148,7 +165,7 @@ def test_stitch_tiles_preserves_png_alpha_and_dimensions():
 
 def test_stitch_tiles_flattens_jpeg_to_white():
     pytest.importorskip("pyvips")
-    plan = common.build_tile_plan(5, 5)
+    plan = [common.TileSegment(0, 5, 0, 5)]
     transparent = _encoded_image(
         "PNG", size=(7, 5), mode="RGBA", color=(255, 0, 0, 0)
     )

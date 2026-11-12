@@ -302,7 +302,7 @@ def _growing_during_tiling_html():
 @pytest.mark.parametrize(
     "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
 )
-def test_full_page_rejects_growth_during_tiling_and_restores_page(
+def test_full_page_follows_growth_during_tiling_and_restores_page(
     browser, tmp_path
 ):
     pytest.importorskip("pyvips")
@@ -310,15 +310,14 @@ def test_full_page_rejects_growth_during_tiling_and_restores_page(
     destination = Path(tmp_path) / "grew-during-tiling.png"
 
     with hti:
-        with pytest.raises(RuntimeError, match="grew during"):
-            hti.screenshot(
-                html_str=_growing_during_tiling_html(),
-                save_as=destination.name,
-                size=(400, 600),
-                full_page=True,
-                full_page_profile="fast",
-                full_page_fixed_elements="last",
-            )
+        hti.screenshot(
+            html_str=_growing_during_tiling_html(),
+            save_as=destination.name,
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+            full_page_fixed_elements="last",
+        )
 
         if browser == "chrome-cdp":
             from html2image.browsers import _chromium_page_fit as page_fit
@@ -341,7 +340,8 @@ def test_full_page_rejects_growth_during_tiling_and_restores_page(
         "inlineVisibility": "",
         "position": "fixed",
     }
-    assert not destination.exists()
+    with Image.open(destination) as image:
+        assert image.size == (400, 3000)
 
 
 @pytest.mark.parametrize(

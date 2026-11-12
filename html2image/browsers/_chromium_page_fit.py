@@ -17,10 +17,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     TileSegment,
-    build_tile_plan,
     enforce_pixel_budget,
     image_dimensions,
     import_pyvips_for_stitching,
+    next_tile_height,
     output_format_from_filename,
     stitch_tiles,
     validate_fixed_element_mode,
@@ -163,36 +163,32 @@ def _read_dimensions(browser: Any, viewport_height: int) -> Tuple[float, float]:
     return width, height
 
 
+def _measure_once(browser: Any, viewport_height: int) -> int:
+    _, height = _read_dimensions(browser, viewport_height)
+    return max(viewport_height, int(math.ceil(height)))
+
+
 def _measure_stable_height(
     browser: Any,
     viewport_height: int,
     timeout_s: float,
 ) -> int:
-    """Return the largest height observed while the current layout settles."""
-    start = time.monotonic()
-    deadline = start + max(0.0, timeout_s)
-    best_height = float(viewport_height)
+    """Return the height of the page once its layout has settled."""
+    deadline = time.monotonic() + max(0.0, timeout_s)
     last_height: Optional[int] = None
     stable_ticks = 0
 
     while True:
-        _, measured_height = _read_dimensions(browser, viewport_height)
-        best_height = max(best_height, measured_height)
-        rounded_height = int(math.ceil(measured_height))
-        if rounded_height == last_height:
+        height = _measure_once(browser, viewport_height)
+        if height == last_height:
             stable_ticks += 1
         else:
             stable_ticks = 0
-        last_height = rounded_height
+        last_height = height
 
         if stable_ticks >= _STABILITY_STABLE_TICKS or time.monotonic() >= deadline:
-            return max(viewport_height, int(math.ceil(best_height)))
+            return height
         _sleep_ms(browser, _STABILITY_POLL_MS)
-
-
-def _measure_once(browser: Any, viewport_height: int) -> int:
-    _, height = _read_dimensions(browser, viewport_height)
-    return max(viewport_height, int(math.ceil(height)))
 
 
 def _lazy_growth_probe(browser: Any) -> float:
@@ -302,7 +298,7 @@ def _settled_document_height(
 
     final_height = _measure_stable_height(browser, viewport_height, timeout_s)
     enforce_pixel_budget(width, final_height, max_pixels)
-    return max(initial_height, final_height)
+    return final_height
 
 
 def _choose_tile_height(width: int, viewport_height: int) -> int:
@@ -512,27 +508,11 @@ def _capture_tiled(
     profile: str,
     fixed_elements: str,
     output_format: str,
+    max_pixels: Optional[int],
 ) -> bytes:
     # Fail before capturing every tile when the optional stitcher is absent.
     import_pyvips_for_stitching()
     tile_height = _choose_tile_height(width, viewport_height)
-    last_y = max(0, total_height - viewport_height)
-    if fixed_elements != "last" or last_y == 0:
-        plan = build_tile_plan(total_height, tile_height)
-    else:
-        # Align the final segment with max_scroll. A fixed element anchored at
-        # the top of the last viewport is then inside the clip even when a
-        # regular non-overlapping plan would have ended with a partial tile.
-        plan = build_tile_plan(last_y, tile_height)
-        final_height = total_height - last_y
-        plan.append(
-            TileSegment(
-                capture_y=last_y,
-                capture_height=final_height,
-                paste_y=last_y,
-                content_height=final_height,
-            )
-        )
     registry_key: Optional[str] = None
     if fixed_elements != "preserve":
         registry_key = _overlay_registry_key()
@@ -542,68 +522,64 @@ def _capture_tiled(
             normalize_sticky=fixed_elements == "auto",
         )
 
+    def show_overlays(y: int, height: int) -> None:
+        if registry_key is not None:
+            _set_overlay_visibility(
+                browser,
+                registry_key,
+                fixed_elements,
+                first=y == 0,
+                last=y + height == total_height,
+            )
+
+    plan: List[TileSegment] = []
     tiles: List[bytes] = []
+    y = 0
     try:
-        for index, segment in enumerate(plan):
-            if registry_key is not None:
-                _set_overlay_visibility(
-                    browser,
-                    registry_key,
-                    fixed_elements,
-                    first=index == 0,
-                    last=index == len(plan) - 1,
-                )
-            _scroll_to(browser, segment.capture_y)
+        while y < total_height:
+            height = next_tile_height(
+                y, total_height, tile_height, viewport_height, fixed_elements
+            )
+            show_overlays(y, height)
+            _scroll_to(browser, y)
             _wait_for_paint(browser)
             if profile != "fast":
                 _sleep_ms(browser, _TILE_SCROLL_SETTLE_MS)
-            actual_y = int(
-                _evaluate(
-                    browser,
-                    "Math.round(window.scrollY || window.pageYOffset || 0)",
+
+            # Scrolling can change the height of a page (a header that
+            # collapses, content loaded on demand). The tiles follow the page
+            # as it is now, not as it was when first measured.
+            measured_height = _measure_once(browser, viewport_height)
+            if measured_height != total_height:
+                total_height = measured_height
+                enforce_pixel_budget(width, total_height, max_pixels)
+                if y >= total_height:
+                    break
+                height = next_tile_height(
+                    y, total_height, tile_height, viewport_height, fixed_elements
                 )
-                or 0
-            )
-            expected_y = min(
-                segment.capture_y,
-                max(0, total_height - viewport_height),
-            )
-            if abs(actual_y - expected_y) > 1:
-                raise RuntimeError(
-                    "Chromium did not reach the requested tile position: "
-                    "requested y=%d, expected scroll y=%d, actual y=%d"
-                    % (segment.capture_y, expected_y, actual_y)
-                )
+                show_overlays(y, height)
+                _wait_for_paint(browser)
+
             tile = _capture_region(
                 browser,
                 x=0,
-                y=segment.capture_y,
+                y=y,
                 width=width,
-                height=segment.capture_height,
+                height=height,
                 output_format="png",
             )
-            _validate_capture(
-                tile,
-                width,
-                segment.capture_height,
-                "png",
-            )
+            _validate_capture(tile, width, height, "png")
             tiles.append(tile)
-
-        final_height = _measure_once(browser, viewport_height)
-        if final_height > total_height + 2:
-            raise RuntimeError(
-                "The page grew during Chromium's tiled capture "
-                "(%dpx to %dpx); refusing to return a silently truncated image."
-                % (total_height, final_height)
-            )
+            plan.append(TileSegment(y, height, y, height))
+            y += height
     finally:
         try:
             _scroll_to(browser, 0)
         finally:
             _restore_overlays(browser, registry_key)
 
-    return stitch_tiles(tiles, plan, width, total_height, output_format)
+    return stitch_tiles(tiles, plan, width, y, output_format)
 
 
 def capture_full_page(
@@ -711,6 +687,7 @@ def capture_full_page(
                 profile,
                 fixed_elements if fixed_elements != "hide" else "preserve",
                 output_format,
+                max_pixels,
             )
             destination.write_bytes(encoded)
         except Exception as tiled_error:

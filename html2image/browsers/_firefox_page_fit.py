@@ -19,10 +19,10 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     TileSegment,
-    build_tile_plan,
     enforce_pixel_budget,
     image_dimensions,
     import_pyvips_for_stitching,
+    next_tile_height,
     output_format_from_filename,
     stitch_tiles,
     validate_fixed_element_mode,
@@ -354,17 +354,15 @@ def _measure_stable_document_height(
     settle_after_s: float,
     min_duration_s: float,
 ) -> int:
-    """Return the largest observed height after a stable polling interval."""
+    """Return the height of the page once its layout has settled."""
     start = time.monotonic()
     deadline = start + max(0.0, deadline_s)
-    best_height = viewport_height
     last_height: Optional[int] = None
     stable_ticks = 0
 
     while True:
         height = _read_document_height(browser, viewport_height)
         enforce_pixel_budget(width, height, max_pixels)
-        best_height = max(best_height, height)
         if height == last_height:
             stable_ticks += 1
         else:
@@ -378,7 +376,7 @@ def _measure_stable_document_height(
             break
         _sleep_ms(_STABILITY_POLL_MS)
 
-    return best_height
+    return height
 
 
 def _lazy_growth_probe(
@@ -523,26 +521,20 @@ def _restore_overlays(browser: Any, state_key: str) -> None:
 
 def _visible_categories_for_tile(
     mode: str,
-    index: int,
-    tile_count: int,
+    first: bool,
+    last: bool,
 ) -> Tuple[str, ...]:
     if mode == "hide":
         return ()
     if mode == "first":
-        return ("top", "bottom", "ambiguous") if index == 0 else ()
+        return ("top", "bottom", "ambiguous") if first else ()
     if mode == "last":
-        return (
-            ("top", "bottom", "ambiguous")
-            if index == tile_count - 1
-            else ()
-        )
+        return ("top", "bottom", "ambiguous") if last else ()
     if mode == "auto":
-        if tile_count == 1:
-            return ("top", "bottom", "ambiguous")
         visible = []
-        if index == 0:
+        if first:
             visible.extend(("top", "ambiguous"))
-        if index == tile_count - 1:
+        if last:
             visible.append("bottom")
         return tuple(visible)
     return ("top", "bottom", "ambiguous")
@@ -588,40 +580,6 @@ def _try_document_capture(
     return image_bytes, ""
 
 
-def _build_viewport_tile_plan(
-    total_height: int,
-    viewport_height: int,
-) -> Sequence[TileSegment]:
-    """Build exact coverage whose final capture starts at max scroll.
-
-    Bottom-aligning the final viewport avoids cropping a fixed element at the
-    top of that viewport. This is required by the explicit ``last`` policy.
-    """
-    base_plan = build_tile_plan(total_height, viewport_height)
-    max_scroll = max(0, total_height - viewport_height)
-    starts = [
-        segment.capture_y
-        for segment in base_plan
-        if segment.capture_y < max_scroll
-    ]
-    if not starts or starts[-1] != max_scroll:
-        starts.append(max_scroll)
-
-    plan = []
-    for index, start in enumerate(starts):
-        next_start = starts[index + 1] if index + 1 < len(starts) else total_height
-        content_height = next_start - start
-        plan.append(
-            TileSegment(
-                capture_y=start,
-                capture_height=viewport_height,
-                paste_y=start,
-                content_height=content_height,
-            )
-        )
-    return plan
-
-
 def _capture_tiled_viewport(
     browser: Any,
     *,
@@ -631,93 +589,94 @@ def _capture_tiled_viewport(
     output_format: str,
     fixed_elements: str,
     overlay_state_key: str,
+    max_pixels: Optional[int],
 ) -> bytes:
     # Fail before capturing every tile when the optional stitcher is absent.
     import_pyvips_for_stitching()
-    if fixed_elements == "last":
-        base_plan = _build_viewport_tile_plan(total_height, viewport_height)
-    else:
-        base_plan = build_tile_plan(total_height, viewport_height)
-    adjusted_plan = []
-    tiles = []
     prepare_overlays = fixed_elements != "preserve"
-
     if prepare_overlays:
         _prepare_overlays(
             browser,
             overlay_state_key,
             normalize_sticky=fixed_elements == "auto",
         )
-    try:
-        for index, segment in enumerate(base_plan):
-            if prepare_overlays:
-                categories = _visible_categories_for_tile(
-                    fixed_elements,
-                    index,
-                    len(base_plan),
-                )
-                _set_visible_overlay_categories(
-                    browser,
-                    overlay_state_key,
-                    categories,
-                )
 
-            _scroll_to(browser, segment.capture_y)
+    def show_overlays(y: int, height: int) -> None:
+        if prepare_overlays:
+            _set_visible_overlay_categories(
+                browser,
+                overlay_state_key,
+                _visible_categories_for_tile(
+                    fixed_elements,
+                    first=y == 0,
+                    last=y + height == total_height,
+                ),
+            )
+
+    plan = []
+    tiles = []
+    y = 0
+    try:
+        while y < total_height:
+            height = next_tile_height(
+                y, total_height, viewport_height, viewport_height, fixed_elements
+            )
+            show_overlays(y, height)
+            _scroll_to(browser, y)
             _sleep_ms(_TILE_SCROLL_WAIT_MS)
-            actual_y = int(_evaluate(browser, _SCROLL_Y_JS) or 0)
-            if (
-                actual_y > segment.capture_y
-                or (
-                    fixed_elements == "last"
-                    and actual_y != segment.capture_y
+
+            # Scrolling can change the height of a page (a header that
+            # collapses, content loaded on demand). The tiles follow the page
+            # as it is now, not as it was when first measured.
+            measured_height = _read_document_height(browser, viewport_height)
+            if measured_height != total_height:
+                total_height = measured_height
+                enforce_pixel_budget(width, total_height, max_pixels)
+                if y >= total_height:
+                    break
+                height = next_tile_height(
+                    y, total_height, viewport_height, viewport_height,
+                    fixed_elements,
                 )
-            ):
+                show_overlays(y, height)
+
+            # Firefox captures the viewport, which stops short of ``y`` at the
+            # end of the page: the top of the tile is then cropped.
+            actual_y = int(_evaluate(browser, _SCROLL_Y_JS) or 0)
+            if actual_y > y:
                 raise RuntimeError(
                     "Firefox did not reach the requested tile position: "
-                    f"requested y={segment.capture_y}, actual y={actual_y}."
+                    f"requested y={y}, actual y={actual_y}."
                 )
-            crop_top = segment.paste_y - actual_y
+            crop_top = y - actual_y
+            height = min(height, viewport_height - crop_top)
+            if height <= 0:
+                break
+
             tile = _capture_screenshot_bytes(browser, origin="viewport")
             tile_width, tile_height = image_dimensions(tile)
             if (tile_width, tile_height) != (width, viewport_height):
                 raise RuntimeError(
-                    f"Firefox viewport tile {index} has dimensions "
+                    f"Firefox viewport tile {len(tiles)} has dimensions "
                     f"{tile_width}x{tile_height}; expected "
                     f"{width}x{viewport_height}."
                 )
-            if crop_top + segment.content_height > tile_height:
-                raise RuntimeError(
-                    f"Firefox tile {index} cannot cover its assigned page range."
-                )
-            adjusted_plan.append(
+            tiles.append(tile)
+            plan.append(
                 TileSegment(
                     capture_y=actual_y,
-                    capture_height=tile_height,
-                    paste_y=segment.paste_y,
-                    content_height=segment.content_height,
+                    capture_height=viewport_height,
+                    paste_y=y,
+                    content_height=height,
                     crop_top=crop_top,
                 )
             )
-            tiles.append(tile)
-
-        final_height = _read_document_height(browser, viewport_height)
-        if final_height > total_height + _DOCUMENT_DIMENSION_TOLERANCE_PX:
-            raise RuntimeError(
-                "The page grew during Firefox's tiled capture "
-                f"({total_height}px to {final_height}px); refusing to return "
-                "a silently truncated image."
-            )
+            y += height
     finally:
         if prepare_overlays:
             _restore_overlays(browser, overlay_state_key)
 
-    return stitch_tiles(
-        tiles,
-        adjusted_plan,
-        width,
-        total_height,
-        output_format,
-    )
+    return stitch_tiles(tiles, plan, width, y, output_format)
 
 
 def _validate_options(
@@ -814,7 +773,7 @@ def capture_full_page(
                 profile == "robust"
                 or growth >= _AUTO_PROBE_GROWTH_TRIGGER
             ):
-                after_warmup_height = _measure_stable_document_height(
+                total_height = _measure_stable_document_height(
                     browser,
                     width=width,
                     viewport_height=viewport_height,
@@ -827,9 +786,7 @@ def capture_full_page(
                     settle_after_s=_SETTLE_AFTER_WARMUP_S,
                     min_duration_s=_MIN_AFTER_WARMUP_S,
                 )
-                total_height = max(total_height, after_warmup_height)
 
-        total_height = max(viewport_height, total_height)
         enforce_pixel_budget(width, total_height, max_pixels)
         _set_viewport(browser, width, viewport_height)
         _scroll_top(browser)
@@ -867,9 +824,8 @@ def capture_full_page(
             )
 
         # The document may have changed while Firefox attempted the native
-        # capture.  Re-measure once so the fallback cannot truncate that growth.
-        fallback_height = _read_document_height(browser, viewport_height)
-        total_height = max(total_height, fallback_height)
+        # capture.
+        total_height = _read_document_height(browser, viewport_height)
         enforce_pixel_budget(width, total_height, max_pixels)
 
         try:
@@ -881,6 +837,7 @@ def capture_full_page(
                 output_format=output_format,
                 fixed_elements=fixed_elements,
                 overlay_state_key=overlay_state_key,
+                max_pixels=max_pixels,
             )
         except Exception as exc:
             raise RuntimeError(
