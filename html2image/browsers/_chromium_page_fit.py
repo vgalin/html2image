@@ -639,6 +639,8 @@ def capture_full_page(
     try:
         _send(browser, "Page.enable")
         page_enabled = True
+        # The end of a navigation is detected from the lifecycle events.
+        _send(browser, "Page.setLifecycleEventsEnabled", enabled=True)
         _set_viewport(browser, width, viewport_height)
         _navigate(browser, input_url)
 
