@@ -74,7 +74,7 @@ class ChromiumHeadless(Browser):
         if not input:
             raise ValueError('The `input` parameter is empty.')
 
-        if input.startswith('-'):
+        if input.lstrip().startswith('-'):
             raise ValueError(
                 f'Could not screenshot "{input}":\n'
                 'An input starting with "-" would be read as a browser flag.'
