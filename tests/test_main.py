@@ -71,6 +71,8 @@ def test_default_chrome_cdp_port_is_automatic():
     assert hti.browser.cdp_port is None
 
 
+# The tests below replace subprocess functions only after creating
+# Html2Image: on macOS, finding the browser runs it with subprocess.
 class FakeProcess:
     def poll(self):
         return 0
@@ -85,8 +87,8 @@ def test_allow_scripts_to_read_files_flag(monkeypatch, browser, allowed):
         commands.append(command)
         return FakeProcess()
 
-    monkeypatch.setattr(chrome_cdp.subprocess, "Popen", fake_popen)
     hti = Html2Image(browser=browser, allow_scripts_to_read_files=allowed)
+    monkeypatch.setattr(chrome_cdp.subprocess, "Popen", fake_popen)
     hti.browser._start_chrome()
     hti.browser.__exit__()
 
@@ -99,11 +101,11 @@ def test_allow_scripts_to_read_files_flag_cli(
     monkeypatch, tmp_path, browser, allowed
 ):
     commands = []
+    hti = Html2Image(browser=browser, allow_scripts_to_read_files=allowed)
     monkeypatch.setattr(
         chromium.subprocess, "run",
         lambda command, **kwargs: commands.append(command),
     )
-    hti = Html2Image(browser=browser, allow_scripts_to_read_files=allowed)
     hti.browser.screenshot("about:blank", str(tmp_path))
 
     assert ("--allow-file-access-from-files" in commands[0]) is allowed
@@ -128,8 +130,8 @@ def test_allow_scripts_to_read_files_pref_firefox(monkeypatch, allowed):
         prefs.append(_read_profile_prefs(command))
         return FakeProcess()
 
-    monkeypatch.setattr(firefox_bidi.subprocess, "Popen", fake_popen)
     hti = Html2Image(browser="firefox", allow_scripts_to_read_files=allowed)
+    monkeypatch.setattr(firefox_bidi.subprocess, "Popen", fake_popen)
     hti.browser._start_firefox()
     hti.browser.__exit__()
 
@@ -146,10 +148,10 @@ def test_allow_scripts_to_read_files_pref_firefox_headless(
         prefs.append(_read_profile_prefs(command))
         (tmp_path / "screenshot.png").touch()
 
-    monkeypatch.setattr(firefox.subprocess, "run", fake_run)
     hti = Html2Image(
         browser="firefox-headless", allow_scripts_to_read_files=allowed
     )
+    monkeypatch.setattr(firefox.subprocess, "run", fake_run)
     hti.browser.screenshot("about:blank", str(tmp_path))
 
     assert _strict_origin_pref(allowed) in prefs[0]
