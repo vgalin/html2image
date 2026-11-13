@@ -27,6 +27,7 @@ class FirefoxHeadlessScreenshot(Browser):
         flags=None,
         print_command=False,
         disable_logging=False,
+        allow_scripts_to_read_files=False,
     ):
         self.executable = executable
         if not flags:
@@ -36,6 +37,7 @@ class FirefoxHeadlessScreenshot(Browser):
 
         self.print_command = print_command
         self._disable_logging = disable_logging
+        self.allow_scripts_to_read_files = allow_scripts_to_read_files
 
     @property
     def executable(self):
@@ -84,6 +86,11 @@ class FirefoxHeadlessScreenshot(Browser):
 
         profile_dir = tempfile.mkdtemp(prefix='html2image_firefox_cli_')
         try:
+            strict_origin = 'false' if self.allow_scripts_to_read_files else 'true'
+            Path(profile_dir, 'user.js').write_text(
+                f'user_pref("security.fileuri.strict_origin_policy", {strict_origin});\n',
+                encoding='utf-8',
+            )
             output_full_path = os.path.join(output_path, output_file)
             command = [
                 str(self.executable),

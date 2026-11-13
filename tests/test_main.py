@@ -1,4 +1,5 @@
 from html2image import Html2Image
+from html2image.browsers import chrome_cdp, chromium, firefox, firefox_bidi
 from html2image.browsers.chrome_cdp import ChromeCDP
 from pathlib import Path
 from PIL import Image, ImageChops
@@ -68,6 +69,140 @@ def test_cdp_port_forwarded_for_default_chrome_backend():
 def test_default_chrome_cdp_port_is_automatic():
     hti = Html2Image(browser='chrome')
     assert hti.browser.cdp_port is None
+
+
+# The tests below replace subprocess functions only after creating
+# Html2Image: on macOS, finding the browser runs it with subprocess.
+class FakeProcess:
+    def poll(self):
+        return 0
+
+
+@pytest.mark.parametrize("browser", ["chrome", "edge"])
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_flag(monkeypatch, browser, allowed):
+    commands = []
+
+    def fake_popen(command, **kwargs):
+        commands.append(command)
+        return FakeProcess()
+
+    hti = Html2Image(browser=browser, allow_scripts_to_read_files=allowed)
+    monkeypatch.setattr(chrome_cdp.subprocess, "Popen", fake_popen)
+    hti.browser._start_chrome()
+    hti.browser.__exit__()
+
+    assert ("--allow-file-access-from-files" in commands[0]) is allowed
+
+
+@pytest.mark.parametrize("browser", ["chrome-headless", "edge-headless"])
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_flag_cli(
+    monkeypatch, tmp_path, browser, allowed
+):
+    commands = []
+    hti = Html2Image(browser=browser, allow_scripts_to_read_files=allowed)
+    monkeypatch.setattr(
+        chromium.subprocess, "run",
+        lambda command, **kwargs: commands.append(command),
+    )
+    hti.browser.screenshot("about:blank", str(tmp_path))
+
+    assert ("--allow-file-access-from-files" in commands[0]) is allowed
+    assert "--hide-scrollbars" in commands[0]  # default flags are kept
+
+
+def _read_profile_prefs(command):
+    profile_dir = command[command.index("--profile") + 1]
+    return Path(profile_dir, "user.js").read_text(encoding="utf-8")
+
+
+def _strict_origin_pref(allowed):
+    value = "false" if allowed else "true"
+    return f'user_pref("security.fileuri.strict_origin_policy", {value});'
+
+
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_pref_firefox(monkeypatch, allowed):
+    prefs = []
+
+    def fake_popen(command, **kwargs):
+        prefs.append(_read_profile_prefs(command))
+        return FakeProcess()
+
+    hti = Html2Image(browser="firefox", allow_scripts_to_read_files=allowed)
+    monkeypatch.setattr(firefox_bidi.subprocess, "Popen", fake_popen)
+    hti.browser._start_firefox()
+    hti.browser.__exit__()
+
+    assert _strict_origin_pref(allowed) in prefs[0]
+
+
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_pref_firefox_headless(
+    monkeypatch, tmp_path, allowed
+):
+    prefs = []
+
+    def fake_run(command, **kwargs):
+        prefs.append(_read_profile_prefs(command))
+        (tmp_path / "screenshot.png").touch()
+
+    hti = Html2Image(
+        browser="firefox-headless", allow_scripts_to_read_files=allowed
+    )
+    monkeypatch.setattr(firefox.subprocess, "run", fake_run)
+    hti.browser.screenshot("about:blank", str(tmp_path))
+
+    assert _strict_origin_pref(allowed) in prefs[0]
+
+
+# The page reads the file with a synchronous XHR because firefox-headless
+# takes its screenshot as soon as the page has loaded: the response of an
+# asynchronous fetch would often arrive too late.
+READ_FILE_HTML = """
+<script>
+    let color = "#ff0000";
+    try {
+        const request = new XMLHttpRequest();
+        request.open("GET", "secret.txt", false);
+        request.send();
+        if (request.responseText === "secret") color = "#00ff00";
+    } catch (error) {}
+    document.documentElement.style.background = color;
+</script>
+"""
+
+
+@pytest.mark.parametrize("browser", [
+    "chrome", "edge", "firefox",
+    "chrome-headless", "edge-headless", "firefox-headless",
+])
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_screenshot(tmp_path, browser, allowed):
+    try:
+        hti = Html2Image(
+            browser=browser,
+            output_path=OUTPUT_PATH,
+            temp_path=str(tmp_path / "temp"),
+            disable_logging=True,
+            allow_scripts_to_read_files=allowed,
+        )
+    except FileNotFoundError:
+        pytest.skip(f"'{browser}' executable not found on this machine")
+
+    secret_file = tmp_path / "secret.txt"
+    secret_file.write_text("secret")
+    hti.load_file(str(secret_file))
+
+    paths = hti.screenshot(
+        html_str=READ_FILE_HTML,
+        save_as=f"read_files_{browser}_{allowed}.png",
+        size=(320, 240),
+    )
+
+    expected = (0, 255, 0) if allowed else (255, 0, 0)
+    assert Image.open(paths[0]).convert("RGB").getpixel((10, 10)) == expected
 
 
 def test_screenshot_string_chrome_cdp():

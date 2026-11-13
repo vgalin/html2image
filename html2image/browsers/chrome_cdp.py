@@ -35,7 +35,7 @@ class ChromeCDP(CDPBrowser):
     def __init__(
         self, executable=None, flags=None,
         print_command=False, cdp_port=None,
-        disable_logging=False,
+        disable_logging=False, allow_scripts_to_read_files=False,
     ):
         self.executable = executable
         if not flags:
@@ -48,6 +48,7 @@ class ChromeCDP(CDPBrowser):
         self.print_command = print_command
         self.cdp_port = cdp_port
         self._disable_logging = disable_logging
+        self.allow_scripts_to_read_files = allow_scripts_to_read_files
 
         self._ws = None  # Websocket connection
         self._session_id = None  # CDP session ID from Target.attachToTarget
@@ -111,6 +112,8 @@ class ChromeCDP(CDPBrowser):
         ]
         if '--remote-allow-origins=*' not in launch_flags:
             launch_flags.append('--remote-allow-origins=*')
+        if self.allow_scripts_to_read_files:
+            launch_flags.append('--allow-file-access-from-files')
 
         command = [
             f'{self.executable}',
@@ -120,7 +123,6 @@ class ChromeCDP(CDPBrowser):
             '--headless=new',
             '--no-first-run',
             '--no-default-browser-check',
-            '--allow-file-access-from-files',
             *launch_flags,
         ]
 
