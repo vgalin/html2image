@@ -559,13 +559,15 @@ def test_load_file_rejects_path(tmp_path):
 @pytest.mark.parametrize(
     "browser", ["chrome-headless", "edge-headless", "firefox-headless"]
 )
-def test_cli_backends_reject_input_read_as_flag(tmp_path, browser):
+@pytest.mark.parametrize("prefix", ["", " ", "\t"])
+def test_cli_backends_reject_input_read_as_flag(tmp_path, browser, prefix):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
     injected_output = tmp_path / "injected.png"
 
+    # Chromium strips the whitespace around its arguments
     with pytest.raises(ValueError):
         hti.screenshot(
-            url=f"--screenshot={injected_output}",
+            url=f"{prefix}--screenshot={injected_output}",
             save_as=f"flag_as_url_{browser}.png",
         )
 
