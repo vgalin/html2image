@@ -325,7 +325,7 @@ hti = Html2Image(browser='firefox', browser_bidi_port=9333)
 
 ### Reading local files from JavaScript
 
-By default, the browser does not let a page opened from a file use JavaScript to read other files on your disk. Images, stylesheets and fonts used by your HTML still load normally. What gets blocked is code that loads a file itself, for example `fetch('data.json')`, or a chart library that reads its data from a local file. html2image does not report it: the screenshot is still taken, without that content.
+By default, the browser does not let a page opened from a file use JavaScript to read other files on your disk. Images, stylesheets and fonts used by your HTML still load normally. What gets blocked is code that loads a file itself, for example `fetch('data.json')`, or a chart library that reads its data from a local file. JavaScript modules (`<script type="module">`) and tags that have a `crossorigin` attribute, such as `<img crossorigin src="photo.png">`, are blocked too. html2image does not report it: the screenshot is still taken, without that content.
 
 If your HTML needs this, you can lift the restriction:
 

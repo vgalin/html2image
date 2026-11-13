@@ -78,7 +78,7 @@ class Html2Image():
         - `allow_scripts_to_read_files` : bool, optional
             + Lets JavaScript in HTML opened from a file read other files on
               disk, for example with `fetch()`. Images, stylesheets and fonts
-              load without it.
+              load without it, unless their tag has a `crossorigin` attribute.
             + Security risk: any script in the page can then read any file the
               current user can read and send it over the network. Only enable
               it for HTML you trust.
