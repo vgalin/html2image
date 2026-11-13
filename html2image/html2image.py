@@ -75,6 +75,15 @@ class Html2Image():
         - `custom_flags`: list of str or str, optional
             + Additional custom flags for the headless browser.
 
+        - `allow_scripts_to_read_files` : bool, optional
+            + Lets JavaScript in HTML opened from a file read other files on
+              disk, for example with `fetch()`. Images, stylesheets and fonts
+              load without it.
+            + Security risk: any script in the page can then read any file the
+              current user can read and send it over the network. Only enable
+              it for HTML you trust.
+            + Default is False.
+
         Raises
         ------
         - `FileNotFoundError`
@@ -94,6 +103,7 @@ class Html2Image():
         keep_temp_files=False,
         custom_flags=None,
         disable_logging=False,
+        allow_scripts_to_read_files=False,
     ):
 
         if browser.lower() not in browser_map:
@@ -117,6 +127,7 @@ class Html2Image():
                 executable=browser_executable,
                 flags=custom_flags,
                 disable_logging=disable_logging,
+                allow_scripts_to_read_files=allow_scripts_to_read_files,
                 **cdp_kwargs,
             )
         elif issubclass(browser_class, BiDiBrowser):
@@ -127,6 +138,7 @@ class Html2Image():
                 executable=browser_executable,
                 flags=custom_flags,
                 disable_logging=disable_logging,
+                allow_scripts_to_read_files=allow_scripts_to_read_files,
                 **bidi_kwargs,
             )
         else:
@@ -134,6 +146,7 @@ class Html2Image():
                 executable=browser_executable,
                 flags=custom_flags,
                 disable_logging=disable_logging,
+                allow_scripts_to_read_files=allow_scripts_to_read_files,
             )
 
     @property

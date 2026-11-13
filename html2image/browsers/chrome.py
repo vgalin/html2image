@@ -194,6 +194,7 @@ class ChromeHeadless(ChromiumHeadless):
         print_command=False,
         disable_logging=False,
         use_new_headless=None,
+        allow_scripts_to_read_files=False,
     ):
         super().__init__(
             executable=executable,
@@ -201,6 +202,7 @@ class ChromeHeadless(ChromiumHeadless):
             print_command=print_command,
             disable_logging=disable_logging,
             use_new_headless=use_new_headless,
+            allow_scripts_to_read_files=allow_scripts_to_read_files,
         )
 
     @property

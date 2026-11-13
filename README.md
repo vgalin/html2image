@@ -75,6 +75,7 @@ Multiple arguments can be passed to the constructor:
 -   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 -   `keep_temp_files` : Pass True to this argument to not automatically remove temporary files created in `temp_path`. Default is False.
 -   `disable_logging` : Suppress stdout/stderr logs generated in the console by underlying browsers. 
+-   `allow_scripts_to_read_files` : Lets JavaScript in your HTML read other files from your disk. Off by default; most pages don't need it. Read [Reading local files from JavaScript](#reading-local-files-from-javascript) before turning it on.
 
 Example:
 ```python
@@ -321,6 +322,18 @@ hti = Html2Image(browser='chrome', browser_cdp_port=9222)
 # Fix the BiDi port for Firefox
 hti = Html2Image(browser='firefox', browser_bidi_port=9333)
 ```
+
+### Reading local files from JavaScript
+
+By default, the browser does not let a page opened from a file use JavaScript to read other files on your disk. Images, stylesheets and fonts used by your HTML still load normally. What gets blocked is code that loads a file itself, for example `fetch('data.json')`, or a chart library that reads its data from a local file. html2image does not report it: the screenshot is still taken, without that content.
+
+If your HTML needs this, you can lift the restriction:
+
+```python
+hti = Html2Image(allow_scripts_to_read_files=True)
+```
+
+**Only do this with HTML that you wrote or fully trust.** With this option on, any script in the page can read any file your user account can read (configuration files, SSH keys, saved passwords or tokens) and send it over the internet. Never turn it on if the HTML, or any part of it, comes from someone else, such as the users of your application.
 
 ## Using the CLI
 HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and URLs on the go. You can call it by typing `hti` or `html2image` into a terminal.
