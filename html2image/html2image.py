@@ -9,6 +9,7 @@ For feedback, usage and to learn more, see https://github.com/vgalin/html2image
 """
 
 import os
+import re
 import shutil
 
 from textwrap import dedent
@@ -37,6 +38,29 @@ browser_map = {
     'mozilla-firefox': firefox_bidi.FirefoxBiDi,
     'firefox-bidi': firefox_bidi.FirefoxBiDi,
     'firefox-headless': firefox.FirefoxHeadlessScreenshot,
+}
+
+# Paper sizes of the `pdf()` method, in their own orientation.
+paper_sizes = {
+    'a3': ('297mm', '420mm'),
+    'a4': ('210mm', '297mm'),
+    'a5': ('148mm', '210mm'),
+    'letter': ('8.5in', '11in'),
+    'legal': ('8.5in', '14in'),
+    'tabloid': ('11in', '17in'),
+    # Default size of a 16:9 PowerPoint slide.
+    'slide': ('1280px', '720px'),
+}
+
+# Absolute CSS units, as the number of units in one inch.
+css_units = {
+    'mm': 25.4,
+    'cm': 2.54,
+    'q': 101.6,
+    'in': 1,
+    'pt': 72,
+    'pc': 6,
+    'px': 96,
 }
 
 
@@ -526,6 +550,104 @@ class Html2Image():
 
         return css_str
 
+    @staticmethod
+    def _parse_css_length(length) -> float:
+        """ Converts a length written as in CSS (e.g. '2cm') to inches.
+
+        Only absolute units are accepted. A number without unit is only
+        accepted if it is 0.
+
+        Raises
+        ------
+        - `ValueError`
+            + If `length` is not a valid length.
+        """
+        match = re.fullmatch(
+            rf'(\d+\.?\d*|\.\d+)({"|".join(css_units)})?',
+            str(length),
+            re.IGNORECASE,
+        )
+        if not match or (not match[2] and float(match[1]) != 0):
+            raise ValueError(
+                f'"{length}" is not a valid length: use a number followed '
+                'by mm, cm, Q, in, pt, pc or px, e.g. "1cm".'
+            )
+
+        number, unit = match.groups()
+        return float(number) / css_units[unit.lower()] if unit else 0.0
+
+    @staticmethod
+    def _prepare_pdf_options(
+        paper_size, landscape, margin, background, scale
+    ) -> dict:
+        """ Converts the options of the `pdf()` method for the browser.
+
+        Returns
+        -------
+        - dict
+            + The `width` and `height` of the paper and its `margin`
+            (top, right, bottom, left), in inches, with `background`
+            and `scale` unchanged.
+
+        Raises
+        ------
+        - `ValueError`
+            + If an option has an invalid value.
+        """
+        if not 0.1 <= scale <= 2:
+            raise ValueError(
+                f'scale should be between 0.1 and 2, got {scale}.'
+            )
+
+        if margin is None:
+            margin = '0' if str(paper_size).lower() == 'slide' else '1cm'
+
+        if isinstance(paper_size, str):
+            if paper_size.lower() not in paper_sizes:
+                raise ValueError(
+                    f'"{paper_size}" is not a paper size known by HTML2Image.'
+                )
+            paper_size = paper_sizes[paper_size.lower()]
+
+        width, height = (
+            Html2Image._parse_css_length(length) for length in paper_size
+        )
+        if not width or not height:
+            raise ValueError('The paper width and height should not be 0.')
+
+        # The orientation is only given by the dimensions: browsers swap
+        # them once more if they are also told the paper is in landscape.
+        if landscape is not None:
+            width, height = sorted((width, height), reverse=landscape)
+
+        margins = [
+            Html2Image._parse_css_length(length)
+            for length in str(margin).split()
+        ]
+        if not 1 <= len(margins) <= 4:
+            raise ValueError(
+                f'margin should contain 1 to 4 lengths, got "{margin}".'
+            )
+
+        # As in CSS, a missing right or bottom margin is the top one,
+        # and a missing left margin is the right one.
+        for count, source in ((1, 0), (2, 0), (3, 1)):
+            if len(margins) == count:
+                margins.append(margins[source])
+
+        top, right, bottom, left = margins
+        if left + right >= width or top + bottom >= height:
+            raise ValueError(
+                f'margin "{margin}" leaves no room for content on the paper.'
+            )
+
+        return {
+            'width': width,
+            'height': height,
+            'margin': tuple(margins),
+            'background': background,
+            'scale': scale,
+        }
 
     def screenshot(
         self,
@@ -578,12 +700,151 @@ class Html2Image():
         ------
         - `FileNotFoundError`
         - `ValueError`
-            + If a name given in `save_as` is a path and not a filename.
+            + If a name given in `save_as` is a path and not a filename,
+            + or if a name given in `save_as` ends with .pdf: use the
+            + `pdf()` method instead.
         """
 
         # TODO / NOTE : This does not pose any problem for now but setting
         # mutables (here empty lists) as default arguments of a function
         # can cause unwanted behaviours.
+
+        for name in [save_as] if isinstance(save_as, str) else save_as:
+            if str(name).lower().endswith('.pdf'):
+                raise ValueError(
+                    f'"{name}": screenshot() only saves images, '
+                    'use pdf() to save PDF files.'
+                )
+
+        return self._render(
+            html_str=html_str,
+            html_file=html_file,
+            css_str=css_str,
+            css_file=css_file,
+            other_file=other_file,
+            url=url,
+            save_as=save_as,
+            size=size,
+        )
+
+    def pdf(
+        self,
+        html_str=[],
+        html_file=[],
+        css_str=[],
+        css_file=[],
+        other_file=[],
+        url=[],
+        save_as='document.pdf',
+        paper_size='A4',
+        landscape=None,
+        margin=None,
+        background=True,
+        scale=1,
+    ):
+        """ Saves web pages, HTML/CSS strings or files and other files as PDF files.
+
+        The page is printed, as with the "Save as PDF" option of a browser:
+        the content is laid out for paper and split into pages, text stays
+        selectable and links stay clickable.
+
+        The sources, `save_as` and the returned list work as in the
+        `screenshot()` method. There is no `size` parameter: the width of
+        the paper replaces the width of the window.
+
+        Parameters
+        ----------
+        - `html_str`, `html_file`, `css_str`, `css_file`, `other_file`, `url`
+            + Same as in the `screenshot()` method.
+        - `save_as`: list of str or str
+            + Name(s) of the PDF file(s) to create.
+            + Default is document.pdf
+        - `paper_size`: str or (str, str)
+            + Name of a paper size: 'A3', 'A4', 'A5', 'Letter', 'Legal',
+              'Tabloid', or 'slide' (16:9, the size of a PowerPoint slide).
+              Names are not case-sensitive.
+            + Or a (width, height) pair of lengths, e.g. ('15cm', '10cm').
+            + If the page sets its own size with a CSS `@page` rule, that
+              size is used instead.
+            + Default is 'A4'.
+        - `landscape`: bool or None
+            + True makes the paper wider than tall, False makes it taller
+              than wide.
+            + None keeps the orientation of `paper_size`: upright for paper
+              sizes, sideways for 'slide', as written for a (width, height)
+              pair.
+            + Default is None.
+        - `margin`: str, optional
+            + Blank space around the content of each page, written like the
+              CSS `margin` property: '1cm' for all sides, '1cm 2cm' for top
+              and bottom then left and right, '1cm 2cm 3cm' for top, left
+              and right, then bottom, '1cm 2cm 3cm 4cm' for top, right,
+              bottom and left.
+            + If the page sets its own margins with a CSS `@page` rule, they
+              are used instead.
+            + Default is 1cm, or 0 for 'slide'.
+        - `background`: bool
+            + Whether background colors and images are printed.
+            + Default is True.
+        - `scale`: float
+            + Zoom of the content, between 0.1 and 2.
+            + Default is 1.
+
+        Lengths are written as in CSS, with a unit: mm, cm, Q, in, pt, pc or
+        px (1px is 1/96 of an inch). A length without unit is only accepted
+        if it is 0.
+
+        Returns
+        -------
+        - list of str
+            + A list of the file path(s) of the generated PDF(s)
+
+        Raises
+        ------
+        - `ValueError`
+            + If the browser cannot print to PDF: use 'chrome', 'edge' or
+              'firefox', not 'chrome-headless', 'edge-headless' or
+              'firefox-headless',
+            + or if an option has an invalid value.
+        """
+        if not isinstance(self.browser, (CDPBrowser, BiDiBrowser)):
+            raise ValueError(
+                'pdf() works with the "chrome", "edge" and "firefox" '
+                'browsers, not with "chrome-headless", "edge-headless" or '
+                '"firefox-headless".'
+            )
+
+        return self._render(
+            html_str=html_str,
+            html_file=html_file,
+            css_str=css_str,
+            css_file=css_file,
+            other_file=other_file,
+            url=url,
+            save_as=save_as,
+            size=[],
+            pdf_options=Html2Image._prepare_pdf_options(
+                paper_size, landscape, margin, background, scale
+            ),
+        )
+
+    def _render(
+        self,
+        html_str,
+        html_file,
+        css_str,
+        css_file,
+        other_file,
+        url,
+        save_as,
+        size,
+        **browser_options,
+    ):
+        """ Renders different resources, see `screenshot()` and `pdf()`.
+
+        `browser_options` are passed to the `screenshot()` method of the
+        browser.
+        """
 
         screenshot_paths = []
 
@@ -635,10 +896,12 @@ class Html2Image():
             )
 
             self.load_str(content=content, as_filename=html_filename)
-            self.screenshot_loaded_file(
-                file=html_filename,
+            self.browser.screenshot(
+                input=os.path.join(self.temp_path, html_filename),
+                output_path=self.output_path,
                 output_file=name,
                 size=current_size,
+                **browser_options,
             )
             if not self.keep_temp_files:
                 self._remove_temp_file(html_filename)
@@ -652,10 +915,14 @@ class Html2Image():
 
             if os.path.isfile(screenshot_target):
                 self.load_file(src=screenshot_target)
-                self.screenshot_loaded_file(
-                    file=os.path.basename(screenshot_target),
+                self.browser.screenshot(
+                    input=os.path.join(
+                        self.temp_path, os.path.basename(screenshot_target)
+                    ),
+                    output_path=self.output_path,
                     output_file=name,
                     size=current_size,
+                    **browser_options,
                 )
                 if not self.keep_temp_files:
                     self._remove_temp_file(os.path.basename(screenshot_target))                
@@ -668,10 +935,12 @@ class Html2Image():
             name = save_as_filenames.pop(0)
             current_size = sizes.pop(0)
 
-            self.screenshot_url(
-                url=target_url,
+            self.browser.screenshot(
+                input=target_url,
+                output_path=self.output_path,
                 output_file=name,
                 size=current_size,
+                **browser_options,
             )
             screenshot_paths.append(os.path.join(self.output_path, name))
 

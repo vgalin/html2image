@@ -418,14 +418,41 @@ class ChromeCDP(CDPBrowser):
         )
         self._wait_for_result(resume_id)
 
+    def _print_to_pdf(self, output_file_path, options):
+        """Print the current page to a PDF file."""
+        logger.debug('Printing to PDF...')
+        top, right, bottom, left = options['margin']
+        pdf_id = self.cdp_send(
+            'Page.printToPDF',
+            paperWidth=options['width'],
+            paperHeight=options['height'],
+            marginTop=top,
+            marginRight=right,
+            marginBottom=bottom,
+            marginLeft=left,
+            printBackground=options['background'],
+            scale=options['scale'],
+            # Let a CSS `@page` size win, as Firefox always does.
+            preferCSSPageSize=True,
+        )
+        pdf_data = self._wait_for_result(pdf_id).get('result', {}).get('data')
+        if not pdf_data:
+            raise RuntimeError('No PDF data received from Chrome.')
+
+        with open(output_file_path, 'wb') as file_obj:
+            file_obj.write(base64.b64decode(pdf_data))
+
     def screenshot(
         self,
         input,
         output_path,
         output_file='screenshot.png',
         size=(1920, 1080),
+        pdf_options=None,
     ):
         """Take a screenshot using Chrome DevTools Protocol.
+
+        If `pdf_options` is given, the page is printed to a PDF instead.
 
         See: https://chromedevtools.github.io/devtools-protocol/
         """
@@ -473,6 +500,12 @@ class ChromeCDP(CDPBrowser):
             virtual_time_budget = self._virtual_time_budget()
             if virtual_time_budget:
                 self._spend_virtual_time(virtual_time_budget)
+
+            if pdf_options is not None:
+                self._print_to_pdf(
+                    os.path.join(output_path, output_file), pdf_options
+                )
+                return
 
             logger.debug('Capturing screenshot...')
 

@@ -293,16 +293,71 @@ For ease of use, some flags are set by default. However default flags are not us
 ['--a', '--b']
 ```
 
+### Save pages as PDF
+
+The `pdf()` method saves pages as PDF files instead of images. It takes the same sources as the `screenshot()` method (`url`, `html_file`, `css_file`, `html_str`, `css_str`, `other_file`) and the same `save_as`, and also returns a list of paths.
+
+```python
+hti.pdf(url='https://www.python.org', save_as='python_org.pdf')
+
+hti.pdf(
+    html_str='<h1>Invoice</h1><p>Thank you for your order.</p>',
+    css_str='h1 { color: navy; }',
+    save_as='invoice.pdf',
+)
+```
+
+The page is printed, as with the "Save as PDF" option of your browser: the content is laid out for paper and split into pages, the text stays selectable and the links stay clickable. Because of this, a PDF does not always look like the screenshot of the same page: styles written for printing (`@media print`) apply, and the width of the paper replaces the width of the window, so there is no `size` parameter.
+
+You can choose the paper and its margins:
+
+```python
+hti.pdf(url='https://www.python.org', save_as='python_org.pdf',
+        paper_size='Letter', landscape=True, margin='1.5cm')
+
+hti.pdf(html_file='label.html', save_as='label.pdf',
+        paper_size=('10cm', '15cm'), margin='5mm 1cm')
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `paper_size` | `'A4'` | `'A3'`, `'A4'`, `'A5'`, `'Letter'`, `'Legal'`, `'Tabloid'`, `'slide'` (16:9, 1280 × 720 px), or a `(width, height)` pair |
+| `landscape` | `None` | `True` for sideways paper, `False` for upright paper, `None` to keep the orientation of `paper_size` |
+| `margin` | `'1cm'` (`'0'` for `'slide'`) | written like the CSS `margin` property: 1 to 4 lengths |
+| `background` | `True` | print background colors and images |
+| `scale` | `1` | zoom of the content, from 0.1 to 2 |
+
+Lengths are written as in CSS, with a unit: `mm`, `cm`, `Q`, `in`, `pt`, `pc` or `px` (1px is 1/96 of an inch). Only `0` can be written without a unit.
+
+If your page sets its own paper size or margins with a CSS `@page` rule, they take precedence over `paper_size` and `margin`.
+
+**Slides.** To turn HTML slides into a PDF, make each slide 1280 × 720 px and start a new page after each one:
+
+```python
+css = """
+body { margin: 0; }
+section { width: 1280px; height: 720px; break-after: page; }
+"""
+html = '<section>First slide</section><section>Second slide</section>'
+
+hti.pdf(html_str=html, css_str=css, save_as='slides.pdf', paper_size='slide')
+```
+
+*N.B.:*
+- *The `pdf()` method works with the `chrome` (default), `edge` and `firefox` browsers. It does not work with the legacy `chrome-headless`, `edge-headless` and `firefox-headless` browsers, which can only take screenshots: with them, `pdf()` raises a `ValueError` and creates no file.*
+- *Chrome and Firefox do not lay out a page in exactly the same way, so their PDFs of the same page can differ, for example in the number of pages. Firefox is also slower: a few seconds per PDF.*
+- *The `screenshot()` method refuses file names ending in `.pdf`: use the `pdf()` method instead.*
+
 ### Browser support
 
-| Browser | Aliases | Protocol | PNG | JPEG | SVG transparency | Exact viewport |
-|---------|---------|----------|:---:|:----:|:----------------:|:--------------:|
-| Chrome | `chrome`, `chrome-cdp`, `chromium`, `chromium-cdp`, `google-chrome` | CDP | ✓ | ✓ | ✓ | ✓ |
-| Chrome (legacy) | `chrome-headless` | CLI | ✓ | ✓ | ✓ | ~ |
-| Edge | `edge`, `edge-cdp` | CDP | ✓ | ✓ | ✓ | ✓ |
-| Edge (legacy) | `edge-headless` | CLI | ✓ | ✓ | ✓ | ~ |
-| Firefox | `firefox`, `mozilla-firefox`, `firefox-bidi` | BiDi | ✓ | ✓ | ⚠ | ✓ |
-| Firefox (legacy) | `firefox-headless` | CLI | ✓ | ✗ | ⚠ | ~ |
+| Browser | Aliases | Protocol | PNG | JPEG | PDF | SVG transparency | Exact viewport |
+|---------|---------|----------|:---:|:----:|:---:|:----------------:|:--------------:|
+| Chrome | `chrome`, `chrome-cdp`, `chromium`, `chromium-cdp`, `google-chrome` | CDP | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Chrome (legacy) | `chrome-headless` | CLI | ✓ | ✓ | ✗ | ✓ | ~ |
+| Edge | `edge`, `edge-cdp` | CDP | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Edge (legacy) | `edge-headless` | CLI | ✓ | ✓ | ✗ | ✓ | ~ |
+| Firefox | `firefox`, `mozilla-firefox`, `firefox-bidi` | BiDi | ✓ | ✓ | ✓ | ⚠ | ✓ |
+| Firefox (legacy) | `firefox-headless` | CLI | ✓ | ✗ | ✗ | ⚠ | ~ |
 
 **Legend:**
 - ✓ supported
@@ -473,7 +528,6 @@ uv run pytest
 
 
 ## TODO List
--   PDF generation?
 -   Issue templates, pull request template, code of conduct.
 
 ---

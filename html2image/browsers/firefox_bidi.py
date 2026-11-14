@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 BIDI_TIMEOUT = 30
 
+CM_PER_INCH = 2.54
+
 
 class FirefoxBiDi(BiDiBrowser):
     """Firefox backend using the WebDriver BiDi protocol.
@@ -303,6 +305,32 @@ class FirefoxBiDi(BiDiBrowser):
         )
         Path(output_file_path).write_bytes(base64.b64decode(response['result']['data']))
 
+    def _print(self, output_file_path, options):
+        # BiDi lengths are in centimeters.
+        top, right, bottom, left = (
+            length * CM_PER_INCH for length in options['margin']
+        )
+        response = self._bidi_expect_ok(
+            self._bidi_send(
+                'browsingContext.print',
+                context=self._context_id,
+                page={
+                    'width': options['width'] * CM_PER_INCH,
+                    'height': options['height'] * CM_PER_INCH,
+                },
+                margin={
+                    'top': top, 'right': right, 'bottom': bottom, 'left': left,
+                },
+                background=options['background'],
+                scale=options['scale'],
+                # Firefox ignores the scale while it shrinks wide pages
+                # to fit the paper.
+                shrinkToFit=options['scale'] == 1,
+            ),
+            timeout=30,
+        )
+        Path(output_file_path).write_bytes(base64.b64decode(response['result']['data']))
+
     def _shutdown_process_tree(self):
         if self.proc is None or self.proc.poll() is not None:
             return
@@ -346,8 +374,12 @@ class FirefoxBiDi(BiDiBrowser):
         output_path,
         output_file='screenshot.png',
         size=(1920, 1080),
+        pdf_options=None,
     ):
-        """Take a screenshot using Firefox via WebDriver BiDi."""
+        """Take a screenshot using Firefox via WebDriver BiDi.
+
+        If `pdf_options` is given, the page is printed to a PDF instead.
+        """
         auto_started = self.proc is None or self.proc.poll() is not None
         if auto_started:
             self.__enter__()
@@ -361,7 +393,10 @@ class FirefoxBiDi(BiDiBrowser):
 
             self._set_viewport(width, height)
             self._navigate(target_url)
-            self._capture(os.path.join(output_path, output_file), format_type)
+            if pdf_options is not None:
+                self._print(os.path.join(output_path, output_file), pdf_options)
+            else:
+                self._capture(os.path.join(output_path, output_file), format_type)
         finally:
             if auto_started:
                 self.__exit__()
