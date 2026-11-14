@@ -84,6 +84,15 @@ class Html2Image():
               it for HTML you trust.
             + Default is False.
 
+        - `add_doctype` : bool, optional
+            + If True, pages built from `html_str` start with
+              `<!DOCTYPE html>`, so browsers render them like any modern
+              web page.
+            + If False, the doctype is left out, as in html2image 2.x:
+              browsers then use an old compatibility mode, which changes
+              some layouts.
+            + Default is True.
+
         Raises
         ------
         - `FileNotFoundError`
@@ -104,6 +113,7 @@ class Html2Image():
         custom_flags=None,
         disable_logging=False,
         allow_scripts_to_read_files=False,
+        add_doctype=True,
     ):
 
         if browser.lower() not in browser_map:
@@ -115,6 +125,7 @@ class Html2Image():
         self.size = size
         self.temp_path = temp_path
         self.keep_temp_files = keep_temp_files
+        self.add_doctype = add_doctype
         self.browser: Browser = None
 
         browser_class = browser_map[browser.lower()]
@@ -457,13 +468,14 @@ class Html2Image():
         return sizes
 
     @staticmethod
-    def _prepare_html_string(html_body, css_style_string) -> str:
+    def _prepare_html_string(html_body, css_style_string, add_doctype) -> str:
         """ Creates a basic HTML string from an HTML body and a css string.
 
         Parameters
         ----------
         - `html_body`: str
         - `css_style_string`: str
+        - `add_doctype`: bool
 
         Returns
         -------
@@ -487,7 +499,8 @@ class Html2Image():
         </body>
         </html>
         """
-        return dedent(prepared_html)
+        doctype = '<!DOCTYPE html>\n' if add_doctype else ''
+        return doctype + dedent(prepared_html)
 
     @staticmethod
     def _prepare_css_string(css_file: List[str]) -> str:
@@ -617,7 +630,9 @@ class Html2Image():
             base_name, _ = os.path.splitext(name)
             html_filename = base_name + '.html'
 
-            content = Html2Image._prepare_html_string(html, css_style_string)
+            content = Html2Image._prepare_html_string(
+                html, css_style_string, self.add_doctype
+            )
 
             self.load_str(content=content, as_filename=html_filename)
             self.screenshot_loaded_file(

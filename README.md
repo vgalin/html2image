@@ -76,6 +76,7 @@ Multiple arguments can be passed to the constructor:
 -   `keep_temp_files` : Pass True to this argument to not automatically remove temporary files created in `temp_path`. Default is False.
 -   `disable_logging` : Suppress stdout/stderr logs generated in the console by underlying browsers. 
 -   `allow_scripts_to_read_files` : Lets JavaScript in your HTML read other files from your disk. Off by default; most pages don't need it. Read [Reading local files from JavaScript](#reading-local-files-from-javascript) before turning it on.
+-   `add_doctype` : Start the pages built from `html_str` with `<!DOCTYPE html>`, so that browsers render them like any modern web page. html2image 2.x left it out, and browsers then fell back to an old compatibility mode. If your screenshots look different since version 3.0, pass False to get the old rendering back. Default is True.
 
 Example:
 ```python

@@ -205,6 +205,49 @@ def test_allow_scripts_to_read_files_screenshot(tmp_path, browser, allowed):
     assert Image.open(paths[0]).convert("RGB").getpixel((10, 10)) == expected
 
 
+@pytest.mark.parametrize("add_doctype", [False, True])
+def test_prepare_html_string_doctype(add_doctype):
+    html = Html2Image._prepare_html_string("Hello", "", add_doctype)
+
+    assert html.startswith("<!DOCTYPE html>\n<html>") is add_doctype
+    assert html.startswith("<html>") is not add_doctype
+
+
+COMPAT_MODE_HTML = """
+<script>
+    const standard = document.compatMode === "CSS1Compat";
+    document.documentElement.style.background = standard ? "#00ff00" : "#ff0000";
+</script>
+"""
+
+
+@pytest.mark.parametrize("browser", [
+    "chrome", "edge", "firefox",
+    "chrome-headless", "edge-headless", "firefox-headless",
+])
+@pytest.mark.parametrize("add_doctype", [False, True])
+def test_add_doctype_screenshot(tmp_path, browser, add_doctype):
+    try:
+        hti = Html2Image(
+            browser=browser,
+            output_path=OUTPUT_PATH,
+            temp_path=str(tmp_path / "temp"),
+            disable_logging=True,
+            add_doctype=add_doctype,
+        )
+    except FileNotFoundError:
+        pytest.skip(f"'{browser}' executable not found on this machine")
+
+    paths = hti.screenshot(
+        html_str=COMPAT_MODE_HTML,
+        save_as=f"doctype_{browser}_{add_doctype}.png",
+        size=(320, 240),
+    )
+
+    expected = (0, 255, 0) if add_doctype else (255, 0, 0)
+    assert Image.open(paths[0]).convert("RGB").getpixel((10, 10)) == expected
+
+
 def test_screenshot_string_chrome_cdp():
     hti = Html2Image(
         browser='chrome-cdp',
