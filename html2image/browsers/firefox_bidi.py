@@ -1,5 +1,11 @@
 from .browser import BiDiBrowser
 from .search_utils import find_firefox
+from ..exceptions import (
+    BrowserError,
+    BrowserTimeoutError,
+    PageLoadError,
+    PageLoadTimeoutError,
+)
 
 import base64
 import json
@@ -178,14 +184,14 @@ class FirefoxBiDi(BiDiBrowser):
             try:
                 raw = self._ws.recv()
             except WebSocketTimeoutException as exc:
-                raise TimeoutError(
+                raise BrowserTimeoutError(
                     f'Timed out after {timeout}s waiting for BiDi message'
                 ) from exc
             message = json.loads(raw)
             matched = predicate(message)
             if matched:
                 return matched
-        raise TimeoutError(
+        raise BrowserTimeoutError(
             f'Timed out after {timeout}s waiting for matching BiDi message'
         )
 
@@ -195,7 +201,7 @@ class FirefoxBiDi(BiDiBrowser):
             timeout=timeout,
         )
         if message.get('type') == 'error' or 'error' in message:
-            raise RuntimeError(f'BiDi error for id={message_id}: {message}')
+            raise BrowserError(f'BiDi error for id={message_id}: {message}')
         return message
 
     def _connect_ws(self):
@@ -239,7 +245,7 @@ class FirefoxBiDi(BiDiBrowser):
                 )
                 time.sleep(retry_delay)
 
-        raise RuntimeError(
+        raise BrowserError(
             f'Could not connect to Firefox BiDi on port {self._current_port} '
             f'after {max_retries} attempts.'
         ) from last_error
@@ -283,15 +289,20 @@ class FirefoxBiDi(BiDiBrowser):
         )
 
     def _navigate(self, url):
-        self._bidi_expect_ok(
-            self._bidi_send(
-                'browsingContext.navigate',
-                context=self._context_id,
-                url=url,
-                wait='complete',
-            ),
-            timeout=30,
-        )
+        try:
+            self._bidi_expect_ok(
+                self._bidi_send(
+                    'browsingContext.navigate',
+                    context=self._context_id,
+                    url=url,
+                    wait='complete',
+                ),
+                timeout=30,
+            )
+        except BrowserTimeoutError as error:
+            raise PageLoadTimeoutError(str(error)) from error
+        except BrowserError as error:
+            raise PageLoadError(str(error)) from error
 
     def _capture(self, output_file_path, format_type):
         response = self._bidi_expect_ok(

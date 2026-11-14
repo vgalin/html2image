@@ -1,5 +1,6 @@
 from .browser import Browser
 from .search_utils import find_firefox
+from ..exceptions import BrowserError
 
 import logging
 import os
@@ -118,7 +119,7 @@ class FirefoxHeadlessScreenshot(Browser):
             subprocess.run(command, check=False, **popen_kwargs)
 
             if not os.path.isfile(output_full_path):
-                raise RuntimeError(
+                raise BrowserError(
                     f'Firefox --screenshot did not produce {output_full_path!r}. '
                     'Note: JPEG output is not supported; only PNG files are produced.'
                 )

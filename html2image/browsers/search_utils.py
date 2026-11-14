@@ -1,3 +1,5 @@
+from ..exceptions import BrowserNotFoundError
+
 import os
 import platform
 import shutil
@@ -131,7 +133,7 @@ def find_chrome(user_given_executable=None):
 
     Raises
     ------
-    - `FileNotFoundError`
+    - `BrowserNotFoundError`
         + If a suitable chrome executable could not be found.
 
     Returns
@@ -169,9 +171,6 @@ def find_chrome(user_given_executable=None):
             if command_origin:
                 return command_origin
 
-            # cannot validate user_given_executable
-            raise FileNotFoundError()
-
         # On a non-Windows OS, we can validate in a basic way that
         # user_given_executable leads to a Chrome / Chromium executable,
         # or is a command, using the --version flag
@@ -185,7 +184,7 @@ def find_chrome(user_given_executable=None):
                 pass
 
         # We got a user_given_executable but couldn't validate it
-        raise FileNotFoundError(
+        raise BrowserNotFoundError(
             'Failed to find a seemingly valid chrome executable '
             'in the given path.'
         )
@@ -255,7 +254,7 @@ def find_chrome(user_given_executable=None):
             pass
 
     # Couldn't find an executable (or OS not in Windows, Linux or Mac)
-    raise FileNotFoundError(
+    raise BrowserNotFoundError(
         'Could not find a Chrome executable on this '
         'machine, please specify it yourself.'
     )
@@ -277,7 +276,7 @@ def find_firefox(user_given_executable=None):
 
     Raises
     ------
-    - `FileNotFoundError`
+    - `BrowserNotFoundError`
         + If a suitable Firefox executable could not be found.
 
     Returns
@@ -321,7 +320,7 @@ def find_firefox(user_given_executable=None):
             pass
 
         # We got a user_given_executable but couldn't validate it
-        raise FileNotFoundError(
+        raise BrowserNotFoundError(
             'Failed to find a seemingly valid Firefox executable '
             'in the given path.'
         )
@@ -366,7 +365,7 @@ def find_firefox(user_given_executable=None):
             pass
 
     # Couldn't find an executable (or OS not in Windows, Linux or Mac)
-    raise FileNotFoundError(
+    raise BrowserNotFoundError(
         'Could not find a Firefox executable on this '
         'machine, please specify it yourself.'
     )
