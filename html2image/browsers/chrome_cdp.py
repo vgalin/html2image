@@ -1,5 +1,11 @@
 from .browser import CDPBrowser
 from .search_utils import find_chrome
+from ..exceptions import (
+    BrowserError,
+    BrowserTimeoutError,
+    PageLoadError,
+    PageLoadTimeoutError,
+)
 
 import base64
 import json
@@ -201,7 +207,7 @@ class ChromeCDP(CDPBrowser):
                         if self._current_port is not None
                         else 'an automatically assigned port'
                     )
-                    raise RuntimeError(
+                    raise BrowserError(
                         f'Could not connect to Chrome CDP on port {port_description} '
                         f'after {max_retries} attempts. Is Chrome running?'
                     ) from error
@@ -221,7 +227,7 @@ class ChromeCDP(CDPBrowser):
             create_result = self._wait_for_result(create_id)
             target_id = create_result.get('result', {}).get('targetId')
             if not target_id:
-                raise RuntimeError('Failed to create a page target in Chrome.')
+                raise BrowserError('Failed to create a page target in Chrome.')
         else:
             target_id = page_targets[0]['targetId']
 
@@ -237,7 +243,7 @@ class ChromeCDP(CDPBrowser):
 
         self._session_id = attach_result.get('result', {}).get('sessionId')
         if not self._session_id:
-            raise RuntimeError(
+            raise BrowserError(
                 'Failed to get sessionId from Target.attachToTarget.'
             )
 
@@ -301,20 +307,20 @@ class ChromeCDP(CDPBrowser):
                 # Check for CDP errors
                 if 'error' in message:
                     error = message['error']
-                    raise RuntimeError(
+                    raise BrowserError(
                         f'CDP error {error.get("code")}: {error.get("message")}'
                     )
 
                 if message.get('method') == 'Inspector.detached':
                     reason = message.get('params', {}).get('reason')
-                    raise RuntimeError(f'Chrome page was lost: {reason}')
+                    raise BrowserError(f'Chrome page was lost: {reason}')
 
                 logger.debug('CDP recv: %s', message)
                 result = predicate(message)
                 if result:
                     return result
         except (TimeoutError, socket.timeout, WebSocketTimeoutException):
-            raise TimeoutError(
+            raise BrowserTimeoutError(
                 f'Timed out after {timeout}s waiting for CDP response.'
             )
         finally:
@@ -343,7 +349,7 @@ class ChromeCDP(CDPBrowser):
             while True:
                 remaining = deadline - time.time()
                 if remaining <= 0:
-                    raise TimeoutError(
+                    raise PageLoadTimeoutError(
                         f'Timed out after {timeout}s waiting for page load.'
                     )
 
@@ -356,13 +362,13 @@ class ChromeCDP(CDPBrowser):
 
                 if 'error' in message:
                     error = message['error']
-                    raise RuntimeError(
+                    raise BrowserError(
                         f'CDP error {error.get("code")}: {error.get("message")}'
                     )
 
                 if message.get('method') == 'Inspector.detached':
                     reason = message.get('params', {}).get('reason')
-                    raise RuntimeError(f'Chrome page was lost: {reason}')
+                    raise BrowserError(f'Chrome page was lost: {reason}')
 
                 logger.debug('CDP recv: %s', message)
 
@@ -387,7 +393,7 @@ class ChromeCDP(CDPBrowser):
                 ):
                     return nav_result
         except (TimeoutError, socket.timeout, WebSocketTimeoutException):
-            raise TimeoutError(
+            raise PageLoadTimeoutError(
                 f'Timed out after {timeout}s waiting for page navigation.'
             )
         finally:
@@ -437,7 +443,7 @@ class ChromeCDP(CDPBrowser):
         )
         pdf_data = self._wait_for_result(pdf_id).get('result', {}).get('data')
         if not pdf_data:
-            raise RuntimeError('No PDF data received from Chrome.')
+            raise BrowserError('No PDF data received from Chrome.')
 
         with open(output_file_path, 'wb') as file_obj:
             file_obj.write(base64.b64decode(pdf_data))
@@ -491,7 +497,7 @@ class ChromeCDP(CDPBrowser):
             if error_text:
                 disable_id = self.cdp_send('Page.disable')
                 self._wait_for_result(disable_id)
-                raise RuntimeError(f'Navigation failed: {error_text}')
+                raise PageLoadError(f'Navigation failed: {error_text}')
 
             logger.debug('Page loaded.')
             disable_id = self.cdp_send('Page.disable')
@@ -556,7 +562,7 @@ class ChromeCDP(CDPBrowser):
 
             img_data = screenshot_result.get('result', {}).get('data')
             if not img_data:
-                raise RuntimeError('No screenshot data received from Chrome.')
+                raise BrowserError('No screenshot data received from Chrome.')
 
             with open(os.path.join(output_path, output_file), 'wb') as file_obj:
                 file_obj.write(base64.b64decode(img_data))

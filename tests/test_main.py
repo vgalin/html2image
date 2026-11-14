@@ -1,4 +1,4 @@
-from html2image import Html2Image
+from html2image import Html2Image, BrowserError
 from html2image.browsers import chrome_cdp, chromium, firefox, firefox_bidi
 from html2image.browsers.chrome_cdp import ChromeCDP
 from pathlib import Path
@@ -883,7 +883,7 @@ def test_cdp_lost_page_raises_immediately():
         {"id": 1, "result": {}},
     ])
 
-    with pytest.raises(RuntimeError, match="Render process gone"):
+    with pytest.raises(BrowserError, match="Render process gone"):
         browser._wait_for_result(1, timeout=1)
 
 
