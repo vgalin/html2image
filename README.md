@@ -75,7 +75,7 @@ Multiple arguments can be passed to the constructor:
 -   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 -   `keep_temp_files` : Pass True to this argument to not automatically remove temporary files created in `temp_path`. Default is False.
 -   `disable_logging` : Suppress stdout/stderr logs generated in the console by underlying browsers. 
--   `allow_scripts_to_read_files` : Lets JavaScript in your HTML read other files from your disk. Off by default; most pages don't need it. Read [Reading local files from JavaScript](#reading-local-files-from-javascript) before turning it on.
+-   `allow_scripts_to_read_files` : Lets JavaScript in your HTML read other files from your disk. Off by default, as most pages don't need it. Read [Reading local files from JavaScript](#reading-local-files-from-javascript) before turning it on.
 -   `add_doctype` : Start the pages built from `html_str` with `<!DOCTYPE html>`, so that browsers render them like any modern web page. html2image 2.x left it out, and browsers then fell back to an old compatibility mode. If your screenshots look different since version 3.0, pass False to get the old rendering back. Default is True.
 
 Example:
@@ -390,6 +390,39 @@ hti = Html2Image(allow_scripts_to_read_files=True)
 ```
 
 **Only do this with HTML that you wrote or fully trust.** With this option on, any script in the page can read any file your user account can read (configuration files, SSH keys, saved passwords or tokens) and send it over the internet. Never turn it on if the HTML, or any part of it, comes from someone else, such as the users of your application.
+
+### Handling errors
+
+html2image raises its own exceptions when the browser or the page fails. They all inherit from `Html2ImageError`:
+
+| Exception | Raised when |
+|---|---|
+| `BrowserNotFoundError` | no browser executable was found |
+| `BrowserError` | the browser could not start, reported an error or was lost |
+| `BrowserTimeoutError` | the browser did not answer in time |
+| `PageLoadError` | the page could not be loaded, but the browser is fine |
+| `PageLoadTimeoutError` | the page did not finish loading in time |
+
+For example, to skip the pages that cannot be loaded:
+
+```python
+from html2image import Html2Image, PageLoadError
+
+with Html2Image() as hti:
+    for i, url in enumerate(urls):
+        try:
+            hti.screenshot(url=url, save_as=f'page_{i}.png')
+        except PageLoadError as error:
+            print(f'Skipped {url}: {error}')
+```
+
+Any other error, such as a `BrowserError`, still stops the loop.
+
+`BrowserNotFoundError` is also a `FileNotFoundError`, so an `except FileNotFoundError` written for html2image 2.x keeps working. `BrowserTimeoutError` and `PageLoadTimeoutError` are also `TimeoutError`, Python's usual exception for anything that took too long.
+
+Wrong arguments still raise the usual built-in exceptions: `ValueError` for an invalid or unsupported parameter, `FileNotFoundError` for a missing input file. `Html2ImageError` does not cover them.
+
+The legacy `chrome-headless`, `edge-headless` and `firefox-headless` browsers cannot tell whether a page loaded: they never raise `PageLoadError`.
 
 ## Using the CLI
 HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and URLs on the go. You can call it by typing `hti` or `html2image` into a terminal.
