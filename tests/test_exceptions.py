@@ -6,6 +6,8 @@ from html2image import (
     BrowserTimeoutError,
     PageLoadError,
     PageLoadTimeoutError,
+    ElementNotFoundError,
+    CaptureTooLargeError,
 )
 from html2image.browsers import chrome_cdp, firefox_bidi
 from websocket import WebSocketTimeoutException
@@ -24,6 +26,8 @@ ERROR_CLASSES = [
     BrowserTimeoutError,
     PageLoadError,
     PageLoadTimeoutError,
+    ElementNotFoundError,
+    CaptureTooLargeError,
 ]
 
 # The built-in exceptions that `except` clauses may use to catch them.
@@ -41,6 +45,8 @@ BUILT_IN_TYPES = {
     (BrowserTimeoutError, [BrowserError, TimeoutError]),
     (PageLoadError, [Html2ImageError]),
     (PageLoadTimeoutError, [PageLoadError, TimeoutError]),
+    (ElementNotFoundError, [Html2ImageError]),
+    (CaptureTooLargeError, [Html2ImageError]),
 ])
 def test_exception_parents(error_class, parents):
     assert list(error_class.__bases__) == parents
@@ -70,6 +76,43 @@ def test_exception_survives_pickle(error_class):
 
     assert type(error) is error_class
     assert str(error) == "message"
+
+
+@pytest.mark.parametrize("error_class, attribute", [
+    (ElementNotFoundError, "missing"),
+    (CaptureTooLargeError, "too_large"),
+])
+def test_element_error_attributes(error_class, attribute):
+    elements = [("#card", "page_2.png")]
+    error = error_class("message", paths=["/out/page_1.png"], **{attribute: elements})
+
+    for error in (error, pickle.loads(pickle.dumps(error))):
+        assert type(error) is error_class
+        assert str(error) == "message"
+        assert error.paths == ["/out/page_1.png"]
+        assert getattr(error, attribute) == elements
+
+
+@pytest.mark.parametrize("error_class, attribute", [
+    (ElementNotFoundError, "missing"),
+    (CaptureTooLargeError, "too_large"),
+])
+def test_element_error_attributes_default_to_empty(error_class, attribute):
+    error = error_class("message")
+
+    assert error.paths == []
+    assert getattr(error, attribute) == []
+
+
+def test_attribute_set_after_init_survives_pickle():
+    error = ElementNotFoundError("message")
+    error.missing.append(("#card", "page_2.png"))
+    error.note = "added later"
+
+    error = pickle.loads(pickle.dumps(error))
+
+    assert error.missing == [("#card", "page_2.png")]
+    assert error.note == "added later"
 
 
 @pytest.mark.parametrize("browser", [

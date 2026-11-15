@@ -1,5 +1,6 @@
 from .browser import CDPBrowser
 from .search_utils import find_chrome
+from . import _selector
 from ..exceptions import (
     BrowserError,
     BrowserTimeoutError,
@@ -34,6 +35,10 @@ CDP_TIMEOUT = 30
 # Chrome only honors this flag along with its `--screenshot` flag, so the
 # CDP backend reads its value and applies it through the protocol instead.
 VIRTUAL_TIME_BUDGET_FLAG = '--virtual-time-budget='
+
+# Chrome draws a wrong image, without any error, when it captures an area
+# larger than this number of pixels, in width or in height, in one go.
+MAX_CAPTURE_SIZE = 16384
 
 
 class ChromeCDP(CDPBrowser):
@@ -448,6 +453,102 @@ class ChromeCDP(CDPBrowser):
         with open(output_file_path, 'wb') as file_obj:
             file_obj.write(base64.b64decode(pdf_data))
 
+    def _evaluate(self, expression):
+        """Return the value of a JavaScript expression that returns JSON."""
+        evaluate_id = self.cdp_send(
+            'Runtime.evaluate', expression=expression, awaitPromise=True,
+        )
+        result = self._wait_for_result(evaluate_id)['result']
+        if 'exceptionDetails' in result:
+            # The text is only "Uncaught": the error itself is described in
+            # the exception.
+            details = result['exceptionDetails']
+            description = details.get('exception', {}).get('description')
+            raise BrowserError(
+                f'JavaScript error: {description or details["text"]}'
+            )
+        return json.loads(result['result']['value'])
+
+    def _capture(self, output_file_path, clip, beyond_viewport=False):
+        """Save an image of the `clip` area of the page.
+
+        With `beyond_viewport`, the area can be outside of the viewport.
+        """
+        logger.debug('Capturing screenshot...')
+
+        ext = os.path.splitext(output_file_path)[1].lower()
+        capture_format = 'jpeg' if ext in ('.jpg', '.jpeg') else 'png'
+        transparent_bg_set = False
+        if capture_format == 'png':
+            bg_id = self.cdp_send(
+                'Emulation.setDefaultBackgroundColorOverride',
+                color={'r': 0, 'g': 0, 'b': 0, 'a': 0},
+            )
+            self._wait_for_result(bg_id)
+            transparent_bg_set = True
+        else:
+            # Ensure no transparent override is active for JPEG captures.
+            bg_id = self.cdp_send(
+                'Emulation.setDefaultBackgroundColorOverride'
+            )
+            self._wait_for_result(bg_id)
+
+        try:
+            screenshot_id = self.cdp_send(
+                'Page.captureScreenshot',
+                format=capture_format,
+                omitBackground=(capture_format == 'png'),
+                clip={**clip, 'scale': 1},
+                fromSurface=True,
+                captureBeyondViewport=beyond_viewport,
+            )
+            screenshot_result = self._wait_for_result(screenshot_id)
+        finally:
+            if transparent_bg_set:
+                try:
+                    clear_id = self.cdp_send(
+                        'Emulation.setDefaultBackgroundColorOverride'
+                    )
+                    self._wait_for_result(clear_id)
+                except Exception:
+                    logger.debug(
+                        'Could not clear CDP background override.',
+                        exc_info=True,
+                    )
+
+        img_data = screenshot_result.get('result', {}).get('data')
+        if not img_data:
+            raise BrowserError('No screenshot data received from Chrome.')
+
+        with open(output_file_path, 'wb') as file_obj:
+            file_obj.write(base64.b64decode(img_data))
+
+    def _capture_elements(self, output_path, elements, padding):
+        """Save an image of each element, see `screenshot()`."""
+        _selector.check_selectors(
+            self._evaluate, [selector for selector, _ in elements]
+        )
+
+        missing, too_large = [], []
+        for element in elements:
+            selector, output_file = element
+            # The page is scrolled back as loaded after each element, so
+            # that each image is the same as with one call per selector.
+            box = self._evaluate(_selector.element_box_js(selector))
+            clip = _selector.element_clip(box, padding)
+            if clip is None:
+                missing.append(element)
+            elif max(clip['width'], clip['height']) > MAX_CAPTURE_SIZE:
+                too_large.append(element)
+            else:
+                self._capture(
+                    os.path.join(output_path, output_file), clip,
+                    beyond_viewport=True,
+                )
+            if box is not None:
+                self._evaluate(_selector.restore_js(selector, box))
+        return missing, too_large
+
     def screenshot(
         self,
         input,
@@ -455,10 +556,18 @@ class ChromeCDP(CDPBrowser):
         output_file='screenshot.png',
         size=(1920, 1080),
         pdf_options=None,
+        elements=None,
+        selector_padding=0,
     ):
         """Take a screenshot using Chrome DevTools Protocol.
 
         If `pdf_options` is given, the page is printed to a PDF instead.
+
+        If `elements` is given, as a list of (selector, output_file) pairs,
+        an image of each element is saved instead, with `selector_padding`
+        pixels around it, and `output_file` is not used. The elements that
+        could not be captured are returned, as two lists of these pairs:
+        the missing elements, and the elements too large to be captured.
 
         See: https://chromedevtools.github.io/devtools-protocol/
         """
@@ -513,59 +622,15 @@ class ChromeCDP(CDPBrowser):
                 )
                 return
 
-            logger.debug('Capturing screenshot...')
-
-            ext = os.path.splitext(output_file)[1].lower()
-            capture_format = 'jpeg' if ext in ('.jpg', '.jpeg') else 'png'
-            transparent_bg_set = False
-            if capture_format == 'png':
-                bg_id = self.cdp_send(
-                    'Emulation.setDefaultBackgroundColorOverride',
-                    color={'r': 0, 'g': 0, 'b': 0, 'a': 0},
+            if elements is not None:
+                return self._capture_elements(
+                    output_path, elements, selector_padding
                 )
-                self._wait_for_result(bg_id)
-                transparent_bg_set = True
-            else:
-                # Ensure no transparent override is active for JPEG captures.
-                bg_id = self.cdp_send(
-                    'Emulation.setDefaultBackgroundColorOverride'
-                )
-                self._wait_for_result(bg_id)
 
-            try:
-                screenshot_id = self.cdp_send(
-                    'Page.captureScreenshot',
-                    format=capture_format,
-                    omitBackground=(capture_format == 'png'),
-                    clip={
-                        'x': 0,
-                        'y': 0,
-                        'width': size[0],
-                        'height': size[1],
-                        'scale': 1,
-                    },
-                    fromSurface=True,
-                )
-                screenshot_result = self._wait_for_result(screenshot_id)
-            finally:
-                if transparent_bg_set:
-                    try:
-                        clear_id = self.cdp_send(
-                            'Emulation.setDefaultBackgroundColorOverride'
-                        )
-                        self._wait_for_result(clear_id)
-                    except Exception:
-                        logger.debug(
-                            'Could not clear CDP background override.',
-                            exc_info=True,
-                        )
-
-            img_data = screenshot_result.get('result', {}).get('data')
-            if not img_data:
-                raise BrowserError('No screenshot data received from Chrome.')
-
-            with open(os.path.join(output_path, output_file), 'wb') as file_obj:
-                file_obj.write(base64.b64decode(img_data))
+            self._capture(
+                os.path.join(output_path, output_file),
+                {'x': 0, 'y': 0, 'width': size[0], 'height': size[1]},
+            )
         except Exception:
             # A failed screenshot can leave the page unusable (e.g. with a
             # navigation still pending), so the session starts afresh.

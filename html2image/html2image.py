@@ -17,6 +17,7 @@ from typing import List
 
 from html2image.browsers import chrome, chrome_cdp, edge, edge_cdp, firefox, firefox_bidi
 from html2image.browsers.browser import Browser, CDPBrowser, BiDiBrowser
+from html2image.exceptions import CaptureTooLargeError, ElementNotFoundError
 
 
 browser_map = {
@@ -659,6 +660,9 @@ class Html2Image():
         url=[],
         save_as='screenshot.png',
         size=[],
+        selector=None,
+        selector_padding=0,
+        skip_missing=False,
     ):
         """ Takes a screenshot using different resources.
 
@@ -686,10 +690,37 @@ class Html2Image():
         - `save_as`: list of str or str
             + Name(s) as which the screenshot will be saved.
             + File extension (e.g. .png) has to be included.
+            + With `selector`, give one name per image.
             + Default value is screenshot.png
         - `size`: list of (int, int) or (int, int) tuple
             + Size(s) of the screenshot(s) that will be taken when the
             + method is called.
+            + With `selector`, this is the size of the window in which
+            + each page will be displayed, with one size per page.
+        - `selector`: list of str or str, optional
+            + CSS selector of an element, e.g. '#chart'. The image will
+            + then show this element only, instead of the window, even if
+            + the element is larger than the window or further down the
+            + page.
+            + If several elements match, the first one will be used, as
+            + with `document.querySelector()` in JavaScript.
+            + With a list, one image will be saved per selector, for each
+            + page, and the images of the first page will come first.
+            + Each page will only be loaded once, and each image will be
+            + the same as with one call per selector.
+            + Only works with the 'chrome', 'edge' and 'firefox' browsers.
+            + Default is None: the whole window will be captured. An
+            + empty string or list will do the same.
+        - `selector_padding`: int, optional
+            + Number of pixels added around the element, to include its
+            + shadow for example. The padding will stop at the edges of
+            + the page.
+            + Default is 0.
+        - `skip_missing`: bool, optional
+            + If True, missing elements will be skipped without raising
+            + `ElementNotFoundError`, and the returned list will only
+            + contain the saved images.
+            + Default is False.
 
         Returns
         -------
@@ -702,7 +733,18 @@ class Html2Image():
         - `ValueError`
             + If a name given in `save_as` is a path and not a filename,
             + or if a name given in `save_as` ends with .pdf: use the
-            + `pdf()` method instead.
+            + `pdf()` method instead,
+            + or if `selector` is used with 'chrome-headless',
+            + 'edge-headless' or 'firefox-headless', or is not a valid CSS
+            + selector, or if `selector_padding` is negative.
+        - `ElementNotFoundError`
+            + If an element has nothing to capture: no element matches its
+            + selector, or it is hidden, empty or outside of the page.
+            + The other images will be saved first.
+        - `CaptureTooLargeError`
+            + If an element is too large for the browser to capture,
+            + even with `skip_missing=True`. The other images will be
+            + saved first.
         """
 
         # TODO / NOTE : This does not pose any problem for now but setting
@@ -716,6 +758,26 @@ class Html2Image():
                     'use pdf() to save PDF files.'
                 )
 
+        # An empty string or list counts as no selector.
+        selectors = None
+        if selector:
+            selectors = [selector] if isinstance(selector, str) else selector
+
+        if selectors and not isinstance(
+            self.browser, (CDPBrowser, BiDiBrowser)
+        ):
+            raise ValueError(
+                'selector works with the "chrome", "edge" and "firefox" '
+                'browsers, not with "chrome-headless", "edge-headless" or '
+                '"firefox-headless".'
+            )
+
+        if selector_padding < 0:
+            raise ValueError(
+                'selector_padding should be 0 or more, '
+                f'got {selector_padding}.'
+            )
+
         return self._render(
             html_str=html_str,
             html_file=html_file,
@@ -725,6 +787,9 @@ class Html2Image():
             url=url,
             save_as=save_as,
             size=size,
+            selectors=selectors,
+            selector_padding=selector_padding,
+            skip_missing=skip_missing,
         )
 
     def pdf(
@@ -838,6 +903,9 @@ class Html2Image():
         url,
         save_as,
         size,
+        selectors=None,
+        selector_padding=0,
+        skip_missing=False,
         **browser_options,
     ):
         """ Renders different resources, see `screenshot()` and `pdf()`.
@@ -846,7 +914,8 @@ class Html2Image():
         browser.
         """
 
-        screenshot_paths = []
+        # paths, missing and too large elements of each page
+        page_results = []
 
         # convert each parameter into list
         # e.g: param=value becomes param=[value]
@@ -859,14 +928,15 @@ class Html2Image():
         save_as_filenames = [save_as] if isinstance(save_as, str) else save_as
         sizes = [size] if isinstance(size, tuple) else size
 
-        planned_screenshot_count = (
+        page_count = (
             len(html_strings) + len(html_files) + len(other_files) + len(urls)
         )
+        images_per_page = len(selectors) if selectors else 1
         save_as_filenames = Html2Image._extend_save_as_param(
             save_as_filenames,
-            planned_screenshot_count,
+            page_count * images_per_page,
         )
-        sizes = self._extend_size_param(sizes, planned_screenshot_count)
+        sizes = self._extend_size_param(sizes, page_count)
 
         for name in save_as_filenames:
             self._check_filename(name)
@@ -885,10 +955,10 @@ class Html2Image():
                 raise FileNotFoundError(css)
 
         for html in html_strings:
-            name = save_as_filenames.pop(0)
+            names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
             current_size = sizes.pop(0)
 
-            base_name, _ = os.path.splitext(name)
+            base_name, _ = os.path.splitext(names[0])
             html_filename = base_name + '.html'
 
             content = Html2Image._prepare_html_string(
@@ -896,55 +966,122 @@ class Html2Image():
             )
 
             self.load_str(content=content, as_filename=html_filename)
-            self.browser.screenshot(
-                input=os.path.join(self.temp_path, html_filename),
-                output_path=self.output_path,
-                output_file=name,
-                size=current_size,
-                **browser_options,
-            )
+            page_results.append(self._screenshot_page(
+                os.path.join(self.temp_path, html_filename),
+                names, current_size, selectors, selector_padding,
+                browser_options,
+            ))
             if not self.keep_temp_files:
                 self._remove_temp_file(html_filename)
 
-            screenshot_paths.append(os.path.join(self.output_path, name))
-
         for screenshot_target in html_files + other_files:
 
-            name = save_as_filenames.pop(0)
+            names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
             current_size = sizes.pop(0)
 
             if os.path.isfile(screenshot_target):
                 self.load_file(src=screenshot_target)
-                self.browser.screenshot(
-                    input=os.path.join(
+                page_results.append(self._screenshot_page(
+                    os.path.join(
                         self.temp_path, os.path.basename(screenshot_target)
                     ),
-                    output_path=self.output_path,
-                    output_file=name,
-                    size=current_size,
-                    **browser_options,
-                )
+                    names, current_size, selectors, selector_padding,
+                    browser_options,
+                ))
                 if not self.keep_temp_files:
                     self._remove_temp_file(os.path.basename(screenshot_target))                
             else:
                 raise FileNotFoundError(screenshot_target)
 
-            screenshot_paths.append(os.path.join(self.output_path, name))
-
         for target_url in urls:
-            name = save_as_filenames.pop(0)
+            names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
             current_size = sizes.pop(0)
 
-            self.browser.screenshot(
-                input=target_url,
-                output_path=self.output_path,
-                output_file=name,
-                size=current_size,
-                **browser_options,
+            page_results.append(self._screenshot_page(
+                target_url, names, current_size, selectors, selector_padding,
+                browser_options,
+            ))
+
+        screenshot_paths, missing, too_large = [], [], []
+        for paths, page_missing, page_too_large in page_results:
+            screenshot_paths += paths
+            missing += page_missing
+            too_large += page_too_large
+
+        # An image that is cut or wrong is never acceptable, so a too large
+        # element is an error even with `skip_missing`.
+        if too_large:
+            raise CaptureTooLargeError(
+                'Too large to be captured in one go: '
+                f'{Html2Image._describe_elements(too_large)}.\n'
+                'Chrome and Edge can capture at most '
+                f'{chrome_cdp.MAX_CAPTURE_SIZE} pixels in width and in '
+                f'height, Firefox at most {firefox_bidi.MAX_CAPTURE_SIZE}. '
+                'On a page without <!DOCTYPE html>, Firefox may only be able '
+                'to capture an element that fits in the window.',
+                paths=screenshot_paths,
+                too_large=too_large,
             )
-            screenshot_paths.append(os.path.join(self.output_path, name))
+
+        if missing and not skip_missing:
+            raise ElementNotFoundError(
+                'Nothing to capture for '
+                f'{Html2Image._describe_elements(missing)}.\n'
+                'Either no element matched the selector, or the element was '
+                'hidden, empty or outside of the page. '
+                'Use skip_missing=True to skip missing elements.',
+                paths=screenshot_paths,
+                missing=missing,
+            )
 
         return screenshot_paths
+
+    def _screenshot_page(
+        self, input, names, size, selectors, selector_padding,
+        browser_options,
+    ):
+        """ Saves the page `input` as `names`, see `_render()`.
+
+        With `selectors`, `names` holds one name per selector.
+
+        Returns
+        -------
+        - tuple of three lists
+            + The paths of the saved files, then the (selector, name)
+            + pairs of the missing elements and of the elements too large
+            + to be captured.
+        """
+        if not selectors:
+            self.browser.screenshot(
+                input=input,
+                output_path=self.output_path,
+                output_file=names[0],
+                size=size,
+                **browser_options,
+            )
+            return [os.path.join(self.output_path, names[0])], [], []
+
+        elements = list(zip(selectors, names))
+        missing, too_large = self.browser.screenshot(
+            input=input,
+            output_path=self.output_path,
+            size=size,
+            elements=elements,
+            selector_padding=selector_padding,
+        )
+        paths = [
+            os.path.join(self.output_path, name)
+            for selector, name in elements
+            if (selector, name) not in missing + too_large
+        ]
+        return paths, missing, too_large
+
+    @staticmethod
+    def _describe_elements(elements):
+        """ Returns a text that lists (selector, name) pairs."""
+        return ', '.join(
+            f'"{selector}" ({name})' for selector, name in elements
+        )
 
     def __enter__(self):
         self.browser.__enter__()

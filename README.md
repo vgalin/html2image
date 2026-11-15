@@ -293,6 +293,55 @@ For ease of use, some flags are set by default. However default flags are not us
 ['--a', '--b']
 ```
 
+### Capturing a single element from a page
+
+Give a CSS selector to `screenshot()` to save an image of one element instead of the whole window:
+
+```python
+hti.screenshot(url='https://example.org/', selector='#card', save_as='card.png')
+```
+
+The generated image will have the size of the element, even if the element is larger than the window or further down the page. If several elements match, the first one will be used, as with `document.querySelector()` in JavaScript.
+
+With a list of selectors, one image will be saved per selector, for each page. Each page will only be loaded once, and each image will be the same as with one call per selector:
+
+```python
+hti.screenshot(
+    html_str=html,
+    selector=['#chart', '#table'],
+    selector_padding=16,
+    save_as=['chart.png', 'table.png'],
+)
+```
+
+`selector_padding` adds pixels around the element, to include its shadow for example. The padding will stop at the edges of the page.
+
+Give one name per image in `save_as`, and one size per page in `size`: the size sets the window in which the page will be laid out.
+
+Limits:
+
+- `selector` only works with the `chrome`, `edge` and `firefox` browsers, not with `chrome-headless`, `edge-headless` or `firefox-headless`.
+- Chrome and Edge can capture at most 16384 pixels in width and in height, Firefox at most 65535.
+- On a page without `<!DOCTYPE html>`, Firefox may only be able to capture an element that fits in the window. Pages built from `html_str` get a doctype, unless `add_doctype=False` is given.
+- An element inside an `<iframe>` or a shadow DOM will not be found.
+- An element added by a script after the page has loaded may not be found. With Chrome and Edge, the `--virtual-time-budget` flag described in "Change browser flags" will let the page run its scripts before the capture.
+- An element hidden with `visibility: hidden` still has a size: the image will show what is behind it.
+
+If an element has nothing to capture (no element matches the selector, or it is hidden, empty or outside of the page), `ElementNotFoundError` will be raised once all the other images have been saved. Pass `skip_missing=True` to skip such elements instead: the returned list will then only contain the saved images.
+
+```python
+from html2image import Html2Image, ElementNotFoundError
+
+try:
+    hti.screenshot(url=urls, selector='#price', save_as='price.png')
+except ElementNotFoundError as error:
+    print('Saved:', error.paths)
+    for selector, filename in error.missing:
+        print(f'No {selector} for {filename}')
+```
+
+An element too large for the browser will raise `CaptureTooLargeError`, even with `skip_missing=True`. This error will also be raised once all the other images have been saved.
+
 ### Save pages as PDF
 
 The `pdf()` method saves pages as PDF files instead of images. It takes the same sources as the `screenshot()` method (`url`, `html_file`, `css_file`, `html_str`, `css_str`, `other_file`) and the same `save_as`, and also returns a list of paths.
@@ -402,6 +451,10 @@ html2image raises its own exceptions when the browser or the page fails. They al
 | `BrowserTimeoutError` | the browser did not answer in time |
 | `PageLoadError` | the page could not be loaded, but the browser is fine |
 | `PageLoadTimeoutError` | the page did not finish loading in time |
+| `ElementNotFoundError` | an element given by `selector` had nothing to capture |
+| `CaptureTooLargeError` | an element was too large for the browser to capture in one go |
+
+With `selector`, `ElementNotFoundError` and `CaptureTooLargeError` will only be raised once all the other images have been saved. Their `paths` attribute lists the saved images, and `missing` or `too_large` lists the (selector, filename) pairs of the others.
 
 For example, to skip the pages that cannot be loaded:
 
