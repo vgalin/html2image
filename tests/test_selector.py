@@ -303,9 +303,12 @@ def test_selector_element_taller_than_window(hti):
     _assert_banded(path, (300, 2500))
 
 
+# The container has no scrollbar: Firefox on Windows may draw a fading one,
+# which would make two images of the same container differ.
 SCROLL_CONTAINER = (
     '<div id="box" style="position: absolute; left: 20px; top: {top}px; '
-    'width: 300px; height: 200px; overflow: auto; background: gray">'
+    'width: 300px; height: 200px; overflow: auto; scrollbar-width: none; '
+    'background: gray">'
     '<div style="height: 800px"></div>'
     '<div id="t" style="width: 200px; height: 100px; background: red"></div>'
     '<div style="height: 800px"></div>'
