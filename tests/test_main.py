@@ -908,9 +908,12 @@ def test_cdp_session_recovers_after_navigation_timeout(monkeypatch, unresponsive
     )
 
     with hti:
+        browser_pid = hti.browser._browser_pid
         with pytest.raises(TimeoutError):
             hti.screenshot(url=unresponsive_url, save_as="cdp_timeout.png")
 
+        # the browser was restarted, as the page may still be loading
+        assert hti.browser._browser_pid != browser_pid
         paths = hti.screenshot(
             html_str='<body style="margin:0;background:blue"></body>',
             save_as="cdp_after_timeout.png",
