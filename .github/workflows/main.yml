@@ -43,7 +43,9 @@ jobs:
           - {os: ubuntu-latest, python-version: "3.13"}
           - {os: ubuntu-latest, python-version: "3.14"}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    # The same tests can take twice as long from one run to another on
+    # macOS, depending on the runner.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -74,8 +76,9 @@ jobs:
           microsoft-edge --headless=new --dump-dom about:blank > /dev/null
           firefox --headless --screenshot "$RUNNER_TEMP/warmup.png" about:blank
 
+      # pytest lists the 25 slowest tests at the end of the run.
       - name: Run tests
-        run: uv run pytest
+        run: uv run pytest --durations=25
 
   publish:
     name: Build and publish to PyPI

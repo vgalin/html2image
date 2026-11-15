@@ -26,6 +26,7 @@ import os
 import pytest
 import signal
 import socket
+import subprocess
 import threading
 import time
 import uuid
@@ -365,6 +366,52 @@ def test_bidi_download_in_another_context_is_ignored(bidi_browser):
     bidi_browser._navigate("http://127.0.0.1:1/")
 
 
+class FakeFirefoxProcess:
+    """A Firefox process that does not exit by itself."""
+
+    def __init__(self):
+        self.waits = []
+
+    def poll(self):
+        return None
+
+    def wait(self, timeout=None):
+        self.waits.append(timeout)
+        raise subprocess.TimeoutExpired("firefox", timeout)
+
+
+@pytest.mark.parametrize("fake, waits", [
+    # Firefox 116 and older do not know browser.close.
+    (FakeWebSocket([{
+        "type": "error", "id": 1, "error": "unknown command",
+        "message": "browser.close",
+    }]), []),
+    # Firefox was lost.
+    (FakeWebSocket([""]), []),
+    (FakeWebSocket(recv_error=LOST_CONNECTION_ERRORS[0]), []),
+    (FakeWebSocket(send_error=LOST_CONNECTION_ERRORS[1]), []),
+    # Firefox accepted, but did not exit in time.
+    (FakeWebSocket([{"type": "success", "id": 1, "result": {}}]), [5]),
+], ids=["refused", "closed", "reset", "broken pipe", "accepted"])
+def test_firefox_is_stopped_if_it_does_not_close(
+    monkeypatch, bidi_browser, fake, waits,
+):
+    process = FakeFirefoxProcess()
+    bidi_browser._ws = fake
+    bidi_browser.proc = process
+    stopped = []
+    monkeypatch.setattr(
+        bidi_browser, "_shutdown_process_tree", lambda: stopped.append(True)
+    )
+
+    bidi_browser.__exit__()
+
+    assert stopped == [True]
+    assert process.waits == waits
+    assert bidi_browser._ws is None
+    assert bidi_browser.proc is None
+
+
 def test_firefox_downloads_go_in_the_profile(tmp_path, bidi_browser):
     bidi_browser._write_profile_prefs(str(tmp_path))
 
@@ -530,6 +577,31 @@ def _port_is_closed(port, timeout=5):
             return True
         time.sleep(0.2)
     return False
+
+
+def test_firefox_closes_by_itself(monkeypatch, tmp_path):
+    hti = _make_hti("firefox", tmp_path)
+
+    with hti:
+        _assert_screenshot_works(hti)
+        browser = hti.browser
+        process, profile_dir = browser.proc, browser._profile_dir
+        # Records whether Firefox was still running when html2image was
+        # about to stop it.
+        running = []
+        shutdown = browser._shutdown_process_tree
+
+        def record_and_shutdown():
+            running.append(process.poll() is None)
+            shutdown()
+
+        monkeypatch.setattr(
+            browser, "_shutdown_process_tree", record_and_shutdown
+        )
+
+    assert running == [False]
+    assert process.returncode == 0
+    assert not os.path.exists(profile_dir)
 
 
 @pytest.mark.parametrize("browser", ["chrome", "edge"])

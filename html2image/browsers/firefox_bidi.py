@@ -586,11 +586,16 @@ class FirefoxBiDi(BiDiBrowser):
             )
 
         if self._ws:
+            # browser.close also ends the session. Firefox closes the
+            # connection once it has answered, then exits. If Firefox
+            # refuses the command, or does not exit in time, it is stopped
+            # below.
             try:
-                end_id = self._bidi_send('session.end')
-                self._bidi_expect_ok(end_id, timeout=10)
+                close_id = self._bidi_send('browser.close')
+                self._bidi_expect_ok(close_id, timeout=10)
+                self.proc.wait(timeout=5)
             except Exception:
-                pass
+                logger.debug('Firefox did not close by itself.', exc_info=True)
             try:
                 self._ws.close()
             except Exception:
