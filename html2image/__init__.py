@@ -10,6 +10,8 @@ from .exceptions import (
     BrowserTimeoutError,
     PageLoadError,
     PageLoadTimeoutError,
+    ElementNotFoundError,
+    CaptureTooLargeError,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     'BrowserTimeoutError',
     'PageLoadError',
     'PageLoadTimeoutError',
+    'ElementNotFoundError',
+    'CaptureTooLargeError',
 ]

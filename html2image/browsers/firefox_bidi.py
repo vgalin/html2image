@@ -1,5 +1,6 @@
 from .browser import BiDiBrowser
 from .search_utils import find_firefox
+from . import _selector
 from ..exceptions import (
     BrowserError,
     BrowserTimeoutError,
@@ -26,6 +27,10 @@ logger = logging.getLogger(__name__)
 BIDI_TIMEOUT = 30
 
 CM_PER_INCH = 2.54
+
+# Firefox refuses to capture an area larger than this number of pixels, in
+# width or in height.
+MAX_CAPTURE_SIZE = 65535
 
 
 class FirefoxBiDi(BiDiBrowser):
@@ -304,17 +309,95 @@ class FirefoxBiDi(BiDiBrowser):
         except BrowserError as error:
             raise PageLoadError(str(error)) from error
 
-    def _capture(self, output_file_path, format_type):
+    def _evaluate(self, expression):
+        """Return the value of a JavaScript expression that returns JSON."""
+        response = self._bidi_expect_ok(
+            self._bidi_send(
+                'script.evaluate',
+                expression=expression,
+                target={'context': self._context_id},
+                awaitPromise=True,
+            ),
+        )
+        result = response['result']
+        if result['type'] == 'exception':
+            raise BrowserError(
+                f'JavaScript error: {result["exceptionDetails"]["text"]}'
+            )
+        return json.loads(result['result']['value'])
+
+    def _capture(self, output_file_path, origin='viewport', clip=None):
+        """Save an image of the viewport, or of the `clip` area.
+
+        The coordinates of `clip` are relative to `origin`, 'viewport' or
+        'document'.
+        """
+        ext = os.path.splitext(output_file_path)[1].lower()
+        format_type = 'image/jpeg' if ext in ('.jpg', '.jpeg') else 'image/png'
+        area = {'clip': {'type': 'box', **clip}} if clip else {}
+
         response = self._bidi_expect_ok(
             self._bidi_send(
                 'browsingContext.captureScreenshot',
                 context=self._context_id,
-                origin='viewport',
+                origin=origin,
                 format={'type': format_type},
+                **area,
             ),
             timeout=30,
         )
         Path(output_file_path).write_bytes(base64.b64decode(response['result']['data']))
+
+    def _capture_from_viewport(self, output_file_path, box, clip):
+        """Save an image of `clip`, scrolling the page to show it if needed.
+
+        The page is left scrolled. Returns False, without saving anything, if
+        `clip` does not fit in the viewport.
+        """
+        scroll = _selector.viewport_scroll(box, clip)
+        if scroll is None:
+            return False
+
+        scroll_x, scroll_y = self._evaluate(_selector.scroll_js(*scroll))
+        self._capture(
+            output_file_path,
+            'viewport',
+            {**clip, 'x': clip['x'] - scroll_x, 'y': clip['y'] - scroll_y},
+        )
+        return True
+
+    def _capture_elements(self, output_path, elements, padding):
+        """Save an image of each element, see `screenshot()`."""
+        _selector.check_selectors(
+            self._evaluate, [selector for selector, _ in elements]
+        )
+
+        missing, too_large = [], []
+        for element in elements:
+            selector, output_file = element
+            output_file_path = os.path.join(output_path, output_file)
+            # The page is scrolled back as loaded after each element, so
+            # that each image is the same as with one call per selector.
+            box = self._evaluate(_selector.element_box_js(selector))
+            clip = _selector.element_clip(box, padding)
+            if clip is None:
+                missing.append(element)
+            elif max(clip['width'], clip['height']) > MAX_CAPTURE_SIZE:
+                too_large.append(element)
+            # Firefox only captures from the document what is inside of the
+            # root element. On a page without doctype, the root element can
+            # be much smaller than the page: the element is then captured
+            # from the viewport.
+            elif (
+                clip['x'] + clip['width'] <= box['rootWidth']
+                and clip['y'] + clip['height'] <= box['rootHeight']
+            ):
+                self._capture(output_file_path, 'document', clip)
+            elif not self._capture_from_viewport(output_file_path, box, clip):
+                too_large.append(element)
+            if box is not None:
+                self._evaluate(_selector.restore_js(selector, box))
+        return missing, too_large
 
     def _print(self, output_file_path, options):
         # BiDi lengths are in centimeters.
@@ -386,10 +469,15 @@ class FirefoxBiDi(BiDiBrowser):
         output_file='screenshot.png',
         size=(1920, 1080),
         pdf_options=None,
+        elements=None,
+        selector_padding=0,
     ):
         """Take a screenshot using Firefox via WebDriver BiDi.
 
         If `pdf_options` is given, the page is printed to a PDF instead.
+
+        If `elements` is given, an image of each element is saved instead,
+        as with `ChromeCDP.screenshot()`.
         """
         auto_started = self.proc is None or self.proc.poll() is not None
         if auto_started:
@@ -399,15 +487,16 @@ class FirefoxBiDi(BiDiBrowser):
             width, height = size if size else (1920, 1080)
             target_url = self._normalize_input(input)
 
-            ext = os.path.splitext(output_file)[1].lower()
-            format_type = 'image/jpeg' if ext in ('.jpg', '.jpeg') else 'image/png'
-
             self._set_viewport(width, height)
             self._navigate(target_url)
             if pdf_options is not None:
                 self._print(os.path.join(output_path, output_file), pdf_options)
+            elif elements is not None:
+                return self._capture_elements(
+                    output_path, elements, selector_padding
+                )
             else:
-                self._capture(os.path.join(output_path, output_file), format_type)
+                self._capture(os.path.join(output_path, output_file))
         finally:
             if auto_started:
                 self.__exit__()
