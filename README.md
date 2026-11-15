@@ -471,7 +471,7 @@ with Html2Image() as hti:
 
 Any other error, such as a `BrowserError`, still stops the loop.
 
-Within a `with` block, the browser will be restarted after any error other than a `PageLoadError` or a `ValueError`, so the next screenshot will start afresh. It will also be restarted after a `PageLoadTimeoutError`, as the page may still be loading.
+Within a `with` block, the browser will be restarted after a `BrowserError`, a `PageLoadTimeoutError` or an unexpected error, so the next screenshot will start afresh. After the other html2image exceptions, such as `PageLoadError`, and after wrong arguments, it will keep running as it was.
 
 A URL that starts a download will raise `PageLoadError`, and the file will not be saved in your Downloads folder. With Firefox, this needs Firefox 144 or later: older versions will save an image of the previous page instead.
 

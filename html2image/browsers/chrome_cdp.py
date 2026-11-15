@@ -20,7 +20,6 @@ import logging
 import os
 from pathlib import Path
 import shutil
-import signal
 import socket
 import subprocess
 import tempfile
@@ -715,24 +714,20 @@ class ChromeCDP(CDPBrowser):
                 self.__exit__()
 
     def _kill_browser(self):
-        """Kill the browser process, and on Windows the processes it
-        started.
+        """Kill the browser process and the processes it started.
+
+        Only used on Windows. Elsewhere, the launched process is the
+        browser, and it is stopped in `__exit__()`.
         """
         if self._browser_pid is None:
             return
         logger.debug('Killing Chrome.')
-        if os.name == 'nt':
-            subprocess.run(
-                ['taskkill', '/PID', str(self._browser_pid), '/T', '/F'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-        else:
-            try:
-                os.kill(self._browser_pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+        subprocess.run(
+            ['taskkill', '/PID', str(self._browser_pid), '/T', '/F'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
 
     def _wait_for_close(self, timeout=5):
         """Wait for Chrome to close the WebSocket, which it does on exit."""
@@ -771,10 +766,11 @@ class ChromeCDP(CDPBrowser):
                 self._ws.close()
                 logger.debug('Closed CDP and WebSocket connections.')
             except WebSocketTimeoutException:
-                # Chrome did not close in time. The launched process may
-                # have already exited, as with Edge on Windows, so stopping
-                # it below would not stop the browser.
-                self._kill_browser()
+                # Chrome did not close in time. On Windows, the launched
+                # process may have already exited, as with Edge, so
+                # stopping it below would not stop the browser.
+                if os.name == 'nt':
+                    self._kill_browser()
             except Exception:
                 logger.debug(
                     'Could not properly close CDP/WebSocket connections.',
