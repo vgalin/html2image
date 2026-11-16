@@ -657,7 +657,6 @@ class ChromeCDP(CDPBrowser):
         See: https://chromedevtools.github.io/devtools-protocol/
         """
         target_url = self._normalize_input(input)
-        size = size or (1920, 1080)
         auto_started = self._ws is None
         if auto_started:
             self.__enter__()
