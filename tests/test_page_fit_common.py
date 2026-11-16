@@ -419,3 +419,31 @@ def test_full_page_warns_once_the_image_is_saved(
             profile="fast", max_pixels=None,
         )
     assert caught[0].filename == __file__
+
+
+def _capture_two_tiles(page):
+    """Captures two tiles of 720 px, as `capture_tiles()` would, and
+    returns the warnings."""
+    seams = common.SeamChecker(page.evaluate, page.sleep)
+    for row in (0, 720):
+        seams.shift()
+        seams.mark(row + 720)
+        seams.moved()
+        seams.next_tile(row)
+    return seams.messages("page.png")
+
+
+def test_seam_checker_warns_if_the_last_tile_moved_unevenly():
+    # The first tile, the seam, the second tile.
+    page = FakePage([0, 0, 0], [0, 0, 0], [0, 0, 12, 12])
+    assert _capture_two_tiles(page) == [
+        common._UNCHECKED_SEAMS["uneven"] % ("page.png", "720 px"),
+    ]
+
+
+def test_seam_checker_warns_if_a_tile_moved_unevenly():
+    # The anchors of the seam moved back before it was checked.
+    page = FakePage([0, 0, 12, 12], [0, 0, 0], [0, 0, 0])
+    assert _capture_two_tiles(page) == [
+        common._UNCHECKED_SEAMS["uneven"] % ("page.png", "720 px"),
+    ]

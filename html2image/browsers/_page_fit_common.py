@@ -286,6 +286,11 @@ class SeamChecker:
         self.has_above = False
         self.problem = None
         self.unchecked = {problem: [] for problem in _UNCHECKED_SEAMS}
+        # Whether the anchors of the seams above and below the current tile
+        # moved unevenly while a tile was captured, see `moved()`, and the
+        # top of the last tile in the image.
+        self.uneven_above = self.uneven_below = False
+        self.row = 0
 
     def _shifts(self, key):
         return self.evaluate(_ANCHOR_SHIFTS_JS % json.dumps(key))
@@ -297,7 +302,7 @@ class SeamChecker:
 
         If the page moved, it is first given the time to stop moving.
         """
-        self.problem = None
+        self.problem = 'uneven' if self.uneven_above else None
         if not self.has_above:
             return 0
         shifts = self._shifts(self.above)
@@ -325,11 +330,21 @@ class SeamChecker:
         """Mark the anchors of the seam below the current tile, at the row
         `seam` of the page."""
         self.evaluate(_MARK_ANCHORS_JS % json.dumps([self.below, seam]))
+        self.uneven_below = False
 
     def moved(self):
-        """Return True if the page moved since `mark()`."""
+        """Return True if the page moved since `mark()`.
+
+        If only a part of the page moved, the tile is kept, but the seam
+        will not be checked.
+        """
         shifts = self._shifts(self.below)
-        if page_shift(shifts) in (0, None):
+        shift = page_shift(shifts)
+        if shift is None and any(abs(value) >= 0.5 for value in shifts):
+            logger.debug('The page moved unevenly during the capture: %s',
+                         shifts)
+            self.uneven_below = True
+        if not shift:
             return False
         logger.debug('The page moved during the capture: %s', shifts)
         return True
@@ -339,6 +354,8 @@ class SeamChecker:
         image."""
         if self.problem:
             self.unchecked[self.problem].append(row)
+        self.uneven_above, self.uneven_below = self.uneven_below, False
+        self.row = row
         self.above, self.below = self.below, self.above
         self.has_above = True
 
@@ -350,6 +367,11 @@ class SeamChecker:
     def messages(self, name):
         """Return a warning for each kind of seam that could not be
         checked, in the image named `name`."""
+        # The last tile has no seam below it: if the page moved unevenly
+        # while it was captured, the seam above it is not checked.
+        uneven = self.unchecked['uneven']
+        if self.uneven_above and self.row and self.row not in uneven:
+            uneven.append(self.row)
         return [
             _UNCHECKED_SEAMS[problem]
             % (name, ', '.join('%d px' % row for row in rows))
