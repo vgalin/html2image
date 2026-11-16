@@ -8,10 +8,16 @@ import json
 import logging
 import math
 import struct
+import sys
 import time
 import uuid
+import warnings
 
-from ..exceptions import BrowserError, CaptureTooLargeError
+from ..exceptions import (
+    BrowserError,
+    CaptureTooLargeError,
+    FullPageWarning,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +250,7 @@ class SeamChecker:
     seam with the next tile, are marked. Before the next tile, they are
     read again: if they all moved the same way, so did the page, and the
     next tile will start that much higher or lower. When it cannot be told,
-    nothing is changed, and a warning will be logged by `warn()`.
+    nothing is changed, and `messages()` will tell where.
 
     `evaluate` returns the value of a JavaScript expression that returns
     JSON. `sleep` waits for a number of milliseconds.
@@ -323,15 +329,26 @@ class SeamChecker:
         keys = [self.above, self.below]
         self.evaluate(_FORGET_ANCHORS_JS % json.dumps(keys))
 
-    def warn(self, name):
-        """Log a warning for each kind of seam that could not be checked."""
-        for problem, rows in self.unchecked.items():
-            if rows:
-                logger.warning(
-                    _UNCHECKED_SEAMS[problem],
-                    name,
-                    ', '.join('%d px' % row for row in rows),
-                )
+    def messages(self, name):
+        """Return a warning for each kind of seam that could not be
+        checked, in the image named `name`."""
+        return [
+            _UNCHECKED_SEAMS[problem]
+            % (name, ', '.join('%d px' % row for row in rows))
+            for problem, rows in self.unchecked.items()
+            if rows
+        ]
+
+
+def warn(message):
+    """Give a FullPageWarning, shown where html2image was called."""
+    # The warning is shown at the line of the first frame that is not in
+    # the package.
+    frame, level = sys._getframe(), 1
+    while frame and frame.f_globals.get('__name__', '').startswith(
+            'html2image.'):
+        frame, level = frame.f_back, level + 1
+    warnings.warn(message, FullPageWarning, stacklevel=level)
 
 
 def output_format_from_filename(filename):
@@ -503,7 +520,8 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                   output_file):
     """Capture the page one viewport at a time, and join the tiles.
 
-    `page` does what depends on the browser: it has the `name` of the
+    Returns the image, and the warnings to give once it is saved. `page`
+    does what depends on the browser: it has the `name` of the
     browser, the `width` of the image, the `viewport_height`, the
     `tile_height`, and the methods `evaluate()`, `sleep()`, `scroll_to()`,
     `settle()`, `measure()`, `viewport()`, `shorten()` and `capture()`.
@@ -593,5 +611,5 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
             if overlay_key is not None:
                 page.evaluate(restore_overlays_js(overlay_key))
 
-    seams.warn(output_file)
-    return stitch_tiles(tiles, plan, width, image_y, output_format)
+    image = stitch_tiles(tiles, plan, width, image_y, output_format)
+    return image, seams.messages(output_file)

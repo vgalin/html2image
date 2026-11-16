@@ -1,4 +1,4 @@
-"""Exceptions raised by html2image.
+"""Exceptions raised and warnings given by html2image.
 
 BrowserNotFoundError is also a FileNotFoundError, as in html2image 2.x,
 so existing `except FileNotFoundError` clauses keep working. The two
@@ -67,3 +67,13 @@ class CaptureTooLargeError(Html2ImageError):
         super().__init__(message)
         self.paths = list(paths)
         self.too_large = list(too_large)
+
+
+class FullPageWarning(UserWarning):
+    """The image of a page captured with `full_page=True` was saved, but
+    it may be wrong in places, for example because the page moved while
+    it was captured.
+
+    The message names the image and the places. The `warnings` module of
+    Python can ignore this warning, or turn it into an error.
+    """

@@ -21,6 +21,7 @@ from ._page_fit_common import (
     restore_overlays_js,
     show_overlays_js,
     validate_viewport,
+    warn,
 )
 from ..exceptions import BrowserError
 
@@ -367,17 +368,20 @@ def capture_full_page(browser, output_path, output_file, width,
             and overlay_count > 0
             and fixed_elements in ('auto', 'last')
         )
+        messages = []
         if total_height <= _NATIVE_CAPTURE_MAX_HEIGHT and not force_tiled:
             image = _capture(
                 browser, 0, width, total_height, output_format,
                 beyond_viewport=True,
             )
         else:
-            image = capture_tiles(
+            image, messages = capture_tiles(
                 _Tiles(browser, width, viewport_height, profile),
                 fixed_elements, output_format, max_pixels, output_file,
             )
         Path(output_path, output_file).write_bytes(image)
+        for message in messages:
+            warn(message)
     finally:
         # The page is put back as it was, if it can be: the browser may be
         # lost, and the error that stopped the capture is the one to raise.

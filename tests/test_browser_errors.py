@@ -9,6 +9,7 @@ from html2image import (
     BrowserError,
     BrowserTimeoutError,
     CaptureTooLargeError,
+    FullPageWarning,
     PageLoadError,
     PageLoadTimeoutError,
 )
@@ -143,6 +144,7 @@ def restarts(monkeypatch, cdp_browser, bidi_browser):
     (ValueError('"div[" is not a valid CSS selector.'), False),
     (CaptureTooLargeError("Too large"), False),
     (ImportError("pyvips is required"), False),
+    (FullPageWarning("A seam could not be checked."), False),
     (BrowserError("CDP error -32000: Not allowed"), True),
     (BrowserTimeoutError("Timed out"), True),
     (BrowserError("The connection to the browser was lost."), True),

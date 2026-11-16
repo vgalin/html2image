@@ -6,6 +6,7 @@ from websocket import WebSocketException
 from ..exceptions import (
     BrowserError,
     CaptureTooLargeError,
+    FullPageWarning,
     PageLoadError,
     PageLoadTimeoutError,
 )
@@ -39,16 +40,16 @@ def needs_restart(error):
 
     A failed screenshot can leave the browser unusable, for example with a
     navigation still pending. Only an error about the page or about the
-    arguments leaves it as it was, as does a missing optional package. A
-    page that did not load in time may still be loading, so it is not one
-    of them.
+    arguments leaves it as it was, as does a missing optional package or a
+    warning turned into an error. A page that did not load in time may
+    still be loading, so it is not one of them.
     """
     if isinstance(error, PageLoadTimeoutError):
         return True
-    return not isinstance(
-        error,
-        (PageLoadError, CaptureTooLargeError, ValueError, ImportError),
-    )
+    return not isinstance(error, (
+        PageLoadError, CaptureTooLargeError, FullPageWarning, ValueError,
+        ImportError,
+    ))
 
 
 class Browser(ABC):

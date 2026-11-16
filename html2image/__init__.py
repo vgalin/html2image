@@ -12,6 +12,7 @@ from .exceptions import (
     PageLoadTimeoutError,
     ElementNotFoundError,
     CaptureTooLargeError,
+    FullPageWarning,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     'PageLoadTimeoutError',
     'ElementNotFoundError',
     'CaptureTooLargeError',
+    'FullPageWarning',
 ]

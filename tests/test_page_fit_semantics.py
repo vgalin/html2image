@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from html2image import CaptureTooLargeError, Html2Image
+from html2image import CaptureTooLargeError, FullPageWarning, Html2Image
 
 
 def _make_hti(browser, output_path):
@@ -537,6 +537,40 @@ def test_tiles_follow_a_header_that_shrinks_when_scrolled(
     # The first tile shows the header before it shrinks, and the next
     # tiles start 20 px higher, where the page moved.
     _assert_bands(output)
+
+
+@TILED_BROWSERS
+def test_tiles_warn_when_a_single_column_moves(browser, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+    left = "".join(
+        '<div style="display:flex; height:100px">%s</div>'
+        % ('<div style="flex:1; background:rgb%s"></div>'
+           % (_band_color(index),) * 2)
+        for index in range(30)
+    )
+    right = "".join(
+        '<div style="height:100px; background:rgb%s"></div>'
+        % (_band_color(index),)
+        for index in range(30)
+    )
+
+    with pytest.warns(FullPageWarning, match="unevenly"):
+        hti.screenshot(
+            html_str=(
+                '<!doctype html><body style="margin:0">'
+                '<div style="display:flex; align-items:flex-start">'
+                '<div style="width:60%%"><div id="spacer"></div>%s</div>'
+                '<div style="width:40%%">%s</div></div>%s<script>'
+                "addEventListener('scroll', () =>"
+                " spacer.style.height = scrollY > 0 ? '12px' : '0');"
+                "</script>" % (left, right, _BADGE)
+            ),
+            save_as="one-column.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )
 
 
 def test_tiles_of_a_page_that_cannot_be_scrolled(tmp_path):

@@ -21,6 +21,7 @@ from ._page_fit_common import (
     restore_overlays_js,
     show_overlays_js,
     validate_viewport,
+    warn,
 )
 from ..exceptions import BrowserError
 
@@ -348,7 +349,7 @@ def capture_full_page(browser, output_path, output_file, width,
         _sleep_ms(_PRE_CAPTURE_SETTLE_MS)
 
         overlay_count = browser._evaluate(OVERLAY_COUNT_JS)
-        image = None
+        image, messages = None, []
         # Fixed elements are only shown once in tiles.
         force_tiling = (
             total_height > viewport_height
@@ -370,11 +371,13 @@ def capture_full_page(browser, output_path, output_file, width,
             # The page may have changed while it was captured in one go.
             total_height = _read_document_height(browser, viewport_height)
             enforce_pixel_budget(width, total_height, max_pixels)
-            image = capture_tiles(
+            image, messages = capture_tiles(
                 _Tiles(browser, width, viewport_height),
                 fixed_elements, output_format, max_pixels, output_file,
             )
         Path(output_path, output_file).write_bytes(image)
+        for message in messages:
+            warn(message)
     finally:
         # The page is put back as it was, if it can be: the browser may be
         # lost, and the error that stopped the capture is the one to raise.

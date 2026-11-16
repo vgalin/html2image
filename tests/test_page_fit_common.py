@@ -1,9 +1,15 @@
 import io
+import warnings
 
 import pytest
 from PIL import Image
 
-from html2image import BrowserError, BrowserTimeoutError, CaptureTooLargeError
+from html2image import (
+    BrowserError,
+    BrowserTimeoutError,
+    CaptureTooLargeError,
+    FullPageWarning,
+)
 from html2image.browsers import _page_fit_common as common
 from html2image.browsers import _chromium_page_fit as chromium_page_fit
 from html2image.browsers import _firefox_page_fit as firefox_page_fit
@@ -247,7 +253,7 @@ def test_firefox_does_not_capture_too_large_pages_in_one_go(
     monkeypatch, tmp_path
 ):
     def tiles(*args, **kwargs):
-        return b"tiles"
+        return b"tiles", []
 
     def no_capture_in_one_go(*args, **kwargs):
         raise AssertionError("Firefox refuses to capture it in one go")
@@ -365,7 +371,7 @@ def test_seam_checker_tells_if_the_page_moved_during_a_capture():
     assert not seams.moved()
 
 
-def test_seam_checker_warns_once_per_kind_of_unchecked_seam(caplog):
+def test_seam_checker_warns_once_per_kind_of_unchecked_seam():
     uneven = [0, 0, 0, 11.8, 11.8]
     # Anchors that moved are read once more, to wait until they stop.
     page = FakePage([], uneven, uneven, [])
@@ -375,10 +381,41 @@ def test_seam_checker_warns_once_per_kind_of_unchecked_seam(caplog):
         seams.mark(row + 720)
         seams.next_tile(row)
 
-    with caplog.at_level("WARNING", logger=common.__name__):
-        seams.warn("page.png")
-
-    assert [record.getMessage() for record in caplog.records] == [
+    assert seams.messages("page.png") == [
         common._UNCHECKED_SEAMS["no anchor"] % ("page.png", "720 px, 2160 px"),
         common._UNCHECKED_SEAMS["uneven"] % ("page.png", "1440 px"),
     ]
+
+
+@pytest.mark.parametrize("page_fit", [chromium_page_fit, firefox_page_fit])
+def test_full_page_warns_once_the_image_is_saved(
+    monkeypatch, tmp_path, page_fit
+):
+    def tiles(*args, **kwargs):
+        return b"tiles", ["page.png: a seam could not be checked."]
+
+    for name, value in [
+        ("_sleep_ms", lambda *args: None),
+        ("_settled_document_height", lambda *args: 70000),
+        ("_read_document_height", lambda *args: 70000),
+        ("_send", lambda *args, **kwargs: {}),
+        ("capture_tiles", tiles),
+    ]:
+        monkeypatch.setattr(page_fit, name, value, raising=False)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FullPageWarning)
+        with pytest.raises(FullPageWarning):
+            page_fit.capture_full_page(
+                FakeBrowser(), str(tmp_path), "page.png", 1280, 720,
+                profile="fast", max_pixels=None,
+            )
+    assert (tmp_path / "page.png").read_bytes() == b"tiles"
+
+    # The warning is shown where html2image was called.
+    with pytest.warns(FullPageWarning, match="could not be checked") as caught:
+        page_fit.capture_full_page(
+            FakeBrowser(), str(tmp_path), "page.png", 1280, 720,
+            profile="fast", max_pixels=None,
+        )
+    assert caught[0].filename == __file__
