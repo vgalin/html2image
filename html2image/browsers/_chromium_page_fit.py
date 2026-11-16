@@ -16,6 +16,7 @@ from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
     capture_tiles,
+    enforce_format_limit,
     enforce_pixel_budget,
     output_format_from_filename,
     restore_overlays_js,
@@ -342,6 +343,7 @@ def capture_full_page(browser, output_path, output_file, width,
             browser, width, viewport_height, profile, stability_timeout,
             max_pixels,
         )
+        enforce_format_limit(width, total_height, output_format)
         _scroll_to(browser, 0)
         overlay_count = browser._evaluate(OVERLAY_COUNT_JS)
 

@@ -9,6 +9,7 @@ from html2image import (
     BrowserTimeoutError,
     CaptureTooLargeError,
     FullPageWarning,
+    Html2ImageError,
 )
 from html2image.browsers import _page_fit_common as common
 from html2image.browsers import _chromium_page_fit as chromium_page_fit
@@ -489,3 +490,66 @@ def test_full_page_leaves_the_viewport_as_it_is(
     # it again, or removing it, would send the page a resize event.
     assert "_set_viewport" not in calls
     assert "Emulation.clearDeviceMetricsOverride" not in calls
+
+
+def _never(*args, **kwargs):
+    raise AssertionError("nothing should be captured")
+
+
+@pytest.mark.parametrize("page_fit", [chromium_page_fit, firefox_page_fit])
+def test_full_page_refuses_a_jpeg_image_too_high_before_capturing_it(
+    monkeypatch, tmp_path, page_fit
+):
+    for name, value in [
+        ("_sleep_ms", lambda *args: None),
+        ("_settled_document_height", lambda *args: 66000),
+        ("_send", lambda *args, **kwargs: {}),
+        ("_capture", _never),
+        ("capture_tiles", _never),
+    ]:
+        monkeypatch.setattr(page_fit, name, value, raising=False)
+
+    with pytest.raises(CaptureTooLargeError, match="JPEG"):
+        page_fit.capture_full_page(
+            FakeBrowser(), str(tmp_path), "page.jpg", 400, 720,
+            profile="fast", max_pixels=None,
+        )
+
+
+class FakeTiles:
+    """A page that grows beyond what a JPEG image can hold."""
+
+    name = "Fake"
+    width = 400
+    viewport_height = tile_height = 720
+    capture = _never
+
+    def evaluate(self, expression):
+        return []
+
+    def sleep(self, milliseconds):
+        pass
+
+    def scroll_to(self, y):
+        pass
+
+    def settle(self):
+        pass
+
+    def measure(self):
+        return 66000
+
+
+def test_tiles_refuse_a_jpeg_image_that_grew_too_high():
+    pytest.importorskip("pyvips")
+    with pytest.raises(CaptureTooLargeError, match="JPEG"):
+        common.capture_tiles(FakeTiles(), "auto", "jpeg", None, "page.jpg")
+
+
+def test_stitch_tiles_does_not_let_pyvips_errors_out():
+    pytest.importorskip("pyvips")
+    with pytest.raises(Html2ImageError, match="could not be joined"):
+        common.stitch_tiles(
+            [b"not an image"], [common.TileSegment(0, 10, 0, 10)], 10, 10,
+            "png",
+        )

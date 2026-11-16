@@ -15,6 +15,7 @@ from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
     capture_tiles,
+    enforce_format_limit,
     enforce_pixel_budget,
     image_dimensions,
     output_format_from_filename,
@@ -342,6 +343,7 @@ def capture_full_page(browser, output_path, output_file, width,
             max_pixels,
         )
         enforce_pixel_budget(width, total_height, max_pixels)
+        enforce_format_limit(width, total_height, output_format)
         _scroll_to(browser, 0)
         _sleep_ms(_PRE_CAPTURE_SETTLE_MS)
 

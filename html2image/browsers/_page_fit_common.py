@@ -17,6 +17,7 @@ from ..exceptions import (
     BrowserError,
     CaptureTooLargeError,
     FullPageWarning,
+    Html2ImageError,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,8 @@ FULL_PAGE_PROFILES = ('fast', 'balanced', 'robust')
 FIXED_ELEMENT_MODES = ('auto', 'preserve', 'first', 'last', 'hide')
 # Tries to capture a tile while the page moves or does not show it.
 _TILE_ATTEMPTS = 4
+# The JPEG images written by pyvips cannot be wider or higher than this.
+_JPEG_MAX_SIZE = 65_500
 
 # A fixed or sticky element that is too small to be seen is ignored. Its
 # content counts, since it can overflow an element that has no size itself.
@@ -483,6 +486,17 @@ def enforce_pixel_budget(width, height, max_pixels):
         )
 
 
+def enforce_format_limit(width, height, output_format):
+    """Raise CaptureTooLargeError if the image would be too large to be
+    saved in its format, before capturing it."""
+    if output_format == 'jpeg' and max(width, height) > _JPEG_MAX_SIZE:
+        raise CaptureTooLargeError(
+            f'Full-page capture would be {width}x{height} pixels, but a '
+            f'JPEG image cannot be larger than {_JPEG_MAX_SIZE:,} pixels '
+            'in width or in height. Save it as a PNG image instead.'
+        )
+
+
 def next_tile_height(y, total_height, tile_height, viewport_height,
                      fixed_elements):
     """Return the height of the tile starting at `y`."""
@@ -538,6 +552,19 @@ def stitch_tiles(tile_bytes, tile_plan, total_width, total_height,
                  output_format):
     """Join the tiles captured by the browser into one image."""
     pyvips = import_pyvips_for_stitching()
+    try:
+        return _stitch_tiles(
+            pyvips, tile_bytes, tile_plan, total_width, total_height,
+            output_format,
+        )
+    except pyvips.Error as error:
+        raise Html2ImageError(
+            f'The screenshots of the page could not be joined: {error}'
+        ) from error
+
+
+def _stitch_tiles(pyvips, tile_bytes, tile_plan, total_width, total_height,
+                  output_format):
     png = output_format == 'png'
 
     tiles = []
@@ -620,6 +647,7 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                 # page as it is now, not as it was when first measured.
                 total_height = page.measure()
                 enforce_pixel_budget(width, total_height, max_pixels)
+                enforce_format_limit(width, total_height, output_format)
                 top = y + seams.shift(still)
                 if top >= total_height:
                     break
