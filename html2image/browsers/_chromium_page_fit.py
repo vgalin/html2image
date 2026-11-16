@@ -436,7 +436,7 @@ def _capture_tiled(
         _scroll_to(browser, y)
         _settle(browser, profile)
         while True:
-            for _ in range(_TILE_ATTEMPTS):
+            for attempt in range(_TILE_ATTEMPTS):
                 # Scrolling can change the height of a page (a header that
                 # collapses, content loaded on demand). The tiles follow the
                 # page as it is now, not as it was when first measured.
@@ -452,10 +452,16 @@ def _capture_tiled(
                 # The page may not stop where it was asked to, for example
                 # if it changed while it was scrolled.
                 visible = _is_visible(browser, top, height)
-                if not visible:
+                if not visible and attempt < _TILE_ATTEMPTS - 1:
                     _scroll_to(browser, top)
                     _settle(browser, profile)
                     continue
+                if not visible:
+                    # The page cannot be scrolled to show the tile.
+                    logger.debug(
+                        'Capturing the tile at %d px beyond the viewport.',
+                        top,
+                    )
 
                 if registry_key is not None:
                     _show_overlays(
@@ -473,7 +479,7 @@ def _capture_tiled(
                     width=width,
                     height=height,
                     output_format='png',
-                    beyond_viewport=False,
+                    beyond_viewport=not visible,
                 )
                 # If the page moved while the tile was captured, the tile
                 # may show it before or after it moved.
@@ -481,22 +487,7 @@ def _capture_tiled(
                     break
                 _settle(browser, profile)
             else:
-                if visible:
-                    seams.problem = 'moving'
-                else:
-                    # The page could not be scrolled to show the tile.
-                    logger.debug(
-                        'Capturing the tile at %d px beyond the viewport.',
-                        top,
-                    )
-                    tile = _capture_region(
-                        browser,
-                        x=0,
-                        y=top,
-                        width=width,
-                        height=height,
-                        output_format='png',
-                    )
+                seams.problem = 'moving'
             if top >= total_height:
                 break
             _validate_capture(tile, width, height, 'png')
