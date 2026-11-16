@@ -266,8 +266,9 @@ def test_firefox_does_not_capture_too_large_pages_in_one_go(
     assert (tmp_path / "page.png").read_bytes() == b"tiles"
 
 
-# How far the anchors of a seam moved, as measured on recorded pages on
-# Nov. 16, 2026, and how far the page moved according to them.
+# How far the anchors of a seam moved, and how far the page moved
+# according to them. The first ones are all those measured on recorded
+# pages on Nov. 16, 2026.
 @pytest.mark.parametrize(("shifts", "expected"), [
     # BBC and Le Monde: the header shrank once the page was scrolled.
     ([-16, -16, -16], -16),
@@ -275,6 +276,8 @@ def test_firefox_does_not_capture_too_large_pages_in_one_go(
     ([-76, -76, -76], -76),
     # Tailwind: an animated picture moved by itself.
     ([0, 0, 0, 0, 0.7], 0),
+    ([0, 0, 0, 0, 0.8], 0),
+    ([0, 0, 0, 0, 3], 0),
     ([0, 0, 0, 0, 3.3], 0),
     ([0, 0, 0, 0, -5.6], 0),
     # CSS-Tricks: two elements of the same column moved.
@@ -282,7 +285,16 @@ def test_firefox_does_not_capture_too_large_pages_in_one_go(
     ([0, 0, 0, 8.1, 8.1], None),
     # NPR: no element crossed the seam.
     ([], None),
-    # A single element cannot tell that the page moved.
+    # The page is only moved if all the anchors agree: a single anchor
+    # that did not move tells that a part of the page did not move.
+    ([12, 12], 12),
+    ([12, 12, 0], None),
+    ([12, 12, 12, 0], None),
+    ([12, 12, 12, 5], None),
+    ([-16, -16, -16, -16, -10], None),
+    # A single anchor that moved is ignored if the others did not.
+    ([0, 0, 12], 0),
+    # A single anchor cannot tell that the page moved.
     ([0], 0),
     ([-16], None),
     ([0, -16], None),

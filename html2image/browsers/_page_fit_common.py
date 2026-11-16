@@ -217,18 +217,21 @@ def page_shift(shifts):
     """Return how far the page moved, from how far its anchors moved.
 
     Returns None if it cannot be told: no anchor, or anchors that moved in
-    different ways. A single anchor that disagrees with at least two others
-    is ignored: it is an element that moves by itself, such as an animated
-    picture. A single anchor cannot confirm that the page moved.
+    different ways. The page only moved if all its anchors agree. If the
+    others did not move, a single anchor that moved is ignored: it is an
+    element that moves by itself, such as an animated picture. A single
+    anchor cannot confirm that the page moved.
     """
     best = []
     for shift in shifts:
         group = [other for other in shifts if abs(other - shift) <= 1]
         if len(group) > len(best):
             best = group
-    if not best or len(shifts) - len(best) > (len(best) > 1):
+    if not best:
         return None
     shift = round(sorted(best)[len(best) // 2])
+    if len(shifts) - len(best) > (len(best) > 1 and shift == 0):
+        return None
     if len(best) == 1 and shift:
         return None
     return shift
