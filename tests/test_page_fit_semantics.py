@@ -421,10 +421,7 @@ def test_full_page_follows_growth_during_tiling_and_restores_page(
 def test_short_fixed_page_does_not_require_the_optional_stitcher(
     browser, tmp_path, monkeypatch
 ):
-    if browser == "chrome-cdp":
-        from html2image.browsers import _chromium_page_fit as page_fit
-    else:
-        from html2image.browsers import _firefox_page_fit as page_fit
+    from html2image.browsers import _page_fit_common as page_fit
 
     def fail_if_stitching_is_attempted():
         raise AssertionError("the short native capture must not import pyvips")
