@@ -565,17 +565,24 @@ def _spaced_bands_html(boxes):
 
 
 @TILED_BROWSERS
-def test_tiles_follow_a_page_that_moves_between_its_seams(browser, tmp_path):
+# With a single box, the band above a seam is its only anchor, and the
+# bands above it are its backup anchors.
+@pytest.mark.parametrize("boxes", [4, 1])
+def test_tiles_follow_a_page_that_moves_between_its_seams(
+    browser, boxes, tmp_path
+):
     pytest.importorskip("pyvips")
     hti = _make_hti(browser, tmp_path)
 
-    output = hti.screenshot(
-        html_str=_spaced_bands_html(4),
-        save_as="spaced-bands.png",
-        size=(400, 600),
-        full_page=True,
-        full_page_profile="fast",
-    )[0]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FullPageWarning)
+        output = hti.screenshot(
+            html_str=_spaced_bands_html(boxes),
+            save_as="spaced-bands.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )[0]
 
     # The seams are between two bands, where the only element under the
     # seam is the one around all of them, which does not move with them.
@@ -589,21 +596,71 @@ def test_tiles_follow_a_page_that_moves_between_its_seams(browser, tmp_path):
         assert rgb.getpixel((10, top + 90)) == (255, 255, 255), index
 
 
+def _blocks_html(content, script):
+    """Returns a page of 20 blocks as wide as the page, of 100 px, each of
+    its own color, 20 px apart, the first one 10 px from the top. The fifth
+    one, `moving`, ends 10 px above the seam at 600 px. It holds `content`,
+    and `script` changes it once the page is scrolled. The others hold 4
+    boxes side by side, so that there are several backup anchors."""
+    boxes = '<div style="display:flex; height:100%%">%s</div>' % (
+        '<div style="flex:1"></div>' * 4
+    )
+    blocks = "".join(
+        '<div %s style="position:relative; margin-top:%dpx; height:100px;'
+        ' background:rgb%s">%s</div>'
+        % ('id="moving"' if index == 4 else "", 20 if index else 10,
+           _band_color(index), content if index == 4 else boxes)
+        for index in range(20)
+    )
+    return (
+        '<!doctype html><body style="margin:0; background:#ffffff">%s%s'
+        "<script>addEventListener('scroll', () => { if (scrollY > 0) %s })"
+        "</script>" % (blocks, _BADGE, script)
+    )
+
+
 @TILED_BROWSERS
-def test_tiles_warn_when_a_single_anchor_moved(browser, tmp_path):
+def test_tiles_warn_when_a_block_grows_above_a_seam(browser, tmp_path):
     pytest.importorskip("pyvips")
     hti = _make_hti(browser, tmp_path)
 
-    # Each band is a single element: a single anchor cannot tell that
-    # the page moved, rather than this element.
-    with pytest.warns(FullPageWarning, match="could not be checked"):
+    # The block is the only anchor of the seam. It moved, but the blocks
+    # above it did not: the page did not move with it.
+    with pytest.warns(FullPageWarning):
         hti.screenshot(
-            html_str=_spaced_bands_html(1),
-            save_as="spaced-bands.png",
+            html_str=_blocks_html("", "moving.style.height = '112px';"),
+            save_as="growing-block.png",
             size=(400, 600),
             full_page=True,
             full_page_profile="fast",
         )
+
+
+@TILED_BROWSERS
+def test_tiles_do_not_follow_a_block_that_moves_by_itself(browser, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    # The last box of the block shares its bottom edge, and is the anchor.
+    # The first one moves with the block: it does not tell that the page
+    # moved.
+    content = (
+        '<div style="height:30px; background:#000000"></div>'
+        '<div style="height:70px"></div>'
+    )
+    with pytest.warns(FullPageWarning, match="moved unevenly"):
+        output = hti.screenshot(
+            html_str=_blocks_html(content, "moving.style.top = '12px';"),
+            save_as="moving-block.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )[0]
+
+    with Image.open(output) as image:
+        rgb = image.convert("RGB")
+    assert rgb.getpixel((10, 605)) == (255, 255, 255)
+    assert rgb.getpixel((10, 611)) == _band_color(5)
 
 
 # A page without anything but a fixed badge, which is not an anchor.

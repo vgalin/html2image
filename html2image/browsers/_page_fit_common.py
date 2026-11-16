@@ -149,39 +149,61 @@ const isFloating = (element) => {
 # closest above the seam, within a viewport. Content that moves between them
 # and the seam cannot be seen, so they are as close to it as can be. Floating
 # elements are left out.
+#
+# When a single element is found, as when a block as wide as the page ends
+# just above the seam, backup anchors are found the same way, above it and
+# outside of it. The outermost box that shares its edge would move with
+# it, so they are found outside of that box.
 _MARK_ANCHORS_JS = '''
 (() => {
-    const [key, seam] = %%s;
+    const [key, backupKey, seam] = %%s;
     %s
     const columns = [0.08, 0.2, 0.33, 0.45, 0.55, 0.67, 0.8, 0.92]
         .map(x => x * innerWidth);
-    const closest = columns.map(() => null);
     const root = document.body || document.documentElement;
-    for (const element of root.querySelectorAll('*')) {
-        const rect = element.getBoundingClientRect();
-        // An element that is not shown has no box.
-        if (!rect.width && !rect.height) continue;
-        for (const edge of ['top', 'bottom']) {
-            const position = rect[edge] + scrollY;
-            if (position > seam || position <= seam - innerHeight) continue;
-            columns.forEach((x, column) => {
-                if (x < rect.left || x >= rect.right) return;
-                // On a tie, the element inside of the other one is kept.
-                if (closest[column] && closest[column].position > position
-                    || isFloating(element)) return;
-                closest[column] = {element, edge, position};
-            });
+    // An element that is not shown has no box.
+    const shown = [...root.querySelectorAll('*')]
+        .map(element => [element, element.getBoundingClientRect()])
+        .filter(([element, rect]) => rect.width || rect.height);
+    const find = (limit, outside) => {
+        const closest = columns.map(() => null);
+        for (const [element, rect] of shown) {
+            if (outside && outside.contains(element)) continue;
+            for (const edge of ['top', 'bottom']) {
+                const position = rect[edge] + scrollY;
+                if (position > limit || position <= seam - innerHeight) {
+                    continue;
+                }
+                columns.forEach((x, column) => {
+                    if (x < rect.left || x >= rect.right) return;
+                    // On a tie, the element inside of the other one is kept.
+                    if (closest[column]
+                        && closest[column].position > position
+                        || isFloating(element)) return;
+                    closest[column] = {element, edge, position};
+                });
+            }
         }
-    }
-    const anchors = [];
-    for (const anchor of closest) {
-        if (anchor
-            && !anchors.some(({element}) => element === anchor.element)) {
-            anchors.push(anchor);
+        // An element is only counted once.
+        return closest.filter((anchor, column) => anchor
+            && closest.findIndex(other => other
+                && other.element === anchor.element) === column);
+    };
+    const anchors = find(seam);
+    let backups = [];
+    if (anchors.length === 1) {
+        const [{element, edge, position}] = anchors;
+        let box = element;
+        while (box.parentElement && box.parentElement !== root
+               && Math.abs(box.parentElement.getBoundingClientRect()[edge]
+                           + scrollY - position) <= 0.5) {
+            box = box.parentElement;
         }
+        backups = find(position - 1, box);
     }
     window[key] = anchors;
-    return JSON.stringify(anchors.length);
+    window[backupKey] = backups;
+    return JSON.stringify([anchors.length, backups.length]);
 })()
 ''' % _IS_FLOATING_JS
 
@@ -251,14 +273,15 @@ def restore_overlays_js(key):
     return _RESTORE_OVERLAYS_JS % json.dumps(key)
 
 
-def page_shift(shifts):
+def page_shift(shifts, backups=()):
     """Return how far the page moved, from how far its anchors moved.
 
     Returns None if it cannot be told: no anchor, or anchors that moved in
     different ways. The page only moved if all its anchors agree. If the
     others did not move, a single anchor that moved is ignored: it is an
     element that moves by itself, such as an animated picture. A single
-    anchor cannot confirm that the page moved.
+    anchor cannot tell by itself that the page moved: the backup anchors,
+    found outside of it, must all have moved with it.
     """
     best = []
     for shift in shifts:
@@ -270,7 +293,9 @@ def page_shift(shifts):
     shift = round(sorted(best)[len(best) // 2])
     if len(shifts) - len(best) > (len(best) > 1 and shift == 0):
         return None
-    if len(best) == 1 and shift:
+    if len(best) == 1 and shift and not (
+        backups and all(abs(other - shifts[0]) <= 1 for other in backups)
+    ):
         return None
     return shift
 
@@ -309,6 +334,16 @@ class SeamChecker:
     def _shifts(self, key):
         return self.evaluate(_ANCHOR_SHIFTS_JS % json.dumps(key))
 
+    def _page_shift(self, key):
+        """Return how far the page moved since the anchors `key` were
+        marked, or None, and how far the anchors moved."""
+        shifts = self._shifts(key)
+        shift = page_shift(shifts)
+        if shift is None and len(shifts) == 1:
+            backups = self._shifts(key + '_backups')
+            return page_shift(shifts, backups), shifts + backups
+        return shift, shifts
+
     def shift(self, still=lambda: False):
         """Return how far the page moved since the seam above the current
         tile was marked, or 0 if it cannot be told or if there is no such
@@ -321,14 +356,13 @@ class SeamChecker:
         self.problem = 'uneven' if self.uneven_above else None
         if not self.has_above:
             return 0
-        shifts = self._shifts(self.above)
-        shift = page_shift(shifts)
+        shift, shifts = self._page_shift(self.above)
         if any(abs(value) >= 0.5 for value in shifts):
             deadline = time.monotonic() + self.settle_timeout
             while True:
                 self.sleep(self.poll_ms)
-                shifts = self._shifts(self.above)
-                previous, shift = shift, page_shift(shifts)
+                previous = shift
+                shift, shifts = self._page_shift(self.above)
                 if shift == previous:
                     break
                 if time.monotonic() > deadline:
@@ -349,7 +383,8 @@ class SeamChecker:
     def mark(self, seam):
         """Mark the anchors of the seam below the current tile, at the row
         `seam` of the page."""
-        self.evaluate(_MARK_ANCHORS_JS % json.dumps([self.below, seam]))
+        self.evaluate(_MARK_ANCHORS_JS % json.dumps(
+            [self.below, self.below + '_backups', seam]))
         self.uneven_below = False
 
     def moved(self):
@@ -358,8 +393,7 @@ class SeamChecker:
         If only a part of the page moved, the tile is kept, but the seam
         will not be checked.
         """
-        shifts = self._shifts(self.below)
-        shift = page_shift(shifts)
+        shift, shifts = self._page_shift(self.below)
         if shift is None and any(abs(value) >= 0.5 for value in shifts):
             logger.debug('The page moved unevenly during the capture: %s',
                          shifts)
@@ -382,6 +416,7 @@ class SeamChecker:
     def forget(self):
         """Remove the anchors from the page."""
         keys = [self.above, self.below]
+        keys += [key + '_backups' for key in keys]
         self.evaluate(_FORGET_ANCHORS_JS % json.dumps(keys))
 
     def messages(self, name):

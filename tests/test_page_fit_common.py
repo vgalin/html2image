@@ -310,6 +310,24 @@ def test_page_shift(shifts, expected):
     assert common.page_shift(shifts) == expected
 
 
+# A single anchor and the backup anchors found above it, outside of it.
+@pytest.mark.parametrize(("shifts", "backups", "expected"), [
+    # The blocks above the seam all moved with it.
+    ([12], [12, 12], 12),
+    ([-16], [-16.4], -16),
+    # It grew by itself: the blocks above it did not move.
+    ([12], [0, 0], None),
+    # All the backup anchors must agree, even with one of them left out.
+    ([12], [12, 12, 0], None),
+    ([12], [], None),
+    # Backup anchors only confirm a single anchor that moved.
+    ([0], [5, 5], 0),
+    ([12, 12, 0], [12, 12], None),
+])
+def test_page_shift_with_backups(shifts, backups, expected):
+    assert common.page_shift(shifts, backups) == expected
+
+
 def _is_from(script, template):
     before, after = template.split("%s")
     return script.startswith(before) and script.endswith(after)
@@ -358,6 +376,25 @@ def test_seam_checker_waits_until_the_page_stops_moving():
     assert seams.shift() == -16
     assert page.slept == 2 * common.SeamChecker.poll_ms
     assert seams.problem is None
+
+
+@pytest.mark.parametrize(("readings", "expected", "problem"), [
+    # A single anchor, then its backup anchors, read twice as they moved.
+    ([[12], [12, 12], [12], [12, 12]], 12, None),
+    ([[12], [0, 0], [12], [0, 0]], 0, "uneven"),
+    ([[12], [], [12], []], 0, "no anchor"),
+    # Backup anchors are not read if the single anchor did not move.
+    ([[0]], 0, None),
+])
+def test_seam_checker_reads_backup_anchors_of_a_single_anchor(
+    readings, expected, problem
+):
+    page = FakePage(*readings)
+    seams = _checker(page)
+
+    assert seams.shift() == expected
+    assert seams.problem == problem
+    assert not page.readings
 
 
 def test_seam_checker_gives_up_on_a_page_that_keeps_moving(monkeypatch):
