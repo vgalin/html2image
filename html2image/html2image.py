@@ -311,9 +311,7 @@ class Html2Image():
             pass
 
     def screenshot_loaded_file(
-        self, file, output_file='screenshot.png', size=None, full_page=False,
-        full_page_stability_timeout=None, full_page_profile='robust',
-        full_page_fixed_elements='auto', full_page_max_pixels=DEFAULT_MAX_PIXELS,
+        self, file, output_file='screenshot.png', size=None
     ):
         """ Takes a screenshot of a *previously loaded* file or string.
 
@@ -332,11 +330,6 @@ class Html2Image():
             method is called.
         """
 
-        full_page_options = self._full_page_options(
-            full_page, full_page_stability_timeout, full_page_profile,
-            full_page_fixed_elements, full_page_max_pixels,
-        )
-
         file = os.path.join(self.temp_path, file)
 
         if os.path.dirname(output_file) != '':
@@ -351,13 +344,9 @@ class Html2Image():
             output_file=output_file,
             input=file,
             size=size,
-            **full_page_options,
         )
 
-    def screenshot_url(self, url, output_file='screenshot.png', size=None, full_page=False,
-                       full_page_stability_timeout=None, full_page_profile='robust',
-                       full_page_fixed_elements='auto',
-                       full_page_max_pixels=DEFAULT_MAX_PIXELS):
+    def screenshot_url(self, url, output_file='screenshot.png', size=None):
         """ Takes a screenshot of a given URL.
 
         The given URL should be well formed or it may result in undefined
@@ -381,11 +370,6 @@ class Html2Image():
             + method is called.
         """
 
-        full_page_options = self._full_page_options(
-            full_page, full_page_stability_timeout, full_page_profile,
-            full_page_fixed_elements, full_page_max_pixels,
-        )
-
         if os.path.dirname(output_file) != '':
             raise ValueError(
                 "the output_file parameter should be a filename "
@@ -397,8 +381,7 @@ class Html2Image():
             output_path=self.output_path,
             output_file=output_file,
             input=url,
-            size=size,
-            **full_page_options,
+            size=size
         )
 
     def _full_page_options(

@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image, ImageChops
 from websocket import WebSocketTimeoutException
 
+import inspect
 import json
 import pytest
 import os
@@ -814,33 +815,9 @@ def test_full_page_stability_timeout_validation(bad_value):
         )
 
 
-def test_full_page_stability_timeout_validation_screenshot_url():
-    """screenshot_url() must validate full_page_stability_timeout at the public boundary."""
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
-    with pytest.raises(ValueError):
-        hti.screenshot_url(
-            url='https://example.com',
-            output_file='_timeout_url_test.png',
-            full_page=True,
-            full_page_stability_timeout=-1,
-        )
-
-
-def test_full_page_stability_timeout_validation_screenshot_loaded_file(tmp_path):
-    """screenshot_loaded_file() must validate full_page_stability_timeout at the public boundary."""
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
-    # Write a minimal HTML file into temp_path so the path join doesn't matter;
-    # validation must fire before any file I/O.
-    dummy = tmp_path / "dummy.html"
-    dummy.write_text("<html></html>")
-    hti.temp_path = str(tmp_path)
-    with pytest.raises(ValueError):
-        hti.screenshot_loaded_file(
-            file='dummy.html',
-            output_file='_timeout_loaded_test.png',
-            full_page=True,
-            full_page_stability_timeout=True,
-        )
+def test_full_page_only_goes_through_screenshot():
+    for method in (Html2Image.screenshot_url, Html2Image.screenshot_loaded_file):
+        assert "full_page" not in inspect.signature(method).parameters
 
 
 def test_full_page_stability_timeout_none_is_valid(monkeypatch):
@@ -908,33 +885,6 @@ def test_full_page_profile_propagated(monkeypatch):
         full_page_profile='balanced',
     )
     assert received.get('full_page_profile') == 'balanced'
-
-
-def test_full_page_profile_validation_screenshot_url():
-    """screenshot_url() doit valider full_page_profile à la frontière publique."""
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
-    with pytest.raises(ValueError, match="full_page_profile"):
-        hti.screenshot_url(
-            url='https://example.com',
-            output_file='_profile_url_test.png',
-            full_page=True,
-            full_page_profile='turbo',
-        )
-
-
-def test_full_page_profile_validation_screenshot_loaded_file(tmp_path):
-    """screenshot_loaded_file() doit valider full_page_profile à la frontière publique."""
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
-    dummy = tmp_path / "dummy.html"
-    dummy.write_text("<html></html>")
-    hti.temp_path = str(tmp_path)
-    with pytest.raises(ValueError, match="full_page_profile"):
-        hti.screenshot_loaded_file(
-            file='dummy.html',
-            output_file='_profile_loaded_test.png',
-            full_page=True,
-            full_page_profile='turbo',
-        )
 
 
 def test_pyvips_import_error_message(monkeypatch):
