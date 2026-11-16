@@ -381,9 +381,12 @@ class Html2Image():
 
     def _full_page_options(
         self, full_page, stability_timeout, profile, fixed_elements,
-        max_pixels,
+        max_pixels, save_as, size,
     ):
         """ Checks the full page options, see `screenshot()`.
+
+        The names of the images and the sizes of the window are checked
+        too, before any page is loaded.
 
         Returns
         -------
@@ -394,8 +397,8 @@ class Html2Image():
         Raises
         ------
         - `ValueError`
-            + If the browser cannot capture a full page, or if an option
-            has an invalid value.
+            + If the browser cannot capture a full page, or if an option,
+            a name or a size has an invalid value.
         """
         if not full_page:
             return {}
@@ -411,6 +414,15 @@ class Html2Image():
         page_fit.validate_full_page_profile(profile)
         page_fit.validate_fixed_element_mode(fixed_elements)
         page_fit.validate_max_pixels(max_pixels)
+        # The same names and sizes as those `_render()` will use.
+        for name in [save_as] if isinstance(save_as, str) else save_as:
+            if isinstance(name, str):
+                page_fit.output_format_from_filename(name)
+        sizes = [size] if isinstance(size, tuple) else size
+        sizes = [pair for pair in sizes
+                 if isinstance(pair, tuple) and len(pair) == 2]
+        for width, height in sizes or [self.size]:
+            page_fit.validate_viewport(width, height)
 
         return {
             'full_page': True,
@@ -882,7 +894,7 @@ class Html2Image():
 
         full_page_options = self._full_page_options(
             full_page, full_page_stability_timeout, full_page_profile,
-            full_page_fixed_elements, full_page_max_pixels,
+            full_page_fixed_elements, full_page_max_pixels, save_as, size,
         )
 
         return self._render(

@@ -816,6 +816,24 @@ def test_full_page_stability_timeout_validation(bad_value):
         )
 
 
+@pytest.mark.parametrize("options", [
+    {"save_as": ["first.png", "second.webp"]},
+    {"save_as": ["first.png", "second.png"], "size": [(400, 300), (400.0, 300)]},
+])
+def test_full_page_checks_names_and_sizes_before_loading(monkeypatch, options):
+    """A name or a size refused by full_page is refused before any page is
+    loaded, so that no image of the batch is saved."""
+    loaded = []
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    monkeypatch.setattr(
+        hti.browser, 'screenshot', lambda **kwargs: loaded.append(kwargs)
+    )
+
+    with pytest.raises(ValueError):
+        hti.screenshot(html_str=['first', 'second'], full_page=True, **options)
+    assert loaded == []
+
+
 def test_full_page_only_goes_through_screenshot():
     for method in ("screenshot_url", "screenshot_loaded_file"):
         parameters = inspect.signature(getattr(Html2Image, method)).parameters

@@ -20,7 +20,6 @@ from ._page_fit_common import (
     output_format_from_filename,
     restore_overlays_js,
     show_overlays_js,
-    validate_viewport,
     warn,
 )
 from ..exceptions import BrowserError
@@ -334,7 +333,6 @@ def capture_full_page(browser, output_path, output_file, width,
     content, but the image will be as high as the page. The options are
     those of `Html2Image.screenshot()`, already checked.
     """
-    validate_viewport(width, viewport_height)
     output_format = output_format_from_filename(output_file)
     overlay_key = '__h2i_page_fit_%s' % uuid.uuid4().hex
     try:
