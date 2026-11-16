@@ -1,4 +1,4 @@
-from html2image import Html2Image, BrowserError
+from html2image import Html2Image, BrowserError, CaptureTooLargeError
 from html2image.browsers import chrome_cdp, chromium, firefox, firefox_bidi
 from html2image.browsers.chrome_cdp import ChromeCDP
 from pathlib import Path
@@ -718,12 +718,12 @@ def test_full_page_default_is_false():
 
 @pytest.mark.parametrize("backend", ['chrome-headless', 'edge-headless', 'firefox-headless'])
 def test_full_page_raises_on_headless_backends(backend):
-    """full_page=True must raise NotImplementedError on CLI headless backends."""
+    """full_page=True must raise ValueError on CLI headless backends."""
     try:
         hti = Html2Image(browser=backend, output_path=OUTPUT_PATH, disable_logging=True)
     except FileNotFoundError:
         pytest.skip(f"'{backend}' executable not found on this machine")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='"firefox-headless"'):
         hti.screenshot(
             html_str='<p>hi</p>',
             save_as='_full_page_headless_guard.png',
@@ -1053,6 +1053,42 @@ def test_temporary_html_is_removed_when_full_page_capture_fails(monkeypatch):
         )
 
     assert not os.path.exists(os.path.join(hti.temp_path, temporary_name))
+
+
+def test_full_page_rejects_selector(tmp_path):
+    hti = Html2Image(browser="chrome", output_path=str(tmp_path))
+
+    with pytest.raises(ValueError, match="selector and full_page"):
+        hti.screenshot(html_str="Hello", selector="p", full_page=True)
+
+    assert not list(tmp_path.iterdir())
+
+
+def test_too_large_full_page_does_not_stop_the_other_pages(
+    monkeypatch, tmp_path
+):
+    hti = Html2Image(browser="chrome", output_path=str(tmp_path))
+
+    def screenshot(output_file, **kwargs):
+        if output_file == "tall.png":
+            raise CaptureTooLargeError("Too large")
+        (tmp_path / output_file).write_bytes(b"image")
+
+    monkeypatch.setattr(hti.browser, "screenshot", screenshot)
+
+    with pytest.raises(CaptureTooLargeError, match="tall.png") as error:
+        hti.screenshot(
+            html_str=["short", "tall", "short"],
+            save_as=["first.png", "tall.png", "last.png"],
+            full_page=True,
+        )
+
+    assert error.value.paths == [
+        os.path.join(str(tmp_path), name) for name in ("first.png", "last.png")
+    ]
+    assert error.value.too_large == [(None, "tall.png")]
+
+
 @pytest.mark.parametrize("save_as", ["../escaped.png", os.path.abspath("escaped.png")])
 def test_screenshot_save_as_path_writes_nothing(tmp_path, save_as):
     temp_path = tmp_path / "temp"

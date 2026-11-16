@@ -9,12 +9,14 @@ capture is preferred and tiling is only a validated fallback.
 from __future__ import annotations
 
 import base64
+import logging
 import math
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from ..exceptions import BrowserError
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
@@ -34,6 +36,7 @@ from ._page_fit_common import (
     validate_viewport,
 )
 
+logger = logging.getLogger(__name__)
 
 _AUTO_PROBE_GROWTH_TRIGGER = 0.03
 _DOCUMENT_DIMENSION_TOLERANCE_PX = 2
@@ -143,7 +146,7 @@ def _evaluate(browser: Any, expression: str, await_promise: bool = True) -> Any:
     response = browser._bidi_expect_ok(message_id, timeout=30)
     outer_result = response.get("result", {})
     if "exceptionDetails" in outer_result:
-        raise RuntimeError(
+        raise BrowserError(
             f"BiDi evaluation exception: {outer_result['exceptionDetails']}"
         )
     remote_value = outer_result.get("result", outer_result)
@@ -158,16 +161,6 @@ def _set_viewport(browser: Any, width: int, height: int) -> None:
         devicePixelRatio=1,
     )
     browser._bidi_expect_ok(message_id, timeout=20)
-
-
-def _navigate(browser: Any, url: str) -> None:
-    message_id = browser._bidi_send(
-        "browsingContext.navigate",
-        context=browser._context_id,
-        url=url,
-        wait="complete",
-    )
-    browser._bidi_expect_ok(message_id, timeout=50)
 
 
 def _capture_screenshot_bytes(
@@ -186,7 +179,9 @@ def _capture_screenshot_bytes(
     response = browser._bidi_expect_ok(message_id, timeout=60)
     encoded = response.get("result", {}).get("data")
     if not encoded:
-        raise RuntimeError(f"No screenshot data returned for origin={origin!r}.")
+        raise BrowserError(
+            f"No screenshot data returned for origin={origin!r}."
+        )
     return base64.b64decode(encoded)
 
 
@@ -380,7 +375,7 @@ def _try_document_capture(
             origin="document",
             output_format=output_format,
         )
-    except Exception as exc:
+    except BrowserError as exc:
         return None, f"native document capture raised {type(exc).__name__}: {exc}"
 
     try:
@@ -443,7 +438,7 @@ def _capture_tiled_viewport(
             # end of the page: the top of the tile is then cropped.
             actual_y = int(_evaluate(browser, _SCROLL_Y_JS) or 0)
             if actual_y > y:
-                raise RuntimeError(
+                raise BrowserError(
                     "Firefox did not reach the requested tile position: "
                     f"requested y={y}, actual y={actual_y}."
                 )
@@ -463,7 +458,7 @@ def _capture_tiled_viewport(
             tile = _capture_screenshot_bytes(browser, origin="viewport")
             tile_width, tile_height = image_dimensions(tile)
             if (tile_width, tile_height) != (width, viewport_height):
-                raise RuntimeError(
+                raise BrowserError(
                     f"Firefox viewport tile {len(tiles)} has dimensions "
                     f"{tile_width}x{tile_height}; expected "
                     f"{width}x{viewport_height}."
@@ -495,7 +490,6 @@ def _validate_options(
 
 def capture_full_page(
     browser: Any,
-    input_url: str,
     output_path: str,
     output_file: str,
     width: int,
@@ -505,7 +499,8 @@ def capture_full_page(
     fixed_elements: str = "auto",
     max_pixels: Optional[int] = DEFAULT_MAX_PIXELS,
 ) -> None:
-    """Capture a complete Firefox page with a canonical layout viewport.
+    """Capture the whole page loaded by ``browser``, with a canonical layout
+    viewport.
 
     ``width`` is both the CSS layout width and exact output width.
     ``viewport_height`` remains the rendering viewport height; the final image
@@ -522,10 +517,6 @@ def capture_full_page(
     overlay_state_key = f"__html2imagePageFit_{uuid.uuid4().hex}__"
 
     try:
-        # The canonical viewport must be active before navigation because CSS,
-        # script bootstrapping and lazy-load observers can all inspect it.
-        _set_viewport(browser, width, viewport_height)
-        _navigate(browser, input_url)
         _sleep_ms(250)
 
         if profile == "fast":
@@ -638,22 +629,19 @@ def capture_full_page(
         total_height = _read_document_height(browser, viewport_height)
         enforce_pixel_budget(width, total_height, max_pixels)
 
-        try:
-            stitched = _capture_tiled_viewport(
-                browser,
-                width=width,
-                total_height=total_height,
-                viewport_height=viewport_height,
-                output_format=output_format,
-                fixed_elements=fixed_elements,
-                overlay_state_key=overlay_state_key,
-                max_pixels=max_pixels,
-            )
-        except Exception as exc:
-            raise RuntimeError(
-                f"Firefox full-page capture failed. {document_diagnostic}. "
-                f"The tiled fallback also failed: {exc}"
-            ) from exc
+        logger.debug(
+            "Firefox captures the full page in tiles: %s.", document_diagnostic
+        )
+        stitched = _capture_tiled_viewport(
+            browser,
+            width=width,
+            total_height=total_height,
+            viewport_height=viewport_height,
+            output_format=output_format,
+            fixed_elements=fixed_elements,
+            overlay_state_key=overlay_state_key,
+            max_pixels=max_pixels,
+        )
         destination.write_bytes(stitched)
     finally:
         # Temporary overlay visibility and scrolling never leak into a browser

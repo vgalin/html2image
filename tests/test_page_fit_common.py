@@ -3,6 +3,7 @@ import io
 import pytest
 from PIL import Image
 
+from html2image import CaptureTooLargeError
 from html2image.browsers import _page_fit_common as common
 from html2image.browsers import _firefox_page_fit as firefox_page_fit
 
@@ -44,7 +45,7 @@ def test_profile_validation_always_raises_value_error(value):
 def test_pixel_budget_is_exact_and_can_be_disabled():
     assert common.enforce_pixel_budget(100, 50, 5_000) == 5_000
     assert common.enforce_pixel_budget(100, 50, None) == 5_000
-    with pytest.raises(common.FullPageCaptureLimitError, match="5,100 pixels"):
+    with pytest.raises(CaptureTooLargeError, match="5,100 pixels"):
         common.enforce_pixel_budget(102, 50, 5_000)
 
 

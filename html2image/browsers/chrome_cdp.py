@@ -7,7 +7,7 @@ from .browser import (
 )
 from ._page_fit_common import DEFAULT_MAX_PIXELS
 from .search_utils import find_chrome
-from . import _selector
+from . import _chromium_page_fit, _selector
 from ..exceptions import (
     BrowserError,
     BrowserTimeoutError,
@@ -651,33 +651,16 @@ class ChromeCDP(CDPBrowser):
         could not be captured are returned, as two lists of these pairs:
         the missing elements, and the elements too large to be captured.
 
+        If `full_page` is True, an image of the whole page will be saved
+        instead, see `_chromium_page_fit.capture_full_page()`.
+
         See: https://chromedevtools.github.io/devtools-protocol/
         """
         target_url = self._normalize_input(input)
+        size = size or (1920, 1080)
         auto_started = self._ws is None
         if auto_started:
             self.__enter__()
-
-        if full_page:
-            try:
-                from . import _chromium_page_fit
-                width, height = size if size else (1920, 1080)
-                _chromium_page_fit.capture_full_page(
-                    self,
-                    self._normalize_input(input),
-                    output_path,
-                    output_file,
-                    width,
-                    height,
-                    stability_timeout=full_page_stability_timeout,
-                    profile=full_page_profile,
-                    fixed_elements=full_page_fixed_elements,
-                    max_pixels=full_page_max_pixels,
-                )
-            finally:
-                if auto_started:
-                    self.__exit__()
-            return
 
         try:
             enable_id = self.cdp_send('Page.enable')
@@ -726,6 +709,20 @@ class ChromeCDP(CDPBrowser):
                 return self._capture_elements(
                     output_path, elements, selector_padding
                 )
+
+            if full_page:
+                _chromium_page_fit.capture_full_page(
+                    self,
+                    output_path,
+                    output_file,
+                    size[0],
+                    size[1],
+                    stability_timeout=full_page_stability_timeout,
+                    profile=full_page_profile,
+                    fixed_elements=full_page_fixed_elements,
+                    max_pixels=full_page_max_pixels,
+                )
+                return
 
             self._capture(
                 os.path.join(output_path, output_file),

@@ -7,7 +7,7 @@ from .browser import (
 )
 from ._page_fit_common import DEFAULT_MAX_PIXELS
 from .search_utils import find_firefox
-from . import _selector
+from . import _firefox_page_fit, _selector
 from ..exceptions import (
     BrowserError,
     BrowserTimeoutError,
@@ -546,32 +546,14 @@ class FirefoxBiDi(BiDiBrowser):
 
         If `elements` is given, an image of each element is saved instead,
         as with `ChromeCDP.screenshot()`.
+
+        If `full_page` is True, an image of the whole page will be saved
+        instead, see `_firefox_page_fit.capture_full_page()`.
         """
         target_url = self._normalize_input(input)
         auto_started = self._ws is None
         if auto_started:
             self.__enter__()
-
-        if full_page:
-            try:
-                from . import _firefox_page_fit
-                width, height = size if size else (1920, 1080)
-                _firefox_page_fit.capture_full_page(
-                    self,
-                    self._normalize_input(input),
-                    output_path,
-                    output_file,
-                    width,
-                    height,
-                    stability_timeout=full_page_stability_timeout,
-                    profile=full_page_profile,
-                    fixed_elements=full_page_fixed_elements,
-                    max_pixels=full_page_max_pixels,
-                )
-            finally:
-                if auto_started:
-                    self.__exit__()
-            return
 
         try:
             width, height = size if size else (1920, 1080)
@@ -583,6 +565,18 @@ class FirefoxBiDi(BiDiBrowser):
             elif elements is not None:
                 return self._capture_elements(
                     output_path, elements, selector_padding
+                )
+            elif full_page:
+                _firefox_page_fit.capture_full_page(
+                    self,
+                    output_path,
+                    output_file,
+                    width,
+                    height,
+                    stability_timeout=full_page_stability_timeout,
+                    profile=full_page_profile,
+                    fixed_elements=full_page_fixed_elements,
+                    max_pixels=full_page_max_pixels,
                 )
             else:
                 self._capture(os.path.join(output_path, output_file))

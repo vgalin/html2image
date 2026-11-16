@@ -7,12 +7,14 @@ native CDP capture; long documents are captured in bounded regions and stitched.
 from __future__ import annotations
 
 import base64
+import logging
 import math
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..exceptions import BrowserError
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
@@ -32,6 +34,7 @@ from ._page_fit_common import (
     validate_viewport,
 )
 
+logger = logging.getLogger(__name__)
 
 # This is a strategy threshold, not a document limit. Larger images are tiled.
 _NATIVE_CAPTURE_MAX_HEIGHT = 16_000
@@ -98,7 +101,9 @@ def _evaluate(browser: Any, expression: str, await_promise: bool = True) -> Any:
     response = browser._wait_for_result(command_id)
     evaluation = response.get("result", {})
     if evaluation.get("exceptionDetails"):
-        raise RuntimeError("JavaScript evaluation failed during full-page capture")
+        raise BrowserError(
+            "JavaScript evaluation failed during full-page capture"
+        )
     result = evaluation.get("result", {})
     return result.get("value")
 
@@ -106,17 +111,6 @@ def _evaluate(browser: Any, expression: str, await_promise: bool = True) -> Any:
 def _send(browser: Any, method: str, timeout: int = 30, **params: Any) -> Dict[str, Any]:
     command_id = browser.cdp_send(method, **params)
     return browser._wait_for_result(command_id, timeout=timeout)
-
-
-def _set_viewport(browser: Any, width: int, height: int) -> None:
-    _send(
-        browser,
-        "Emulation.setDeviceMetricsOverride",
-        width=width,
-        height=height,
-        deviceScaleFactor=1,
-        mobile=False,
-    )
 
 
 def _sleep_ms(browser: Any, milliseconds: int) -> None:
@@ -141,15 +135,6 @@ def _wait_for_paint(browser: Any) -> None:
         "new Promise(resolve => requestAnimationFrame("
         "() => requestAnimationFrame(() => resolve(true))))",
     )
-
-
-def _navigate(browser: Any, url: str) -> None:
-    navigation_id = browser.cdp_send("Page.navigate", url=url)
-    result = browser._wait_for_navigation_complete(navigation_id, timeout=50)
-    error_text = (result.get("result") or {}).get("errorText")
-    if error_text:
-        raise RuntimeError("Navigation failed: %s" % error_text)
-    _sleep_ms(browser, 250)
 
 
 def _read_dimensions(browser: Any, viewport_height: int) -> Tuple[float, float]:
@@ -350,7 +335,7 @@ def _capture_region(
     response = _send(browser, "Page.captureScreenshot", timeout=80, **params)
     encoded = response.get("result", {}).get("data")
     if not encoded:
-        raise RuntimeError("No screenshot data returned by Chromium CDP")
+        raise BrowserError("No screenshot data returned by Chromium CDP")
     return base64.b64decode(encoded)
 
 
@@ -361,12 +346,12 @@ def _validate_capture(
     output_format: str,
 ) -> None:
     if output_format == "png" and not encoded.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise RuntimeError("Chromium returned a non-PNG full-page capture")
+        raise BrowserError("Chromium returned a non-PNG full-page capture")
     if output_format == "jpeg" and not encoded.startswith(b"\xff\xd8"):
-        raise RuntimeError("Chromium returned a non-JPEG full-page capture")
+        raise BrowserError("Chromium returned a non-JPEG full-page capture")
     actual = image_dimensions(encoded)
     if actual != (width, height):
-        raise RuntimeError(
+        raise BrowserError(
             "Chromium returned %dx%d; expected %dx%d"
             % (actual[0], actual[1], width, height)
         )
@@ -464,7 +449,6 @@ def _capture_tiled(
 
 def capture_full_page(
     browser: Any,
-    input_url: str,
     output_path: str,
     output_file: str,
     width: int,
@@ -474,7 +458,8 @@ def capture_full_page(
     fixed_elements: str = "auto",
     max_pixels: Optional[int] = DEFAULT_MAX_PIXELS,
 ) -> None:
-    """Capture a whole document without changing its layout viewport.
+    """Capture the whole page loaded by ``browser``, without changing its
+    layout viewport.
 
     ``width`` determines both responsive layout and output width.
     ``viewport_height`` affects layout, lazy loading and fixed elements, but the
@@ -489,17 +474,10 @@ def capture_full_page(
     output_format = output_format_from_filename(output_file)
     destination = Path(output_path) / output_file
 
-    page_enabled = False
     transparent_background = False
     hidden_registry: Optional[str] = None
     try:
-        _send(browser, "Page.enable")
-        page_enabled = True
-        # The end of a navigation is detected from the lifecycle events.
-        _send(browser, "Page.setLifecycleEventsEnabled", enabled=True)
-        _set_viewport(browser, width, viewport_height)
-        _navigate(browser, input_url)
-
+        _sleep_ms(browser, 250)
         total_height = _settled_document_height(
             browser,
             width,
@@ -550,38 +528,29 @@ def capture_full_page(
                     total_height,
                     output_format,
                 )
-            except Exception as error:
+            except BrowserError as error:
                 native_error = error
                 native_bytes = None
         if native_bytes is not None:
             destination.write_bytes(native_bytes)
             return
 
-        try:
-            encoded = _capture_tiled(
-                browser,
-                width,
-                viewport_height,
-                total_height,
-                profile,
-                fixed_elements,
-                output_format,
-                max_pixels,
+        if native_error is not None:
+            logger.debug(
+                "Chromium native full-page capture failed, capturing tiles "
+                "instead: %s", native_error,
             )
-            destination.write_bytes(encoded)
-        except Exception as tiled_error:
-            if native_error is not None:
-                raise RuntimeError(
-                    "Chromium native full-page capture failed with "
-                    "%s: %s; tiled capture then failed with %s: %s"
-                    % (
-                        type(native_error).__name__,
-                        native_error,
-                        type(tiled_error).__name__,
-                        tiled_error,
-                    )
-                ) from tiled_error
-            raise
+        encoded = _capture_tiled(
+            browser,
+            width,
+            viewport_height,
+            total_height,
+            profile,
+            fixed_elements,
+            output_format,
+            max_pixels,
+        )
+        destination.write_bytes(encoded)
     finally:
         # Cleanup is deliberately best-effort so it never replaces the capture
         # error that triggered it. The page may already be gone after a CDP fault.
@@ -602,8 +571,3 @@ def capture_full_page(
             _send(browser, "Emulation.clearDeviceMetricsOverride")
         except Exception:
             pass
-        if page_enabled:
-            try:
-                _send(browser, "Page.disable")
-            except Exception:
-                pass

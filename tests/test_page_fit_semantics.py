@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from html2image import FullPageCaptureLimitError, Html2Image
+from html2image import CaptureTooLargeError, Html2Image
 
 
 def _make_hti(browser, output_path):
@@ -95,7 +95,9 @@ def test_full_page_pixel_budget_fails_without_output(browser, tmp_path):
     hti = _make_hti(browser, tmp_path)
     destination = Path(tmp_path) / "over-budget.png"
 
-    with pytest.raises(FullPageCaptureLimitError, match="exceeding"):
+    with pytest.raises(
+        CaptureTooLargeError, match="full_page_max_pixels"
+    ) as error:
         hti.screenshot(
             html_str='<body style="height:900px"></body>',
             save_as=destination.name,
@@ -106,6 +108,30 @@ def test_full_page_pixel_budget_fails_without_output(browser, tmp_path):
         )
 
     assert not destination.exists()
+    assert error.value.paths == []
+    assert error.value.too_large == [(None, destination.name)]
+
+
+@pytest.mark.parametrize(
+    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
+)
+def test_full_page_without_doctype(browser, tmp_path):
+    # Without a doctype, the page is rendered in quirks mode, where the
+    # root element can be smaller than the page.
+    hti = _make_hti(browser, tmp_path)
+    hti.add_doctype = False
+    output = hti.screenshot(
+        html_str='<div style="height:1500px;background:#30a060"></div>',
+        css_str="body { margin: 0; }",
+        save_as="quirks.png",
+        size=(640, 360),
+        full_page=True,
+        full_page_profile="fast",
+    )[0]
+
+    with Image.open(output) as image:
+        assert image.size == (640, 1500)
+        assert image.convert("RGB").getpixel((320, 1400)) == (48, 160, 96)
 
 
 def _fixed_overlay_html():

@@ -191,7 +191,7 @@ default. Crossing the limit raises an explicit error rather than returning a
 truncated image. Set a larger positive integer to raise the limit, or `None` to
 disable it. Disabling the limit can make a capture consume substantial memory
 and time. The exception can be caught as
-`html2image.FullPageCaptureLimitError`.
+`html2image.CaptureTooLargeError`.
 
 ---
 
@@ -510,9 +510,11 @@ html2image raises its own exceptions when the browser or the page fails. They al
 | `PageLoadError` | the page could not be loaded, but the browser is fine |
 | `PageLoadTimeoutError` | the page did not finish loading in time |
 | `ElementNotFoundError` | an element given by `selector` had nothing to capture |
-| `CaptureTooLargeError` | an element was too large for the browser to capture in one go |
+| `CaptureTooLargeError` | an element was too large for the browser to capture in one go, or a page captured with `full_page=True` was larger than `full_page_max_pixels` |
 
 With `selector`, `ElementNotFoundError` and `CaptureTooLargeError` will only be raised once all the other images have been saved. Their `paths` attribute lists the saved images, and `missing` or `too_large` lists the (selector, filename) pairs of the others.
+
+With `full_page=True`, `CaptureTooLargeError` will also only be raised once all the other images have been saved. The selector in its `too_large` pairs will be `None`.
 
 For example, to skip the pages that cannot be loaded:
 

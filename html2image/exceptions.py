@@ -50,14 +50,17 @@ class ElementNotFoundError(Html2ImageError):
 
 
 class CaptureTooLargeError(Html2ImageError):
-    """An area was too large for the browser to capture in one go.
+    """An area was too large for the browser to capture in one go, or a
+    page captured with `full_page=True` was larger than
+    `full_page_max_pixels`.
 
     The other images were saved anyway.
 
     Attributes:
         paths: the paths of the saved images.
         too_large: the (selector, filename) pairs of the images that were
-            not saved.
+            not saved. The selector is None for a page captured with
+            `full_page=True`.
     """
 
     def __init__(self, message, paths=(), too_large=()):

@@ -332,12 +332,10 @@ class Html2Image():
             method is called.
         """
 
-        if full_page:
-            self._validate_full_page_backend()
-            Html2Image._validate_full_page_stability_timeout(full_page_stability_timeout)
-            Html2Image._validate_full_page_profile(full_page_profile)
-            Html2Image._validate_full_page_fixed_elements(full_page_fixed_elements)
-            Html2Image._validate_full_page_max_pixels(full_page_max_pixels)
+        full_page_options = self._full_page_options(
+            full_page, full_page_stability_timeout, full_page_profile,
+            full_page_fixed_elements, full_page_max_pixels,
+        )
 
         file = os.path.join(self.temp_path, file)
 
@@ -347,16 +345,6 @@ class Html2Image():
                 "and not a path.\nChange the output path by "
                 "modifying the output_path attribute."
             )
-
-        full_page_options = {}
-        if full_page:
-            full_page_options = {
-                'full_page': True,
-                'full_page_stability_timeout': full_page_stability_timeout,
-                'full_page_profile': full_page_profile,
-                'full_page_fixed_elements': full_page_fixed_elements,
-                'full_page_max_pixels': full_page_max_pixels,
-            }
 
         self.browser.screenshot(
             output_path=self.output_path,
@@ -393,12 +381,10 @@ class Html2Image():
             + method is called.
         """
 
-        if full_page:
-            self._validate_full_page_backend()
-            Html2Image._validate_full_page_stability_timeout(full_page_stability_timeout)
-            Html2Image._validate_full_page_profile(full_page_profile)
-            Html2Image._validate_full_page_fixed_elements(full_page_fixed_elements)
-            Html2Image._validate_full_page_max_pixels(full_page_max_pixels)
+        full_page_options = self._full_page_options(
+            full_page, full_page_stability_timeout, full_page_profile,
+            full_page_fixed_elements, full_page_max_pixels,
+        )
 
         if os.path.dirname(output_file) != '':
             raise ValueError(
@@ -406,16 +392,6 @@ class Html2Image():
                 "and not a path.\nChange the output path by "
                 "modifying the output_path attribute."
             )
-
-        full_page_options = {}
-        if full_page:
-            full_page_options = {
-                'full_page': True,
-                'full_page_stability_timeout': full_page_stability_timeout,
-                'full_page_profile': full_page_profile,
-                'full_page_fixed_elements': full_page_fixed_elements,
-                'full_page_max_pixels': full_page_max_pixels,
-            }
 
         self.browser.screenshot(
             output_path=self.output_path,
@@ -425,11 +401,46 @@ class Html2Image():
             **full_page_options,
         )
 
-    def _validate_full_page_backend(self) -> None:
+    def _full_page_options(
+        self, full_page, stability_timeout, profile, fixed_elements,
+        max_pixels,
+    ):
+        """ Checks the full page options, see `screenshot()`.
+
+        Returns
+        -------
+        - dict
+            + The options to pass to the `screenshot()` method of the
+            browser, or an empty dict if `full_page` is False.
+
+        Raises
+        ------
+        - `ValueError`
+            + If the browser cannot capture a full page, or if an option
+            has an invalid value.
+        """
+        if not full_page:
+            return {}
+
         if not isinstance(self.browser, (CDPBrowser, BiDiBrowser)):
             raise ValueError(
-                "full_page=True requires ChromeCDP, EdgeCDP, or FirefoxBiDi"
+                'full_page works with the "chrome", "edge" and "firefox" '
+                'browsers, not with "chrome-headless", "edge-headless" or '
+                '"firefox-headless".'
             )
+
+        Html2Image._validate_full_page_stability_timeout(stability_timeout)
+        Html2Image._validate_full_page_profile(profile)
+        Html2Image._validate_full_page_fixed_elements(fixed_elements)
+        Html2Image._validate_full_page_max_pixels(max_pixels)
+
+        return {
+            'full_page': True,
+            'full_page_stability_timeout': stability_timeout,
+            'full_page_profile': profile,
+            'full_page_fixed_elements': fixed_elements,
+            'full_page_max_pixels': max_pixels,
+        }
 
     @staticmethod
     def _validate_full_page_stability_timeout(value):
@@ -862,6 +873,7 @@ class Html2Image():
               positive finite float.
             + If full_page_profile or full_page_fixed_elements is unknown.
             + If full_page_max_pixels is neither a positive integer nor None.
+            + If `selector` and `full_page=True` are used together.
         - `ElementNotFoundError`
             + If an element has nothing to capture: no element matches its
             + selector, or it is hidden, empty or outside of the page.
@@ -870,14 +882,10 @@ class Html2Image():
             + If an element is too large for the browser to capture,
             + even with `skip_missing=True`. The other images will be
             + saved first.
+            + With `full_page=True`, if a page is larger than
+            + `full_page_max_pixels`. The other images will be saved
+            + first.
         """
-
-        if full_page:
-            self._validate_full_page_backend()
-            Html2Image._validate_full_page_stability_timeout(full_page_stability_timeout)
-            Html2Image._validate_full_page_profile(full_page_profile)
-            Html2Image._validate_full_page_fixed_elements(full_page_fixed_elements)
-            Html2Image._validate_full_page_max_pixels(full_page_max_pixels)
 
         # TODO / NOTE : This does not pose any problem for now but setting
         # mutables (here empty lists) as default arguments of a function
@@ -910,15 +918,17 @@ class Html2Image():
                 f'got {selector_padding}.'
             )
 
-        full_page_options = {}
-        if full_page:
-            full_page_options = {
-                'full_page': True,
-                'full_page_stability_timeout': full_page_stability_timeout,
-                'full_page_profile': full_page_profile,
-                'full_page_fixed_elements': full_page_fixed_elements,
-                'full_page_max_pixels': full_page_max_pixels,
-            }
+        if selectors and full_page:
+            raise ValueError(
+                'selector and full_page=True cannot be used together: '
+                'selector already captures the whole element, even beyond '
+                'the window.'
+            )
+
+        full_page_options = self._full_page_options(
+            full_page, full_page_stability_timeout, full_page_profile,
+            full_page_fixed_elements, full_page_max_pixels,
+        )
 
         return self._render(
             html_str=html_str,
@@ -1109,13 +1119,15 @@ class Html2Image():
             )
 
             self.load_str(content=content, as_filename=html_filename)
-            page_results.append(self._screenshot_page(
-                os.path.join(self.temp_path, html_filename),
-                names, current_size, selectors, selector_padding,
-                browser_options,
-            ))
-            if not self.keep_temp_files:
-                self._remove_temp_file(html_filename)
+            try:
+                page_results.append(self._screenshot_page(
+                    os.path.join(self.temp_path, html_filename),
+                    names, current_size, selectors, selector_padding,
+                    browser_options,
+                ))
+            finally:
+                if not self.keep_temp_files:
+                    self._remove_temp_file(html_filename)
 
         for screenshot_target in html_files + other_files:
 
@@ -1124,15 +1136,20 @@ class Html2Image():
 
             if os.path.isfile(screenshot_target):
                 self.load_file(src=screenshot_target)
-                page_results.append(self._screenshot_page(
-                    os.path.join(
-                        self.temp_path, os.path.basename(screenshot_target)
-                    ),
-                    names, current_size, selectors, selector_padding,
-                    browser_options,
-                ))
-                if not self.keep_temp_files:
-                    self._remove_temp_file(os.path.basename(screenshot_target))                
+                try:
+                    page_results.append(self._screenshot_page(
+                        os.path.join(
+                            self.temp_path,
+                            os.path.basename(screenshot_target),
+                        ),
+                        names, current_size, selectors, selector_padding,
+                        browser_options,
+                    ))
+                finally:
+                    if not self.keep_temp_files:
+                        self._remove_temp_file(
+                            os.path.basename(screenshot_target)
+                        )
             else:
                 raise FileNotFoundError(screenshot_target)
 
@@ -1150,6 +1167,18 @@ class Html2Image():
             screenshot_paths += paths
             missing += page_missing
             too_large += page_too_large
+
+        if too_large and browser_options.get('full_page'):
+            max_pixels = browser_options['full_page_max_pixels']
+            raise CaptureTooLargeError(
+                'Too large to be captured: '
+                f'{", ".join(name for _, name in too_large)}.\n'
+                f'The image would have had more than {max_pixels:,} pixels, '
+                'the limit set by full_page_max_pixels. Raise the limit, or '
+                'set it to None to remove it.',
+                paths=screenshot_paths,
+                too_large=too_large,
+            )
 
         # An image that is cut or wrong is never acceptable, so a too large
         # element is an error even with `skip_missing`.
@@ -1192,16 +1221,22 @@ class Html2Image():
         - tuple of three lists
             + The paths of the saved files, then the (selector, name)
             + pairs of the missing elements and of the elements too large
-            + to be captured.
+            + to be captured. The selector of a too large page captured
+            + with `full_page` is None.
         """
         if not selectors:
-            self.browser.screenshot(
-                input=input,
-                output_path=self.output_path,
-                output_file=names[0],
-                size=size,
-                **browser_options,
-            )
+            try:
+                self.browser.screenshot(
+                    input=input,
+                    output_path=self.output_path,
+                    output_file=names[0],
+                    size=size,
+                    **browser_options,
+                )
+            except CaptureTooLargeError:
+                # As with a too large element, the other pages will be
+                # saved before the error is raised.
+                return [], [], [(None, names[0])]
             return [os.path.join(self.output_path, names[0])], [], []
 
         elements = list(zip(selectors, names))

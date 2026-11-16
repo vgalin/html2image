@@ -8,6 +8,8 @@ import struct
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
+from ..exceptions import CaptureTooLargeError
+
 
 DEFAULT_MAX_PIXELS = 100_000_000
 VALID_FULL_PAGE_PROFILES = frozenset({"fast", "balanced", "robust"})
@@ -117,10 +119,6 @@ def restore_overlays_js(key: str) -> str:
     return _RESTORE_OVERLAYS_JS % json.dumps(key)
 
 
-class FullPageCaptureLimitError(RuntimeError):
-    """Raised before a capture would exceed its configured resource budget."""
-
-
 @dataclass(frozen=True)
 class TileSegment:
     """One exact, non-overlapping portion of the final image."""
@@ -225,7 +223,7 @@ def enforce_pixel_budget(
     max_pixels = validate_max_pixels(max_pixels)
     pixel_count = int(width) * int(height)
     if max_pixels is not None and pixel_count > max_pixels:
-        raise FullPageCaptureLimitError(
+        raise CaptureTooLargeError(
             "Full-page capture would contain "
             f"{pixel_count:,} pixels ({width}x{height}), exceeding "
             f"full_page_max_pixels={max_pixels:,}. Increase the limit or "

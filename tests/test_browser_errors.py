@@ -8,6 +8,7 @@ from html2image import (
     Html2Image,
     BrowserError,
     BrowserTimeoutError,
+    CaptureTooLargeError,
     PageLoadError,
     PageLoadTimeoutError,
 )
@@ -140,6 +141,8 @@ def restarts(monkeypatch, cdp_browser, bidi_browser):
     (PageLoadError("Navigation failed: net::ERR_NAME_NOT_RESOLVED"), False),
     (PageLoadTimeoutError("Timed out"), True),
     (ValueError('"div[" is not a valid CSS selector.'), False),
+    (CaptureTooLargeError("Too large"), False),
+    (ImportError("pyvips is required"), False),
     (BrowserError("CDP error -32000: Not allowed"), True),
     (BrowserTimeoutError("Timed out"), True),
     (BrowserError("The connection to the browser was lost."), True),
@@ -525,6 +528,10 @@ def test_page_errors_keep_the_browser(tmp_path, browser, download_url):
         (PageLoadError, dict(url="example.com")),
         (ValueError, dict(url="http://[malformed")),
         (ValueError, dict(html_str=page, selector="div[")),
+        (PageLoadError, dict(url="example.com", full_page=True)),
+        (CaptureTooLargeError, dict(
+            html_str=page, full_page=True, full_page_max_pixels=1000,
+        )),
     ]
 
     with hti:

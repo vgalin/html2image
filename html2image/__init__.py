@@ -2,7 +2,6 @@
 """
 
 from .html2image import Html2Image
-from .browsers._page_fit_common import FullPageCaptureLimitError
 from .cli import main
 from .exceptions import (
     Html2ImageError,
@@ -16,7 +15,7 @@ from .exceptions import (
 )
 
 __all__ = [
-    'Html2Image', 'FullPageCaptureLimitError', 'main',
+    'Html2Image', 'main',
     'Html2ImageError',
     'BrowserNotFoundError',
     'BrowserError',
