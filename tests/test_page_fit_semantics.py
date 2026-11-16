@@ -536,6 +536,70 @@ def test_tiles_follow_a_header_that_shrinks_when_scrolled(
     _assert_bands(output)
 
 
+def _spaced_bands_html(boxes):
+    """Returns a page with a header of 100 px that grows to 200 px once the
+    page is scrolled, then 30 bands of 80 px, each of its own color and
+    made of `boxes` boxes side by side, with 20 px between them. All of
+    them are in one element, which is all there is between the bands."""
+    bands = "".join(
+        '<div class="band">%s</div>'
+        % ('<div style="background:rgb%s"></div>' % (_band_color(index),)
+           * boxes)
+        for index in range(30)
+    )
+    return (
+        "<!doctype html><style>.band { display:flex; height:80px;"
+        " margin-bottom:20px } .band div { flex:1 }</style>"
+        '<body style="margin:0; background:#ffffff"><div>'
+        '<header id="header" style="height:100px; background:#282828">'
+        "</header>%s</div>%s<script>addEventListener('scroll', () =>"
+        " header.style.height = scrollY > 0 ? '200px' : '100px');"
+        "</script>" % (bands, _BADGE)
+    )
+
+
+@TILED_BROWSERS
+def test_tiles_follow_a_page_that_moves_between_its_seams(browser, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    output = hti.screenshot(
+        html_str=_spaced_bands_html(4),
+        save_as="spaced-bands.png",
+        size=(400, 600),
+        full_page=True,
+        full_page_profile="fast",
+    )[0]
+
+    # The seams are between two bands, where only the element around all
+    # of them can be found, but it does not move with the bands.
+    with Image.open(output) as image:
+        rgb = image.convert("RGB")
+    assert rgb.size == (400, 3100)
+    for index in range(30):
+        top = 100 + index * 100
+        for y in (top + 1, top + 78):
+            assert rgb.getpixel((10, y)) == _band_color(index), (index, y)
+        assert rgb.getpixel((10, top + 90)) == (255, 255, 255), index
+
+
+@TILED_BROWSERS
+def test_tiles_warn_when_a_single_anchor_moved(browser, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    # Each band is a single element: a single anchor cannot tell that
+    # the page moved, rather than this element.
+    with pytest.warns(FullPageWarning, match="could not be checked"):
+        hti.screenshot(
+            html_str=_spaced_bands_html(1),
+            save_as="spaced-bands.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )
+
+
 @TILED_BROWSERS
 def test_tiles_warn_when_a_single_column_moves(browser, tmp_path):
     pytest.importorskip("pyvips")

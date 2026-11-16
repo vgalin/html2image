@@ -126,33 +126,50 @@ _RESTORE_OVERLAYS_JS = '''
 })()
 '''
 
-# The elements that cross the row just above `seam`, remembered with their
-# position in the page. Fixed and sticky elements, and the elements inside
-# of them, do not move with the page: they are left out.
+# The anchors of the seam at the row `seam` of the page: in each of a few
+# columns of the viewport, the top or bottom edge of an element that is the
+# closest above the seam, within a viewport. Content that moves between them
+# and the seam cannot be seen, so they are as close to it as can be. Fixed
+# and sticky elements, and the elements inside of them, do not move with
+# the page: they are left out.
 _MARK_ANCHORS_JS = '''
 (() => {
     const [key, seam] = %s;
+    const columns = [0.08, 0.2, 0.33, 0.45, 0.55, 0.67, 0.8, 0.92]
+        .map(x => x * innerWidth);
+    const floating = new Map();
     const isFloating = (element) => {
-        for (; element && element !== document.body;
-             element = element.parentElement) {
+        if (!element || element === document.documentElement) return false;
+        if (!floating.has(element)) {
             const position = getComputedStyle(element).position;
-            if (position === 'fixed' || position === 'sticky') return true;
+            floating.set(element, position === 'fixed'
+                || position === 'sticky' || isFloating(element.parentElement));
         }
-        return false;
+        return floating.get(element);
     };
-    const row = Math.min(innerHeight - 1, Math.max(0, seam - scrollY - 1));
+    const closest = columns.map(() => null);
+    const root = document.body || document.documentElement;
+    for (const element of root.querySelectorAll('*')) {
+        const rect = element.getBoundingClientRect();
+        // An element that is not shown has no box.
+        if (!rect.width && !rect.height) continue;
+        for (const edge of ['top', 'bottom']) {
+            const position = rect[edge] + scrollY;
+            if (position > seam || position <= seam - innerHeight) continue;
+            columns.forEach((x, column) => {
+                if (x < rect.left || x >= rect.right) return;
+                // On a tie, the element inside of the other one is kept.
+                if (closest[column] && closest[column].position > position
+                    || isFloating(element)) return;
+                closest[column] = {element, edge, position};
+            });
+        }
+    }
     const anchors = [];
-    for (const x of [0.08, 0.2, 0.33, 0.45, 0.55, 0.67, 0.8, 0.92]) {
-        const elements = document.elementsFromPoint(innerWidth * x, row);
-        for (const element of elements) {
-            if (element === document.documentElement
-                || element === document.body) break;
-            if (isFloating(element)) continue;
-            if (!anchors.some(anchor => anchor.element === element)) {
-                const top = element.getBoundingClientRect().top + scrollY;
-                anchors.push({element, top});
-            }
-            break;
+    for (const anchor of closest) {
+        if (anchor
+            && !anchors.some(({element}) => element === anchor.element)) {
+            anchors.push(anchor);
         }
     }
     window[key] = anchors;
@@ -163,8 +180,9 @@ _MARK_ANCHORS_JS = '''
 _ANCHOR_SHIFTS_JS = '''
 JSON.stringify((window[%s] || [])
     .filter(anchor => anchor.element.isConnected)
-    .map(anchor =>
-        anchor.element.getBoundingClientRect().top + scrollY - anchor.top))
+    .map(anchor => [anchor, anchor.element.getBoundingClientRect()])
+    .filter(([anchor, rect]) => rect.width || rect.height)
+    .map(([anchor, rect]) => rect[anchor.edge] + scrollY - anchor.position))
 '''
 
 _FORGET_ANCHORS_JS = '''
@@ -246,7 +264,7 @@ def page_shift(shifts):
 class SeamChecker:
     """Keeps the tiles of a full page capture in line with the page.
 
-    Before a tile is captured, the elements that cross its bottom row, the
+    Before a tile is captured, the elements just above its bottom row, the
     seam with the next tile, are marked. Before the next tile, they are
     read again: if they all moved the same way, so did the page, and the
     next tile will start that much higher or lower. When it cannot be told,

@@ -319,10 +319,10 @@ class FakePage:
         self.slept = 0
 
     def evaluate(self, script):
-        if "elementsFromPoint" in script:
+        if script.startswith(common._MARK_ANCHORS_JS.split("%s")[0]):
             self.marked.append(script)
             return 3
-        if "getBoundingClientRect" in script:
+        if script.startswith(common._ANCHOR_SHIFTS_JS.split("%s")[0]):
             return self.readings.pop(0)
         return [True, True]
 
