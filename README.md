@@ -85,6 +85,8 @@ Multiple arguments can be passed to the constructor:
 -   `temp_path` : Path that will be used to put together different resources when screenshotting strings of files. Default value is `%TEMP%/html2image` on Windows, and `/tmp/html2image` on Linux and MacOS.
 -   `keep_temp_files` : Pass True to this argument to not automatically remove temporary files created in `temp_path`. Default is False.
 -   `disable_logging` : Suppress stdout/stderr logs generated in the console by underlying browsers. 
+-   `allow_scripts_to_read_files` : Lets JavaScript in your HTML read other files from your disk. Off by default, as most pages don't need it. Read [Reading local files from JavaScript](#reading-local-files-from-javascript) before turning it on.
+-   `add_doctype` : Start the pages built from `html_str` with `<!DOCTYPE html>`, so that browsers render them like any modern web page. html2image 2.x left it out, and browsers then fell back to an old compatibility mode. If your screenshots look different since version 3.0, pass False to get the old rendering back. Default is True.
 
 Example:
 ```python
@@ -349,16 +351,120 @@ For ease of use, some flags are set by default. However default flags are not us
 ['--a', '--b']
 ```
 
+### Capturing a single element from a page
+
+Give a CSS selector to `screenshot()` to save an image of one element instead of the whole window:
+
+```python
+hti.screenshot(url='https://example.org/', selector='#card', save_as='card.png')
+```
+
+The generated image will have the size of the element, even if the element is larger than the window or further down the page. If several elements match, the first one will be used, as with `document.querySelector()` in JavaScript.
+
+With a list of selectors, one image will be saved per selector, for each page. Each page will only be loaded once, and each image will be the same as with one call per selector:
+
+```python
+hti.screenshot(
+    html_str=html,
+    selector=['#chart', '#table'],
+    selector_padding=16,
+    save_as=['chart.png', 'table.png'],
+)
+```
+
+`selector_padding` adds pixels around the element, to include its shadow for example. The padding will stop at the edges of the page.
+
+Give one name per image in `save_as`, and one size per page in `size`: the size sets the window in which the page will be laid out.
+
+Limits:
+
+- `selector` only works with the `chrome`, `edge` and `firefox` browsers, not with `chrome-headless`, `edge-headless` or `firefox-headless`.
+- Chrome and Edge can capture at most 16384 pixels in width and in height, Firefox at most 65535.
+- On a page without `<!DOCTYPE html>`, Firefox may only be able to capture an element that fits in the window. Pages built from `html_str` get a doctype, unless `add_doctype=False` is given.
+- An element inside an `<iframe>` or a shadow DOM will not be found.
+- An element added by a script after the page has loaded may not be found. With Chrome and Edge, the `--virtual-time-budget` flag described in "Change browser flags" will let the page run its scripts before the capture.
+- An element hidden with `visibility: hidden` still has a size: the image will show what is behind it.
+
+If an element has nothing to capture (no element matches the selector, or it is hidden, empty or outside of the page), `ElementNotFoundError` will be raised once all the other images have been saved. Pass `skip_missing=True` to skip such elements instead: the returned list will then only contain the saved images.
+
+```python
+from html2image import Html2Image, ElementNotFoundError
+
+try:
+    hti.screenshot(url=urls, selector='#price', save_as='price.png')
+except ElementNotFoundError as error:
+    print('Saved:', error.paths)
+    for selector, filename in error.missing:
+        print(f'No {selector} for {filename}')
+```
+
+An element too large for the browser will raise `CaptureTooLargeError`, even with `skip_missing=True`. This error will also be raised once all the other images have been saved.
+
+### Save pages as PDF
+
+The `pdf()` method saves pages as PDF files instead of images. It takes the same sources as the `screenshot()` method (`url`, `html_file`, `css_file`, `html_str`, `css_str`, `other_file`) and the same `save_as`, and also returns a list of paths.
+
+```python
+hti.pdf(url='https://www.python.org', save_as='python_org.pdf')
+
+hti.pdf(
+    html_str='<h1>Invoice</h1><p>Thank you for your order.</p>',
+    css_str='h1 { color: navy; }',
+    save_as='invoice.pdf',
+)
+```
+
+The page is printed, as with the "Save as PDF" option of your browser: the content is laid out for paper and split into pages, the text stays selectable and the links stay clickable. Because of this, a PDF does not always look like the screenshot of the same page: styles written for printing (`@media print`) apply, and the width of the paper replaces the width of the window, so there is no `size` parameter.
+
+You can choose the paper and its margins:
+
+```python
+hti.pdf(url='https://www.python.org', save_as='python_org.pdf',
+        paper_size='Letter', landscape=True, margin='1.5cm')
+
+hti.pdf(html_file='label.html', save_as='label.pdf',
+        paper_size=('10cm', '15cm'), margin='5mm 1cm')
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `paper_size` | `'A4'` | `'A3'`, `'A4'`, `'A5'`, `'Letter'`, `'Legal'`, `'Tabloid'`, `'slide'` (16:9, 1280 × 720 px), or a `(width, height)` pair |
+| `landscape` | `None` | `True` for sideways paper, `False` for upright paper, `None` to keep the orientation of `paper_size` |
+| `margin` | `'1cm'` (`'0'` for `'slide'`) | written like the CSS `margin` property: 1 to 4 lengths |
+| `background` | `True` | print background colors and images |
+| `scale` | `1` | zoom of the content, from 0.1 to 2 |
+
+Lengths are written as in CSS, with a unit: `mm`, `cm`, `Q`, `in`, `pt`, `pc` or `px` (1px is 1/96 of an inch). Only `0` can be written without a unit.
+
+If your page sets its own paper size or margins with a CSS `@page` rule, they take precedence over `paper_size` and `margin`.
+
+**Slides.** To turn HTML slides into a PDF, make each slide 1280 × 720 px and start a new page after each one:
+
+```python
+css = """
+body { margin: 0; }
+section { width: 1280px; height: 720px; break-after: page; }
+"""
+html = '<section>First slide</section><section>Second slide</section>'
+
+hti.pdf(html_str=html, css_str=css, save_as='slides.pdf', paper_size='slide')
+```
+
+*N.B.:*
+- *The `pdf()` method works with the `chrome` (default), `edge` and `firefox` browsers. It does not work with the legacy `chrome-headless`, `edge-headless` and `firefox-headless` browsers, which can only take screenshots: with them, `pdf()` raises a `ValueError` and creates no file.*
+- *Chrome and Firefox do not lay out a page in exactly the same way, so their PDFs of the same page can differ, for example in the number of pages. Firefox is also slower: a few seconds per PDF.*
+- *The `screenshot()` method refuses file names ending in `.pdf`: use the `pdf()` method instead.*
+
 ### Browser support
 
-| Browser | Aliases | Protocol | PNG | JPEG | SVG transparency | Exact viewport |
-|---------|---------|----------|:---:|:----:|:----------------:|:--------------:|
-| Chrome | `chrome`, `chrome-cdp`, `chromium`, `chromium-cdp`, `google-chrome` | CDP | ✓ | ✓ | ✓ | ✓ |
-| Chrome (legacy) | `chrome-headless` | CLI | ✓ | ✓ | ✓ | ~ |
-| Edge | `edge`, `edge-cdp` | CDP | ✓ | ✓ | ✓ | ✓ |
-| Edge (legacy) | `edge-headless` | CLI | ✓ | ✓ | ✓ | ~ |
-| Firefox | `firefox`, `mozilla-firefox`, `firefox-bidi` | BiDi | ✓ | ✓ | ⚠ | ✓ |
-| Firefox (legacy) | `firefox-headless` | CLI | ✓ | ✗ | ⚠ | ~ |
+| Browser | Aliases | Protocol | PNG | JPEG | PDF | SVG transparency | Exact viewport |
+|---------|---------|----------|:---:|:----:|:---:|:----------------:|:--------------:|
+| Chrome | `chrome`, `chrome-cdp`, `chromium`, `chromium-cdp`, `google-chrome` | CDP | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Chrome (legacy) | `chrome-headless` | CLI | ✓ | ✓ | ✗ | ✓ | ~ |
+| Edge | `edge`, `edge-cdp` | CDP | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Edge (legacy) | `edge-headless` | CLI | ✓ | ✓ | ✗ | ✓ | ~ |
+| Firefox | `firefox`, `mozilla-firefox`, `firefox-bidi` | BiDi | ✓ | ✓ | ✓ | ⚠ | ✓ |
+| Firefox (legacy) | `firefox-headless` | CLI | ✓ | ✗ | ✗ | ⚠ | ~ |
 
 **Legend:**
 - ✓ supported
@@ -379,6 +485,59 @@ hti = Html2Image(browser='chrome', browser_cdp_port=9222)
 # Fix the BiDi port for Firefox
 hti = Html2Image(browser='firefox', browser_bidi_port=9333)
 ```
+
+### Reading local files from JavaScript
+
+By default, the browser does not let a page opened from a file use JavaScript to read other files on your disk. Images, stylesheets and fonts used by your HTML still load normally. What gets blocked is code that loads a file itself, for example `fetch('data.json')`, or a chart library that reads its data from a local file. JavaScript modules (`<script type="module">`) and tags that have a `crossorigin` attribute, such as `<img crossorigin src="photo.png">`, are blocked too. html2image does not report it: the screenshot is still taken, without that content.
+
+If your HTML needs this, you can lift the restriction:
+
+```python
+hti = Html2Image(allow_scripts_to_read_files=True)
+```
+
+**Only do this with HTML that you wrote or fully trust.** With this option on, any script in the page can read any file your user account can read (configuration files, SSH keys, saved passwords or tokens) and send it over the internet. Never turn it on if the HTML, or any part of it, comes from someone else, such as the users of your application.
+
+### Handling errors
+
+html2image raises its own exceptions when the browser or the page fails. They all inherit from `Html2ImageError`:
+
+| Exception | Raised when |
+|---|---|
+| `BrowserNotFoundError` | no browser executable was found |
+| `BrowserError` | the browser could not start, reported an error or was lost |
+| `BrowserTimeoutError` | the browser did not answer in time |
+| `PageLoadError` | the page could not be loaded, but the browser is fine |
+| `PageLoadTimeoutError` | the page did not finish loading in time |
+| `ElementNotFoundError` | an element given by `selector` had nothing to capture |
+| `CaptureTooLargeError` | an element was too large for the browser to capture in one go |
+
+With `selector`, `ElementNotFoundError` and `CaptureTooLargeError` will only be raised once all the other images have been saved. Their `paths` attribute lists the saved images, and `missing` or `too_large` lists the (selector, filename) pairs of the others.
+
+For example, to skip the pages that cannot be loaded:
+
+```python
+from html2image import Html2Image, PageLoadError
+
+with Html2Image() as hti:
+    for i, url in enumerate(urls):
+        try:
+            hti.screenshot(url=url, save_as=f'page_{i}.png')
+        except PageLoadError as error:
+            print(f'Skipped {url}: {error}')
+```
+
+Any other error, such as a `BrowserError`, still stops the loop.
+
+Within a `with` block, the browser will be restarted after a `BrowserError`, a `PageLoadTimeoutError` or an unexpected error, so the next screenshot will start afresh. After the other html2image exceptions, such as `PageLoadError`, and after wrong arguments, it will keep running as it was.
+
+A URL that starts a download will raise `PageLoadError`, and the file will not be saved in your Downloads folder. With Firefox, this needs Firefox 144 or later: older versions will save an image of the previous page instead.
+
+`BrowserNotFoundError` is also a `FileNotFoundError`, so an `except FileNotFoundError` written for html2image 2.x keeps working. `BrowserTimeoutError` and `PageLoadTimeoutError` are also `TimeoutError`, Python's usual exception for anything that took too long.
+
+Wrong arguments still raise the usual built-in exceptions: `ValueError` for an invalid or unsupported parameter, `FileNotFoundError` for a missing input file. `Html2ImageError` does not cover them.
+
+The legacy `chrome-headless`, `edge-headless` and `firefox-headless` browsers cannot tell whether a page loaded: they never raise `PageLoadError`.
 
 ## Using the CLI
 HTML2image comes with a Command Line Interface which you can use to generate screenshots from files and URLs on the go. You can call it by typing `hti` or `html2image` into a terminal.
@@ -519,7 +678,6 @@ uv run pytest
 
 
 ## TODO List
--   PDF generation?
 -   Issue templates, pull request template, code of conduct.
 
 ---

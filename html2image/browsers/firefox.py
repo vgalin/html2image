@@ -1,5 +1,6 @@
 from .browser import Browser
 from .search_utils import find_firefox
+from ..exceptions import BrowserError
 
 import logging
 import os
@@ -27,6 +28,7 @@ class FirefoxHeadlessScreenshot(Browser):
         flags=None,
         print_command=False,
         disable_logging=False,
+        allow_scripts_to_read_files=False,
     ):
         self.executable = executable
         if not flags:
@@ -36,6 +38,7 @@ class FirefoxHeadlessScreenshot(Browser):
 
         self.print_command = print_command
         self._disable_logging = disable_logging
+        self.allow_scripts_to_read_files = allow_scripts_to_read_files
 
     @property
     def executable(self):
@@ -72,7 +75,7 @@ class FirefoxHeadlessScreenshot(Browser):
 
         width, height = size if size else (1920, 1080)
 
-        if input.startswith('-'):
+        if input.lstrip().startswith('-'):
             raise ValueError(
                 f'Could not screenshot "{input}":\n'
                 'An input starting with "-" would be read as a browser flag.'
@@ -93,6 +96,11 @@ class FirefoxHeadlessScreenshot(Browser):
 
         profile_dir = tempfile.mkdtemp(prefix='html2image_firefox_cli_')
         try:
+            strict_origin = 'false' if self.allow_scripts_to_read_files else 'true'
+            Path(profile_dir, 'user.js').write_text(
+                f'user_pref("security.fileuri.strict_origin_policy", {strict_origin});\n',
+                encoding='utf-8',
+            )
             output_full_path = os.path.join(output_path, output_file)
             command = [
                 str(self.executable),
@@ -120,7 +128,7 @@ class FirefoxHeadlessScreenshot(Browser):
             subprocess.run(command, check=False, **popen_kwargs)
 
             if not os.path.isfile(output_full_path):
-                raise RuntimeError(
+                raise BrowserError(
                     f'Firefox --screenshot did not produce {output_full_path!r}. '
                     'Note: JPEG output is not supported; only PNG files are produced.'
                 )

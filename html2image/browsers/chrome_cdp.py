@@ -1,6 +1,19 @@
-from .browser import CDPBrowser
+from .browser import (
+    CONNECTION_ERRORS,
+    CONNECTION_LOST,
+    CDPBrowser,
+    needs_restart,
+    read_message,
+)
 from ._page_fit_common import DEFAULT_MAX_PIXELS
 from .search_utils import find_chrome
+from . import _selector
+from ..exceptions import (
+    BrowserError,
+    BrowserTimeoutError,
+    PageLoadError,
+    PageLoadTimeoutError,
+)
 
 import base64
 import json
@@ -26,9 +39,20 @@ logger = logging.getLogger(__name__)
 # Default timeout (in seconds) for waiting on CDP responses
 CDP_TIMEOUT = 30
 
+TIMEOUT_ERRORS = (TimeoutError, socket.timeout, WebSocketTimeoutException)
+
+# When its certificate verifier changes, Chrome stops using its open HTTP/2
+# connections and fails their pending requests with this error. The page
+# is then loaded once more, over a new connection.
+CERT_VERIFIER_CHANGED = 'net::ERR_CERT_VERIFIER_CHANGED'
+
 # Chrome only honors this flag along with its `--screenshot` flag, so the
 # CDP backend reads its value and applies it through the protocol instead.
 VIRTUAL_TIME_BUDGET_FLAG = '--virtual-time-budget='
+
+# Chrome draws a wrong image, without any error, when it captures an area
+# larger than this number of pixels, in width or in height, in one go.
+MAX_CAPTURE_SIZE = 16384
 
 
 class ChromeCDP(CDPBrowser):
@@ -36,7 +60,7 @@ class ChromeCDP(CDPBrowser):
     def __init__(
         self, executable=None, flags=None,
         print_command=False, cdp_port=None,
-        disable_logging=False,
+        disable_logging=False, allow_scripts_to_read_files=False,
     ):
         self.executable = executable
         if not flags:
@@ -49,12 +73,14 @@ class ChromeCDP(CDPBrowser):
         self.print_command = print_command
         self.cdp_port = cdp_port
         self._disable_logging = disable_logging
+        self.allow_scripts_to_read_files = allow_scripts_to_read_files
 
         self._ws = None  # Websocket connection
         self._session_id = None  # CDP session ID from Target.attachToTarget
         self.proc = None  # Headless browser Popen object
         self._user_data_dir = None
         self._current_port = None
+        self._browser_pid = None
 
         self.__id = 0
 
@@ -112,6 +138,8 @@ class ChromeCDP(CDPBrowser):
         ]
         if '--remote-allow-origins=*' not in launch_flags:
             launch_flags.append('--remote-allow-origins=*')
+        if self.allow_scripts_to_read_files:
+            launch_flags.append('--allow-file-access-from-files')
 
         command = [
             f'{self.executable}',
@@ -121,7 +149,6 @@ class ChromeCDP(CDPBrowser):
             '--headless=new',
             '--no-first-run',
             '--no-default-browser-check',
-            '--allow-file-access-from-files',
             *launch_flags,
         ]
 
@@ -174,6 +201,8 @@ class ChromeCDP(CDPBrowser):
                 logger.debug('Connecting to browser WebSocket: %s', ws_url)
                 self._ws = create_connection(ws_url, timeout=10)
                 logger.debug('Connected to browser WebSocket.')
+                self._browser_pid = self._find_browser_pid()
+                self._deny_downloads()
 
                 # Discover page targets and attach to the first one
                 self._attach_to_page_target()
@@ -200,10 +229,43 @@ class ChromeCDP(CDPBrowser):
                         if self._current_port is not None
                         else 'an automatically assigned port'
                     )
-                    raise RuntimeError(
+                    raise BrowserError(
                         f'Could not connect to Chrome CDP on port {port_description} '
                         f'after {max_retries} attempts. Is Chrome running?'
                     ) from error
+
+    def _find_browser_pid(self):
+        """Return the process ID of the browser, or None if Chrome does not
+        tell it.
+
+        It is not always the ID of the launched process, which may hand
+        over to the browser process and exit, as Edge does on Windows.
+        """
+        try:
+            info_id = self.cdp_send('SystemInfo.getProcessInfo')
+            processes = self._wait_for_result(info_id)['result']['processInfo']
+        except BrowserError:
+            return None
+        return next(
+            (
+                process['id'] for process in processes
+                if process['type'] == 'browser'
+            ),
+            None,
+        )
+
+    def _deny_downloads(self):
+        """Keep Chrome from saving the files that a URL downloads.
+
+        By default, Chrome would save them in the user's Downloads folder.
+        """
+        try:
+            deny_id = self.cdp_send(
+                'Browser.setDownloadBehavior', behavior='deny'
+            )
+            self._wait_for_result(deny_id)
+        except BrowserError:
+            logger.debug('Could not keep Chrome from saving downloads.')
 
     def _attach_to_page_target(self):
         """Discover page targets and attach to the first one with a flattened session."""
@@ -220,7 +282,7 @@ class ChromeCDP(CDPBrowser):
             create_result = self._wait_for_result(create_id)
             target_id = create_result.get('result', {}).get('targetId')
             if not target_id:
-                raise RuntimeError('Failed to create a page target in Chrome.')
+                raise BrowserError('Failed to create a page target in Chrome.')
         else:
             target_id = page_targets[0]['targetId']
 
@@ -236,7 +298,7 @@ class ChromeCDP(CDPBrowser):
 
         self._session_id = attach_result.get('result', {}).get('sessionId')
         if not self._session_id:
-            raise RuntimeError(
+            raise BrowserError(
                 'Failed to get sessionId from Target.attachToTarget.'
             )
 
@@ -268,8 +330,24 @@ class ChromeCDP(CDPBrowser):
             payload['sessionId'] = self._session_id
 
         logger.debug('cdp_send: %s %s', method, params)
-        ws.send(json.dumps(payload))
+        try:
+            ws.send(json.dumps(payload))
+        except CONNECTION_ERRORS as error:
+            raise BrowserError(CONNECTION_LOST) from error
         return msg_id
+
+    def _receive(self):
+        """Return the next message from Chrome.
+
+        Timeouts are raised as they are, for the caller to describe.
+        """
+        try:
+            raw = self.ws.recv()
+        except TIMEOUT_ERRORS:
+            raise
+        except CONNECTION_ERRORS as error:
+            raise BrowserError(CONNECTION_LOST) from error
+        return read_message(raw)
 
     def _wait_for_result(self, msg_id, timeout=CDP_TIMEOUT):
         """Wait for a CDP response matching the given message ID.
@@ -290,8 +368,7 @@ class ChromeCDP(CDPBrowser):
         self.ws.settimeout(timeout)
         try:
             while True:
-                raw = self.ws.recv()
-                message = json.loads(raw)
+                message = self._receive()
 
                 # Ignore events/responses from other sessions when attached.
                 if not self._message_matches_current_session(message):
@@ -300,20 +377,20 @@ class ChromeCDP(CDPBrowser):
                 # Check for CDP errors
                 if 'error' in message:
                     error = message['error']
-                    raise RuntimeError(
+                    raise BrowserError(
                         f'CDP error {error.get("code")}: {error.get("message")}'
                     )
 
                 if message.get('method') == 'Inspector.detached':
                     reason = message.get('params', {}).get('reason')
-                    raise RuntimeError(f'Chrome page was lost: {reason}')
+                    raise BrowserError(f'Chrome page was lost: {reason}')
 
                 logger.debug('CDP recv: %s', message)
                 result = predicate(message)
                 if result:
                     return result
-        except (TimeoutError, socket.timeout, WebSocketTimeoutException):
-            raise TimeoutError(
+        except TIMEOUT_ERRORS:
+            raise BrowserTimeoutError(
                 f'Timed out after {timeout}s waiting for CDP response.'
             )
         finally:
@@ -332,43 +409,38 @@ class ChromeCDP(CDPBrowser):
         This avoids missing a fast load event between two separate waits.
         Only the load event of the document created by this navigation is
         taken into account, events of a previous page are ignored.
+
+        An error answer to Page.navigate is returned, see `_navigate()`.
         """
         deadline = time.time() + timeout
         nav_result = None
         loaded_documents = set()
 
-        self.ws.settimeout(timeout)
         try:
-            while True:
-                remaining = deadline - time.time()
-                if remaining <= 0:
-                    raise TimeoutError(
-                        f'Timed out after {timeout}s waiting for page load.'
-                    )
-
-                self.ws.settimeout(max(0.1, remaining))
-                message = json.loads(self.ws.recv())
+            while time.time() < deadline:
+                self.ws.settimeout(max(0.1, deadline - time.time()))
+                message = self._receive()
 
                 # Ignore events/responses from other sessions when attached.
                 if not self._message_matches_current_session(message):
                     continue
 
-                if 'error' in message:
+                if 'error' in message and message.get('id') != nav_id:
                     error = message['error']
-                    raise RuntimeError(
+                    raise BrowserError(
                         f'CDP error {error.get("code")}: {error.get("message")}'
                     )
 
                 if message.get('method') == 'Inspector.detached':
                     reason = message.get('params', {}).get('reason')
-                    raise RuntimeError(f'Chrome page was lost: {reason}')
+                    raise BrowserError(f'Chrome page was lost: {reason}')
 
                 logger.debug('CDP recv: %s', message)
 
                 if message.get('id') == nav_id:
                     nav_result = message
                     error_text = nav_result.get('result', {}).get('errorText')
-                    if error_text:
+                    if error_text or 'error' in nav_result:
                         return nav_result
 
                     # No document is loaded when navigating within the
@@ -385,12 +457,29 @@ class ChromeCDP(CDPBrowser):
                     nav_result['result'].get('loaderId') in loaded_documents
                 ):
                     return nav_result
-        except (TimeoutError, socket.timeout, WebSocketTimeoutException):
-            raise TimeoutError(
-                f'Timed out after {timeout}s waiting for page navigation.'
-            )
+        except TIMEOUT_ERRORS:
+            pass
         finally:
             self.ws.settimeout(None)
+
+        raise PageLoadTimeoutError(
+            f'Timed out after {timeout}s waiting for page navigation.'
+        )
+
+    def _navigate(self, url):
+        """Load `url` in the page.
+
+        Return the error text if the page could not be loaded. Chrome gives
+        it in its answer to Page.navigate, either as an error text or as an
+        error answer, for example for an invalid URL.
+        """
+        nav_id = self.cdp_send('Page.navigate', url=url)
+        logger.debug('Waiting for navigation and load events...')
+        nav_result = self._wait_for_navigation_complete(nav_id)
+        return (
+            nav_result.get('result', {}).get('errorText')
+            or nav_result.get('error', {}).get('message')
+        )
 
     def _virtual_time_budget(self):
         """Return the value of the `--virtual-time-budget` flag, if set."""
@@ -417,12 +506,135 @@ class ChromeCDP(CDPBrowser):
         )
         self._wait_for_result(resume_id)
 
+    def _print_to_pdf(self, output_file_path, options):
+        """Print the current page to a PDF file."""
+        logger.debug('Printing to PDF...')
+        top, right, bottom, left = options['margin']
+        pdf_id = self.cdp_send(
+            'Page.printToPDF',
+            paperWidth=options['width'],
+            paperHeight=options['height'],
+            marginTop=top,
+            marginRight=right,
+            marginBottom=bottom,
+            marginLeft=left,
+            printBackground=options['background'],
+            scale=options['scale'],
+            # Let a CSS `@page` size win, as Firefox always does.
+            preferCSSPageSize=True,
+        )
+        pdf_data = self._wait_for_result(pdf_id).get('result', {}).get('data')
+        if not pdf_data:
+            raise BrowserError('No PDF data received from Chrome.')
+
+        with open(output_file_path, 'wb') as file_obj:
+            file_obj.write(base64.b64decode(pdf_data))
+
+    def _evaluate(self, expression):
+        """Return the value of a JavaScript expression that returns JSON."""
+        evaluate_id = self.cdp_send(
+            'Runtime.evaluate', expression=expression, awaitPromise=True,
+        )
+        result = self._wait_for_result(evaluate_id)['result']
+        if 'exceptionDetails' in result:
+            # The text is only "Uncaught": the error itself is described in
+            # the exception.
+            details = result['exceptionDetails']
+            description = details.get('exception', {}).get('description')
+            raise BrowserError(
+                f'JavaScript error: {description or details["text"]}'
+            )
+        return json.loads(result['result']['value'])
+
+    def _capture(self, output_file_path, clip, beyond_viewport=False):
+        """Save an image of the `clip` area of the page.
+
+        With `beyond_viewport`, the area can be outside of the viewport.
+        """
+        logger.debug('Capturing screenshot...')
+
+        ext = os.path.splitext(output_file_path)[1].lower()
+        capture_format = 'jpeg' if ext in ('.jpg', '.jpeg') else 'png'
+        transparent_bg_set = False
+        if capture_format == 'png':
+            bg_id = self.cdp_send(
+                'Emulation.setDefaultBackgroundColorOverride',
+                color={'r': 0, 'g': 0, 'b': 0, 'a': 0},
+            )
+            self._wait_for_result(bg_id)
+            transparent_bg_set = True
+        else:
+            # Ensure no transparent override is active for JPEG captures.
+            bg_id = self.cdp_send(
+                'Emulation.setDefaultBackgroundColorOverride'
+            )
+            self._wait_for_result(bg_id)
+
+        try:
+            screenshot_id = self.cdp_send(
+                'Page.captureScreenshot',
+                format=capture_format,
+                omitBackground=(capture_format == 'png'),
+                clip={**clip, 'scale': 1},
+                fromSurface=True,
+                captureBeyondViewport=beyond_viewport,
+            )
+            screenshot_result = self._wait_for_result(screenshot_id)
+        finally:
+            if transparent_bg_set:
+                try:
+                    clear_id = self.cdp_send(
+                        'Emulation.setDefaultBackgroundColorOverride'
+                    )
+                    self._wait_for_result(clear_id)
+                except Exception:
+                    logger.debug(
+                        'Could not clear CDP background override.',
+                        exc_info=True,
+                    )
+
+        img_data = screenshot_result.get('result', {}).get('data')
+        if not img_data:
+            raise BrowserError('No screenshot data received from Chrome.')
+
+        with open(output_file_path, 'wb') as file_obj:
+            file_obj.write(base64.b64decode(img_data))
+
+    def _capture_elements(self, output_path, elements, padding):
+        """Save an image of each element, see `screenshot()`."""
+        _selector.check_selectors(
+            self._evaluate, [selector for selector, _ in elements]
+        )
+
+        missing, too_large = [], []
+        for element in elements:
+            selector, output_file = element
+            # The page is scrolled back as loaded after each element, so
+            # that each image is the same as with one call per selector.
+            box = self._evaluate(_selector.element_box_js(selector))
+            clip = _selector.element_clip(box, padding)
+            if clip is None:
+                missing.append(element)
+            elif max(clip['width'], clip['height']) > MAX_CAPTURE_SIZE:
+                too_large.append(element)
+            else:
+                self._capture(
+                    os.path.join(output_path, output_file), clip,
+                    beyond_viewport=True,
+                )
+            if box is not None:
+                self._evaluate(_selector.restore_js(selector, box))
+        return missing, too_large
+
     def screenshot(
         self,
         input,
         output_path,
         output_file='screenshot.png',
         size=(1920, 1080),
+        pdf_options=None,
+        elements=None,
+        selector_padding=0,
         full_page=False,
         full_page_stability_timeout=None,
         full_page_profile='robust',
@@ -431,8 +643,17 @@ class ChromeCDP(CDPBrowser):
     ):
         """Take a screenshot using Chrome DevTools Protocol.
 
+        If `pdf_options` is given, the page is printed to a PDF instead.
+
+        If `elements` is given, as a list of (selector, output_file) pairs,
+        an image of each element is saved instead, with `selector_padding`
+        pixels around it, and `output_file` is not used. The elements that
+        could not be captured are returned, as two lists of these pairs:
+        the missing elements, and the elements too large to be captured.
+
         See: https://chromedevtools.github.io/devtools-protocol/
         """
+        target_url = self._normalize_input(input)
         auto_started = self._ws is None
         if auto_started:
             self.__enter__()
@@ -479,17 +700,13 @@ class ChromeCDP(CDPBrowser):
             )
             self._wait_for_result(metrics_id)
 
-            target_url = self._normalize_input(input)
-            nav_id = self.cdp_send('Page.navigate', url=target_url)
-
-            logger.debug('Waiting for navigation and load events...')
-            nav_result = self._wait_for_navigation_complete(nav_id)
-
-            error_text = nav_result.get('result', {}).get('errorText')
+            error_text = self._navigate(target_url)
+            if error_text == CERT_VERIFIER_CHANGED:
+                error_text = self._navigate(target_url)
             if error_text:
                 disable_id = self.cdp_send('Page.disable')
                 self._wait_for_result(disable_id)
-                raise RuntimeError(f'Navigation failed: {error_text}')
+                raise PageLoadError(f'Navigation failed: {error_text}')
 
             logger.debug('Page loaded.')
             disable_id = self.cdp_send('Page.disable')
@@ -499,69 +716,45 @@ class ChromeCDP(CDPBrowser):
             if virtual_time_budget:
                 self._spend_virtual_time(virtual_time_budget)
 
-            logger.debug('Capturing screenshot...')
-
-            ext = os.path.splitext(output_file)[1].lower()
-            capture_format = 'jpeg' if ext in ('.jpg', '.jpeg') else 'png'
-            transparent_bg_set = False
-            if capture_format == 'png':
-                bg_id = self.cdp_send(
-                    'Emulation.setDefaultBackgroundColorOverride',
-                    color={'r': 0, 'g': 0, 'b': 0, 'a': 0},
+            if pdf_options is not None:
+                self._print_to_pdf(
+                    os.path.join(output_path, output_file), pdf_options
                 )
-                self._wait_for_result(bg_id)
-                transparent_bg_set = True
-            else:
-                # Ensure no transparent override is active for JPEG captures.
-                bg_id = self.cdp_send(
-                    'Emulation.setDefaultBackgroundColorOverride'
+                return
+
+            if elements is not None:
+                return self._capture_elements(
+                    output_path, elements, selector_padding
                 )
-                self._wait_for_result(bg_id)
 
-            try:
-                screenshot_id = self.cdp_send(
-                    'Page.captureScreenshot',
-                    format=capture_format,
-                    omitBackground=(capture_format == 'png'),
-                    clip={
-                        'x': 0,
-                        'y': 0,
-                        'width': size[0],
-                        'height': size[1],
-                        'scale': 1,
-                    },
-                    fromSurface=True,
-                )
-                screenshot_result = self._wait_for_result(screenshot_id)
-            finally:
-                if transparent_bg_set:
-                    try:
-                        clear_id = self.cdp_send(
-                            'Emulation.setDefaultBackgroundColorOverride'
-                        )
-                        self._wait_for_result(clear_id)
-                    except Exception:
-                        logger.debug(
-                            'Could not clear CDP background override.',
-                            exc_info=True,
-                        )
-
-            img_data = screenshot_result.get('result', {}).get('data')
-            if not img_data:
-                raise RuntimeError('No screenshot data received from Chrome.')
-
-            with open(os.path.join(output_path, output_file), 'wb') as file_obj:
-                file_obj.write(base64.b64decode(img_data))
-        except Exception:
-            # A failed screenshot can leave the page unusable (e.g. with a
-            # navigation still pending), so the session starts afresh.
-            if not auto_started:
+            self._capture(
+                os.path.join(output_path, output_file),
+                {'x': 0, 'y': 0, 'width': size[0], 'height': size[1]},
+            )
+        except Exception as error:
+            if not auto_started and needs_restart(error):
                 self.__exit__()
                 self.__enter__()
             raise
         finally:
             if auto_started:
                 self.__exit__()
+
+    def _kill_browser(self):
+        """Kill the browser process and the processes it started.
+
+        Only used on Windows. Elsewhere, the launched process is the
+        browser, and it is stopped in `__exit__()`.
+        """
+        if self._browser_pid is None:
+            return
+        logger.debug('Killing Chrome.')
+        subprocess.run(
+            ['taskkill', '/PID', str(self._browser_pid), '/T', '/F'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
 
     def _wait_for_close(self, timeout=5):
         """Wait for Chrome to close the WebSocket, which it does on exit."""
@@ -599,6 +792,12 @@ class ChromeCDP(CDPBrowser):
                 self._wait_for_close()
                 self._ws.close()
                 logger.debug('Closed CDP and WebSocket connections.')
+            except WebSocketTimeoutException:
+                # Chrome did not close in time. On Windows, the launched
+                # process may have already exited, as with Edge, so
+                # stopping it below would not stop the browser.
+                if os.name == 'nt':
+                    self._kill_browser()
             except Exception:
                 logger.debug(
                     'Could not properly close CDP/WebSocket connections.',
@@ -643,3 +842,4 @@ class ChromeCDP(CDPBrowser):
 
         self.proc = None
         self._current_port = None
+        self._browser_pid = None

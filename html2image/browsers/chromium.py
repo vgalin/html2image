@@ -27,7 +27,7 @@ class ChromiumHeadless(Browser):
             + You can also keep the original behavior to backward compatibility by setting this to `None`.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=None,):
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=None, allow_scripts_to_read_files=False,):
         self.executable = executable
         if not flags:
             self.flags = [
@@ -41,6 +41,7 @@ class ChromiumHeadless(Browser):
         self.print_command = print_command
         self.disable_logging = disable_logging
         self.use_new_headless = use_new_headless
+        self.allow_scripts_to_read_files = allow_scripts_to_read_files
 
     def screenshot(
         self,
@@ -83,7 +84,7 @@ class ChromiumHeadless(Browser):
         if not input:
             raise ValueError('The `input` parameter is empty.')
 
-        if input.startswith('-'):
+        if input.lstrip().startswith('-'):
             raise ValueError(
                 f'Could not screenshot "{input}":\n'
                 'An input starting with "-" would be read as a browser flag.'
@@ -108,8 +109,10 @@ class ChromiumHeadless(Browser):
             f'--screenshot={os.path.join(output_path, output_file)}',
             f'--window-size={size[0]},{size[1]}',
             *self.flags,
-            f'{input}',
         ]
+        if self.allow_scripts_to_read_files:
+            command.append('--allow-file-access-from-files')
+        command.append(f'{input}')
 
         if self.print_command:
             print(' '.join(command))

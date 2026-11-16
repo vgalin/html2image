@@ -1,4 +1,5 @@
-from html2image import Html2Image
+from html2image import Html2Image, BrowserError
+from html2image.browsers import chrome_cdp, chromium, firefox, firefox_bidi
 from html2image.browsers.chrome_cdp import ChromeCDP
 from pathlib import Path
 from PIL import Image, ImageChops
@@ -7,6 +8,7 @@ from websocket import WebSocketTimeoutException
 import json
 import pytest
 import os
+import re
 import socket
 
 OUTPUT_PATH = "tests_output"
@@ -68,6 +70,183 @@ def test_cdp_port_forwarded_for_default_chrome_backend():
 def test_default_chrome_cdp_port_is_automatic():
     hti = Html2Image(browser='chrome')
     assert hti.browser.cdp_port is None
+
+
+# The tests below replace subprocess functions only after creating
+# Html2Image: on macOS, finding the browser runs it with subprocess.
+class FakeProcess:
+    def poll(self):
+        return 0
+
+
+@pytest.mark.parametrize("browser", ["chrome", "edge"])
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_flag(monkeypatch, browser, allowed):
+    commands = []
+
+    def fake_popen(command, **kwargs):
+        commands.append(command)
+        return FakeProcess()
+
+    hti = Html2Image(browser=browser, allow_scripts_to_read_files=allowed)
+    monkeypatch.setattr(chrome_cdp.subprocess, "Popen", fake_popen)
+    hti.browser._start_chrome()
+    hti.browser.__exit__()
+
+    assert ("--allow-file-access-from-files" in commands[0]) is allowed
+
+
+@pytest.mark.parametrize("browser", ["chrome-headless", "edge-headless"])
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_flag_cli(
+    monkeypatch, tmp_path, browser, allowed
+):
+    commands = []
+    hti = Html2Image(browser=browser, allow_scripts_to_read_files=allowed)
+    monkeypatch.setattr(
+        chromium.subprocess, "run",
+        lambda command, **kwargs: commands.append(command),
+    )
+    hti.browser.screenshot("about:blank", str(tmp_path))
+
+    assert ("--allow-file-access-from-files" in commands[0]) is allowed
+    assert "--hide-scrollbars" in commands[0]  # default flags are kept
+
+
+def _read_profile_prefs(command):
+    profile_dir = command[command.index("--profile") + 1]
+    return Path(profile_dir, "user.js").read_text(encoding="utf-8")
+
+
+def _strict_origin_pref(allowed):
+    value = "false" if allowed else "true"
+    return f'user_pref("security.fileuri.strict_origin_policy", {value});'
+
+
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_pref_firefox(monkeypatch, allowed):
+    prefs = []
+
+    def fake_popen(command, **kwargs):
+        prefs.append(_read_profile_prefs(command))
+        return FakeProcess()
+
+    hti = Html2Image(browser="firefox", allow_scripts_to_read_files=allowed)
+    monkeypatch.setattr(firefox_bidi.subprocess, "Popen", fake_popen)
+    hti.browser._start_firefox()
+    hti.browser.__exit__()
+
+    assert _strict_origin_pref(allowed) in prefs[0]
+
+
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_pref_firefox_headless(
+    monkeypatch, tmp_path, allowed
+):
+    prefs = []
+
+    def fake_run(command, **kwargs):
+        prefs.append(_read_profile_prefs(command))
+        (tmp_path / "screenshot.png").touch()
+
+    hti = Html2Image(
+        browser="firefox-headless", allow_scripts_to_read_files=allowed
+    )
+    monkeypatch.setattr(firefox.subprocess, "run", fake_run)
+    hti.browser.screenshot("about:blank", str(tmp_path))
+
+    assert _strict_origin_pref(allowed) in prefs[0]
+
+
+# The page reads the file with a synchronous XHR because firefox-headless
+# takes its screenshot as soon as the page has loaded: the response of an
+# asynchronous fetch would often arrive too late.
+READ_FILE_HTML = """
+<script>
+    let color = "#ff0000";
+    try {
+        const request = new XMLHttpRequest();
+        request.open("GET", "secret.txt", false);
+        request.send();
+        if (request.responseText === "secret") color = "#00ff00";
+    } catch (error) {}
+    document.documentElement.style.background = color;
+</script>
+"""
+
+
+@pytest.mark.parametrize("browser", [
+    "chrome", "edge", "firefox",
+    "chrome-headless", "edge-headless", "firefox-headless",
+])
+@pytest.mark.parametrize("allowed", [False, True])
+def test_allow_scripts_to_read_files_screenshot(tmp_path, browser, allowed):
+    try:
+        hti = Html2Image(
+            browser=browser,
+            output_path=OUTPUT_PATH,
+            temp_path=str(tmp_path / "temp"),
+            disable_logging=True,
+            allow_scripts_to_read_files=allowed,
+        )
+    except FileNotFoundError:
+        pytest.skip(f"'{browser}' executable not found on this machine")
+
+    secret_file = tmp_path / "secret.txt"
+    secret_file.write_text("secret")
+    hti.load_file(str(secret_file))
+
+    paths = hti.screenshot(
+        html_str=READ_FILE_HTML,
+        save_as=f"read_files_{browser}_{allowed}.png",
+        size=(320, 240),
+    )
+
+    expected = (0, 255, 0) if allowed else (255, 0, 0)
+    assert Image.open(paths[0]).convert("RGB").getpixel((10, 10)) == expected
+
+
+@pytest.mark.parametrize("add_doctype", [False, True])
+def test_prepare_html_string_doctype(add_doctype):
+    html = Html2Image._prepare_html_string("Hello", "", add_doctype)
+
+    assert html.startswith("<!DOCTYPE html>\n<html>") is add_doctype
+    assert html.startswith("<html>") is not add_doctype
+
+
+COMPAT_MODE_HTML = """
+<script>
+    const standard = document.compatMode === "CSS1Compat";
+    document.documentElement.style.background = standard ? "#00ff00" : "#ff0000";
+</script>
+"""
+
+
+@pytest.mark.parametrize("browser", [
+    "chrome", "edge", "firefox",
+    "chrome-headless", "edge-headless", "firefox-headless",
+])
+@pytest.mark.parametrize("add_doctype", [False, True])
+def test_add_doctype_screenshot(tmp_path, browser, add_doctype):
+    try:
+        hti = Html2Image(
+            browser=browser,
+            output_path=OUTPUT_PATH,
+            temp_path=str(tmp_path / "temp"),
+            disable_logging=True,
+            add_doctype=add_doctype,
+        )
+    except FileNotFoundError:
+        pytest.skip(f"'{browser}' executable not found on this machine")
+
+    paths = hti.screenshot(
+        html_str=COMPAT_MODE_HTML,
+        save_as=f"doctype_{browser}_{add_doctype}.png",
+        size=(320, 240),
+    )
+
+    expected = (0, 255, 0) if add_doctype else (255, 0, 0)
+    assert Image.open(paths[0]).convert("RGB").getpixel((10, 10)) == expected
 
 
 def test_screenshot_string_chrome_cdp():
@@ -909,13 +1088,15 @@ def test_load_file_rejects_path(tmp_path):
 @pytest.mark.parametrize(
     "browser", ["chrome-headless", "edge-headless", "firefox-headless"]
 )
-def test_cli_backends_reject_input_read_as_flag(tmp_path, browser):
+@pytest.mark.parametrize("prefix", ["", " ", "\t"])
+def test_cli_backends_reject_input_read_as_flag(tmp_path, browser, prefix):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
     injected_output = tmp_path / "injected.png"
 
+    # Chromium strips the whitespace around its arguments
     with pytest.raises(ValueError):
         hti.screenshot(
-            url=f"--screenshot={injected_output}",
+            url=f"{prefix}--screenshot={injected_output}",
             save_as=f"flag_as_url_{browser}.png",
         )
 
@@ -1052,7 +1233,7 @@ def test_cdp_lost_page_raises_immediately():
         {"id": 1, "result": {}},
     ])
 
-    with pytest.raises(RuntimeError, match="Render process gone"):
+    with pytest.raises(BrowserError, match="Render process gone"):
         browser._wait_for_result(1, timeout=1)
 
 
@@ -1077,9 +1258,12 @@ def test_cdp_session_recovers_after_navigation_timeout(monkeypatch, unresponsive
     )
 
     with hti:
+        browser_pid = hti.browser._browser_pid
         with pytest.raises(TimeoutError):
             hti.screenshot(url=unresponsive_url, save_as="cdp_timeout.png")
 
+        # the browser was restarted, as the page may still be loading
+        assert hti.browser._browser_pid != browser_pid
         paths = hti.screenshot(
             html_str='<body style="margin:0;background:blue"></body>',
             save_as="cdp_after_timeout.png",
@@ -1087,4 +1271,220 @@ def test_cdp_session_recovers_after_navigation_timeout(monkeypatch, unresponsive
         )
 
     img = Image.open(paths[0]).convert("RGB")
+    assert img.getpixel((0, 0)) == (0, 0, 255)
+
+
+def _pdf_options(paper_size="A4", landscape=None, margin=None, scale=1):
+    return Html2Image._prepare_pdf_options(
+        paper_size, landscape, margin, True, scale
+    )
+
+
+@pytest.mark.parametrize("paper_size", ["B9", "", ("1cm",), ("0", "1cm")])
+def test_pdf_rejects_invalid_paper_size(paper_size):
+    with pytest.raises(ValueError):
+        _pdf_options(paper_size=paper_size)
+
+
+@pytest.mark.parametrize("length", ["1em", "10%", "cm", "1 cm", "-1cm", "1,5cm", "1cm2"])
+def test_pdf_rejects_invalid_unit(length):
+    with pytest.raises(ValueError):
+        _pdf_options(margin=length)
+
+
+@pytest.mark.parametrize("length", [1, 2.5, "1", "0.5"])
+def test_pdf_rejects_number_without_unit(length):
+    with pytest.raises(ValueError):
+        _pdf_options(paper_size=(length, "10cm"))
+
+
+@pytest.mark.parametrize("length", [0, 0.0, "0", "0.0"])
+def test_pdf_accepts_zero_without_unit(length):
+    assert _pdf_options(margin=length)["margin"] == (0, 0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "length", ["25.4mm", "2.54cm", "101.6Q", "101.6q", "1in", "1IN", "72pt", "6pc", "96px"]
+)
+def test_pdf_css_units(length):
+    assert _pdf_options(margin=length)["margin"] == pytest.approx((1, 1, 1, 1))
+
+
+@pytest.mark.parametrize("margin, expected", [
+    ("1in", (1, 1, 1, 1)),
+    ("1in 2in", (1, 2, 1, 2)),
+    ("1in 2in 3in", (1, 2, 3, 2)),
+    ("1in 2in 3in 4in", (1, 2, 3, 4)),
+])
+def test_pdf_margin_shorthand(margin, expected):
+    assert _pdf_options(margin=margin)["margin"] == expected
+
+
+@pytest.mark.parametrize("margin", ["", "1in 2in 3in 4in 5in"])
+def test_pdf_rejects_margin_length_count(margin):
+    with pytest.raises(ValueError):
+        _pdf_options(margin=margin)
+
+
+@pytest.mark.parametrize("paper_size, landscape, margin", [
+    ("A4", None, "15cm"),
+    # Left and right margins that take the whole 8.5in width.
+    ("Letter", None, "1in 4.25in"),
+    # Top and bottom margins of 11cm fit on A4 upright (29.7cm high),
+    # but not sideways (21cm high).
+    ("A4", True, "11cm 0"),
+])
+def test_pdf_rejects_margin_larger_than_paper(paper_size, landscape, margin):
+    with pytest.raises(ValueError, match="no room"):
+        _pdf_options(paper_size=paper_size, landscape=landscape, margin=margin)
+
+
+def test_pdf_accepts_margin_close_to_paper_size():
+    # 2 x 10cm on A4, which is 21cm wide.
+    assert _pdf_options(margin="10cm")["margin"] == pytest.approx((10 / 2.54,) * 4)
+
+
+@pytest.mark.parametrize("paper_size, margin", [
+    ("A4", 1 / 2.54),
+    (("10in", "5in"), 1 / 2.54),
+    ("slide", 0),
+    ("SLIDE", 0),
+])
+def test_pdf_default_margin(paper_size, margin):
+    assert _pdf_options(paper_size=paper_size)["margin"] == (margin,) * 4
+
+
+A4 = (210 / 25.4, 297 / 25.4)
+SLIDE = (1280 / 96, 720 / 96)
+
+
+@pytest.mark.parametrize("paper_size, landscape, expected", [
+    ("A4", None, A4),
+    ("a4", False, A4),
+    ("A4", True, A4[::-1]),
+    ("letter", None, (8.5, 11)),
+    ("Letter", True, (11, 8.5)),
+    ("slide", None, SLIDE),
+    ("slide", True, SLIDE),
+    ("slide", False, SLIDE[::-1]),
+    (("17in", "11in"), None, (17, 11)),
+    # The dimensions are already in landscape: they are not swapped again.
+    (("17in", "11in"), True, (17, 11)),
+    (("17in", "11in"), False, (11, 17)),
+    (("11in", "17in"), True, (17, 11)),
+])
+def test_pdf_paper_dimensions(paper_size, landscape, expected):
+    options = _pdf_options(paper_size=paper_size, landscape=landscape)
+    assert (options["width"], options["height"]) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("scale", [0.05, 2.5])
+def test_pdf_rejects_scale_out_of_range(scale):
+    with pytest.raises(ValueError):
+        _pdf_options(scale=scale)
+
+
+@pytest.mark.parametrize(
+    "browser", ["chrome-headless", "edge-headless", "firefox-headless"]
+)
+def test_pdf_rejects_cli_backends(tmp_path, browser):
+    hti = Html2Image(browser=browser, output_path=str(tmp_path), disable_logging=True)
+
+    with pytest.raises(ValueError, match=r"pdf\(\)"):
+        hti.pdf(html_str="Hello", save_as="cli.pdf")
+
+    assert not (tmp_path / "cli.pdf").exists()
+
+
+@pytest.mark.parametrize("save_as", ["image.pdf", ["image.png", "image.PDF"]])
+def test_screenshot_rejects_pdf(tmp_path, save_as):
+    hti = Html2Image(browser="chrome", output_path=str(tmp_path), disable_logging=True)
+
+    with pytest.raises(ValueError, match=r"pdf\(\)"):
+        hti.screenshot(html_str=["Hello", "Hello"], save_as=save_as)
+
+    assert not list(tmp_path.iterdir())
+
+
+def _pdf_page_sizes(path):
+    """Returns the size of each page of a PDF file, in points."""
+    data = Path(path).read_bytes()
+    assert data.startswith(b"%PDF-")
+    assert data.rstrip().endswith(b"%%EOF")
+    boxes = re.findall(rb"/MediaBox\s*\[([^\]]*)\]", data)
+    return [tuple(float(n) for n in box.split()[2:]) for box in boxes]
+
+
+SLIDES_HTML = "".join(
+    f'<section style="background:{color}">Slide {i}</section>'
+    for i, color in enumerate(["red", "green", "blue"], 1)
+)
+SLIDES_CSS = """
+body { margin: 0 }
+section { width: 1280px; height: 720px; break-after: page; }
+"""
+
+PDF_BROWSERS = ["chrome", "edge", "firefox"]
+
+
+def _pdf_hti(browser, tmp_path):
+    try:
+        return Html2Image(
+            browser=browser,
+            output_path=OUTPUT_PATH,
+            temp_path=str(tmp_path / "temp"),
+            disable_logging=True,
+        )
+    except FileNotFoundError:
+        pytest.skip(f"'{browser}' executable not found on this machine")
+
+
+@pytest.mark.parametrize("browser", PDF_BROWSERS)
+def test_pdf_slides(tmp_path, browser):
+    hti = _pdf_hti(browser, tmp_path)
+
+    paths = hti.pdf(
+        html_str=SLIDES_HTML,
+        css_str=SLIDES_CSS,
+        save_as=f"pdf_slides_{browser}.pdf",
+        paper_size="slide",
+    )
+
+    assert _pdf_page_sizes(paths[0]) == [(960, 540)] * 3
+
+
+@pytest.mark.parametrize("browser", PDF_BROWSERS)
+@pytest.mark.parametrize("landscape", [None, True])
+def test_pdf_a4(tmp_path, browser, landscape):
+    hti = _pdf_hti(browser, tmp_path)
+
+    paths = hti.pdf(
+        html_str="<h1>Hello</h1>",
+        save_as=f"pdf_a4_{browser}_{landscape}.pdf",
+        landscape=landscape,
+    )
+
+    a4_points = (210 / 25.4 * 72, 297 / 25.4 * 72)
+    expected = a4_points[::-1] if landscape else a4_points
+    [size] = _pdf_page_sizes(paths[0])
+    # Browsers round the page size: 595.92 x 841.92 for Chrome and Edge,
+    # 596 x 842 for Firefox, instead of 595.28 x 841.89.
+    assert size == pytest.approx(expected, abs=1)
+
+
+@pytest.mark.parametrize("browser", PDF_BROWSERS)
+def test_screenshot_after_pdf(tmp_path, browser):
+    hti = _pdf_hti(browser, tmp_path)
+
+    with hti:
+        pdf_paths = hti.pdf(html_str="Hello", save_as=f"pdf_then_png_{browser}.pdf")
+        png_paths = hti.screenshot(
+            html_str='<body style="margin:0;background:blue"></body>',
+            save_as=f"pdf_then_png_{browser}.png",
+            size=(320, 240),
+        )
+
+    assert len(_pdf_page_sizes(pdf_paths[0])) == 1
+    img = Image.open(png_paths[0]).convert("RGB")
+    assert img.size == (320, 240)
     assert img.getpixel((0, 0)) == (0, 0, 255)

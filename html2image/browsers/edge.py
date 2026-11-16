@@ -1,5 +1,6 @@
 from .chromium import ChromiumHeadless
 from .search_utils import get_command_origin, find_first_defined_env_var
+from ..exceptions import BrowserNotFoundError
 
 import subprocess
 import platform
@@ -32,7 +33,7 @@ def _find_edge(user_given_executable=None):
 
     Raises
     ------
-    - `FileNotFoundError`
+    - `BrowserNotFoundError`
         + If a suitable edge executable could not be found.
 
     Returns
@@ -70,9 +71,6 @@ def _find_edge(user_given_executable=None):
             if command_origin:
                 return command_origin
 
-            # cannot validate user_given_executable
-            raise FileNotFoundError()
-
         # On a non-Windows OS, we can validate in a basic way that
         # user_given_executable leads to a Edge executable,
         # or is a command, using the --version flag
@@ -86,7 +84,7 @@ def _find_edge(user_given_executable=None):
                 pass
 
         # We got a user_given_executable but couldn't validate it
-        raise FileNotFoundError(
+        raise BrowserNotFoundError(
             'Failed to find a seemingly valid edge executable '
             'in the given path.'
         )
@@ -137,7 +135,7 @@ def _find_edge(user_given_executable=None):
             pass
 
     # Couldn't find an executable (or OS not in Windows, Linux or Mac)
-    raise FileNotFoundError(
+    raise BrowserNotFoundError(
         'Could not find a Edge executable on this '
         'machine, please specify it yourself.'
     )
@@ -165,8 +163,8 @@ class EdgeHeadless(ChromiumHeadless):
             + You can also keep the original behavior to backward compatibility by setting this to `None`.
     """
 
-    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=None,):
-        super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging, use_new_headless=use_new_headless)
+    def __init__(self, executable=None, flags=None, print_command=False, disable_logging=False, use_new_headless=None, allow_scripts_to_read_files=False,):
+        super().__init__(executable=executable, flags=flags, print_command=print_command, disable_logging=disable_logging, use_new_headless=use_new_headless, allow_scripts_to_read_files=allow_scripts_to_read_files)
 
     @property
     def executable(self):
