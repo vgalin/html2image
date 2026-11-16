@@ -395,20 +395,15 @@ def test_full_page_follows_growth_during_tiling_and_restores_page(
             full_page_fixed_elements="last",
         )
 
-        if browser == "chrome-cdp":
-            from html2image.browsers import _chromium_page_fit as page_fit
-        else:
-            from html2image.browsers import _firefox_page_fit as page_fit
-        state = page_fit._evaluate(
-            hti.browser,
+        state = hti.browser._evaluate(
             """(() => {
               const el = document.querySelector('.top');
-              return {
+              return JSON.stringify({
                 scrollY: Math.round(scrollY),
                 inlineVisibility: el.style.visibility,
                 position: getComputedStyle(el).position
-              };
-            })()""",
+              });
+            })()"""
         )
 
     assert state == {

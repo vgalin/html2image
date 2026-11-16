@@ -1,5 +1,6 @@
 from html2image import Html2Image, BrowserError, CaptureTooLargeError
 from html2image.browsers import chrome_cdp, chromium, firefox, firefox_bidi
+from html2image.browsers import _page_fit_common as page_fit
 from html2image.browsers.chrome_cdp import ChromeCDP
 from pathlib import Path
 from PIL import Image, ImageChops
@@ -816,8 +817,9 @@ def test_full_page_stability_timeout_validation(bad_value):
 
 
 def test_full_page_only_goes_through_screenshot():
-    for method in (Html2Image.screenshot_url, Html2Image.screenshot_loaded_file):
-        assert "full_page" not in inspect.signature(method).parameters
+    for method in ("screenshot_url", "screenshot_loaded_file"):
+        parameters = inspect.signature(getattr(Html2Image, method)).parameters
+        assert "full_page" not in parameters
 
 
 def test_full_page_stability_timeout_none_is_valid(monkeypatch):
@@ -845,12 +847,12 @@ def test_full_page_stability_timeout_none_is_valid(monkeypatch):
 
 def test_full_page_profile_valid_values():
     for p in ('robust', 'balanced', 'fast'):
-        Html2Image._validate_full_page_profile(p)  # doit passer sans exception
+        page_fit.validate_full_page_profile(p)  # doit passer sans exception
 
 
 def test_full_page_profile_invalid_raises():
     with pytest.raises(ValueError, match="full_page_profile"):
-        Html2Image._validate_full_page_profile('turbo')
+        page_fit.validate_full_page_profile('turbo')
 
 
 def test_full_page_profile_default_is_robust():
@@ -915,24 +917,24 @@ def test_full_page_policy_defaults_are_public():
     'mode', ['auto', 'preserve', 'first', 'last', 'hide']
 )
 def test_full_page_fixed_element_modes_are_valid(mode):
-    Html2Image._validate_full_page_fixed_elements(mode)
+    page_fit.validate_fixed_element_mode(mode)
 
 
 @pytest.mark.parametrize('mode', ['repeat', '', None, 1, True])
 def test_full_page_fixed_element_mode_validation(mode):
     with pytest.raises(ValueError, match='full_page_fixed_elements'):
-        Html2Image._validate_full_page_fixed_elements(mode)
+        page_fit.validate_fixed_element_mode(mode)
 
 
 @pytest.mark.parametrize('value', [1, 100_000_000, None])
 def test_full_page_max_pixels_valid_values(value):
-    Html2Image._validate_full_page_max_pixels(value)
+    page_fit.validate_max_pixels(value)
 
 
 @pytest.mark.parametrize('value', [0, -1, 1.5, '1000', True])
 def test_full_page_max_pixels_validation(value):
     with pytest.raises(ValueError, match='full_page_max_pixels'):
-        Html2Image._validate_full_page_max_pixels(value)
+        page_fit.validate_max_pixels(value)
 
 
 def test_full_page_policy_options_are_propagated(monkeypatch):

@@ -1,22 +1,16 @@
-"""Correctness-first Firefox BiDi implementation of full-page capture.
+"""Full page capture for Firefox, see `capture_full_page()`.
 
-The caller-provided viewport is the canonical rendering environment: its width
-defines both layout and output width, while its height influences layout and
-lazy loading but never caps the final image height.  Firefox's native document
-capture is preferred and tiling is only a validated fallback.
+The viewport keeps the size given by the caller. Firefox captures the whole
+page in one go when it can. Otherwise, the page is captured one viewport at
+a time, and the tiles are joined.
 """
-
-from __future__ import annotations
 
 import base64
 import logging
-import math
+from pathlib import Path
 import time
 import uuid
-from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
 
-from ..exceptions import BrowserError
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
@@ -30,12 +24,9 @@ from ._page_fit_common import (
     restore_overlays_js,
     show_overlays_js,
     stitch_tiles,
-    validate_fixed_element_mode,
-    validate_full_page_profile,
-    validate_max_pixels,
-    validate_stability_timeout,
     validate_viewport,
 )
+from ..exceptions import BrowserError
 
 logger = logging.getLogger(__name__)
 
@@ -65,171 +56,78 @@ _TILE_ATTEMPTS = 4
 _DOCUMENT_CAPTURE_MAX_SIZE = 65535
 _PRE_CAPTURE_SETTLE_MS = 150
 
+# An SVG file has no body.
+_DOCUMENT_HEIGHT_JS = '''
+JSON.stringify(Math.max(
+    document.documentElement.scrollHeight,
+    document.documentElement.offsetHeight,
+    document.documentElement.clientHeight,
+    document.body ? document.body.scrollHeight : 0,
+    document.body ? document.body.offsetHeight : 0,
+    document.body ? document.body.clientHeight : 0
+))
+'''
 
-_DOM_DIM_JS = r"""
+_CONTENT_HEIGHT_JS = '''
+JSON.stringify(Math.max(
+    document.documentElement.scrollHeight,
+    document.body ? document.body.scrollHeight : 0
+))
+'''
+
+_MAX_SCROLL_JS = '''
+JSON.stringify(Math.max(
+    0,
+    (document.scrollingElement || document.documentElement).scrollHeight
+        - innerHeight
+))
+'''
+
+_SCROLL_Y_JS = 'JSON.stringify(Math.max(0, Math.round(scrollY)))'
+
+_SCROLL_JS = '''
 (() => {
-  const doc = document.documentElement;
-  const body = document.body;
-  const width = Math.max(
-    doc ? doc.scrollWidth : 0,
-    doc ? doc.offsetWidth : 0,
-    doc ? doc.clientWidth : 0,
-    body ? body.scrollWidth : 0,
-    body ? body.offsetWidth : 0,
-    body ? body.clientWidth : 0
-  );
-  const height = Math.max(
-    doc ? doc.scrollHeight : 0,
-    doc ? doc.offsetHeight : 0,
-    doc ? doc.clientHeight : 0,
-    body ? body.scrollHeight : 0,
-    body ? body.offsetHeight : 0,
-    body ? body.clientHeight : 0
-  );
-  return { width, height, innerWidth: window.innerWidth, innerHeight: window.innerHeight };
+    scrollTo({left: 0, top: %d, behavior: 'instant'});
+    return JSON.stringify(null);
 })()
-""".strip()
-
-_CONTENT_HEIGHT_JS = (
-    "Math.max("
-    "document.documentElement ? document.documentElement.scrollHeight : 0, "
-    "document.body ? document.body.scrollHeight : 0)"
-)
-_SCROLL_HEIGHT_JS = (
-    "Math.max(0, (document.scrollingElement || document.documentElement)."
-    "scrollHeight - window.innerHeight)"
-)
-_SCROLL_Y_JS = (
-    "Math.max(0, Math.round(window.scrollY || window.pageYOffset || 0))"
-)
-
-def _decode_remote_value(remote_value: Any) -> Any:
-    """Decode a BiDi typed remote value into ordinary Python values."""
-    if not isinstance(remote_value, dict):
-        return remote_value
-    value_type = remote_value.get("type")
-    if value_type in {"undefined", "null"}:
-        return None
-    if value_type in {"string", "number", "boolean", "bigint"}:
-        return remote_value.get("value")
-    if value_type == "array":
-        values = remote_value.get("value")
-        if isinstance(values, list):
-            return [_decode_remote_value(item) for item in values]
-        return values
-    if value_type in {"object", "map"}:
-        raw_value = remote_value.get("value")
-        if isinstance(raw_value, dict):
-            return {
-                str(key): _decode_remote_value(value)
-                for key, value in raw_value.items()
-            }
-        if isinstance(raw_value, list):
-            decoded: Dict[str, Any] = {}
-            for entry in raw_value:
-                if isinstance(entry, list) and len(entry) == 2:
-                    key, value = entry
-                elif (
-                    isinstance(entry, dict)
-                    and "key" in entry
-                    and "value" in entry
-                ):
-                    key, value = entry["key"], entry["value"]
-                else:
-                    continue
-                decoded[str(_decode_remote_value(key))] = _decode_remote_value(value)
-            return decoded
-    return remote_value
+'''
 
 
-def _evaluate(browser: Any, expression: str, await_promise: bool = True) -> Any:
-    message_id = browser._bidi_send(
-        "script.evaluate",
-        expression=expression,
-        target={"context": browser._context_id},
-        awaitPromise=await_promise,
+def _capture(browser, origin, output_format='png'):
+    """Return an image of the viewport or of the whole page, as `origin`
+    asks, 'viewport' or 'document'."""
+    response = browser._bidi_expect_ok(
+        browser._bidi_send(
+            'browsingContext.captureScreenshot',
+            context=browser._context_id,
+            origin=origin,
+            format={'type': 'image/' + output_format},
+        ),
+        timeout=60,
     )
-    response = browser._bidi_expect_ok(message_id, timeout=30)
-    outer_result = response.get("result", {})
-    if "exceptionDetails" in outer_result:
-        raise BrowserError(
-            f"BiDi evaluation exception: {outer_result['exceptionDetails']}"
-        )
-    remote_value = outer_result.get("result", outer_result)
-    return _decode_remote_value(remote_value)
+    return base64.b64decode(response['result']['data'])
 
 
-def _set_viewport(browser: Any, width: int, height: int) -> None:
-    message_id = browser._bidi_send(
-        "browsingContext.setViewport",
-        context=browser._context_id,
-        viewport={"width": int(width), "height": int(height)},
-        devicePixelRatio=1,
-    )
-    browser._bidi_expect_ok(message_id, timeout=20)
+def _scroll_to(browser, y):
+    browser._evaluate(_SCROLL_JS % y)
 
 
-def _capture_screenshot_bytes(
-    browser: Any,
-    *,
-    origin: str,
-    output_format: str = "png",
-) -> bytes:
-    media_type = "image/jpeg" if output_format == "jpeg" else "image/png"
-    message_id = browser._bidi_send(
-        "browsingContext.captureScreenshot",
-        context=browser._context_id,
-        origin=origin,
-        format={"type": media_type},
-    )
-    response = browser._bidi_expect_ok(message_id, timeout=60)
-    encoded = response.get("result", {}).get("data")
-    if not encoded:
-        raise BrowserError(
-            f"No screenshot data returned for origin={origin!r}."
-        )
-    return base64.b64decode(encoded)
+def _sleep_ms(milliseconds):
+    time.sleep(milliseconds / 1000)
 
 
-def _scroll_to(browser: Any, y: int) -> int:
-    _evaluate(
-        browser,
-        "window.scrollTo({left: 0, top: "
-        f"{int(y)}, behavior: 'instant'}}); true",
-        await_promise=False,
-    )
-    return int(_evaluate(browser, _SCROLL_Y_JS) or 0)
+def _read_document_height(browser, viewport_height):
+    """Return the height of the page, at least that of the viewport."""
+    return max(viewport_height, browser._evaluate(_DOCUMENT_HEIGHT_JS))
 
 
-def _scroll_top(browser: Any) -> None:
-    _scroll_to(browser, 0)
-
-
-def _sleep_ms(milliseconds: int) -> None:
-    time.sleep(milliseconds / 1000.0)
-
-
-def _read_document_height(browser: Any, viewport_height: int) -> int:
-    dims = _evaluate(browser, _DOM_DIM_JS) or {}
-    return max(viewport_height, int(math.ceil(float(dims.get("height") or 0))))
-
-
-def _measure_stable_document_height(
-    browser: Any,
-    *,
-    width: int,
-    viewport_height: int,
-    max_pixels: Optional[int],
-    deadline_s: float,
-    settle_after_s: float,
-    min_duration_s: float,
-) -> int:
+def _measure_stable_document_height(browser, width, viewport_height,
+                                    max_pixels, deadline, settle_after,
+                                    min_duration):
     """Return the height of the page once its layout has settled."""
     start = time.monotonic()
-    deadline = start + max(0.0, deadline_s)
-    last_height: Optional[int] = None
+    last_height = None
     stable_ticks = 0
-
     while True:
         height = _read_document_height(browser, viewport_height)
         enforce_pixel_budget(width, height, max_pixels)
@@ -240,79 +138,57 @@ def _measure_stable_document_height(
         last_height = height
 
         elapsed = time.monotonic() - start
-        if elapsed >= max(settle_after_s, min_duration_s) and stable_ticks >= 3:
-            break
-        if time.monotonic() >= deadline:
-            break
+        if elapsed >= max(settle_after, min_duration) and stable_ticks >= 3:
+            return height
+        if elapsed >= deadline:
+            return height
         _sleep_ms(_STABILITY_POLL_MS)
 
-    return height
 
-
-def _lazy_growth_probe(
-    browser: Any,
-    width: int,
-    viewport_height: int,
-    max_pixels: Optional[int],
-) -> float:
-    before_height = int(_evaluate(browser, _CONTENT_HEIGHT_JS) or 0)
-    max_scroll = int(_evaluate(browser, _SCROLL_HEIGHT_JS) or 0)
+def _lazy_growth_probe(browser, width, viewport_height, max_pixels):
+    """Return how much the page grew, as a fraction of its height, once
+    scrolled near its bottom."""
+    before = browser._evaluate(_CONTENT_HEIGHT_JS)
+    max_scroll = browser._evaluate(_MAX_SCROLL_JS)
     if max_scroll < 160:
-        return 0.0
+        return 0
     for ratio in (0.75, 0.97):
         _scroll_to(browser, int(max_scroll * ratio))
         _sleep_ms(220)
-    after_height = int(_evaluate(browser, _CONTENT_HEIGHT_JS) or 0)
-    enforce_pixel_budget(
-        width,
-        max(viewport_height, after_height),
-        max_pixels,
-    )
-    _scroll_top(browser)
+    after = browser._evaluate(_CONTENT_HEIGHT_JS)
+    enforce_pixel_budget(width, max(viewport_height, after), max_pixels)
+    _scroll_to(browser, 0)
     _sleep_ms(80)
-    return (after_height - before_height) / max(1.0, float(before_height))
+    return (after - before) / before
 
 
-def _standard_lazy_warmup(
-    browser: Any,
-    width: int,
-    viewport_height: int,
-    max_pixels: Optional[int],
-) -> None:
-    max_scroll = int(_evaluate(browser, _SCROLL_HEIGHT_JS) or 0)
+def _standard_lazy_warmup(browser, width, viewport_height, max_pixels):
+    max_scroll = browser._evaluate(_MAX_SCROLL_JS)
     if max_scroll <= 0:
         return
     for step in range(1, _STANDARD_SCROLL_STEPS + 1):
         _scroll_to(browser, int(max_scroll * step / _STANDARD_SCROLL_STEPS))
         _sleep_ms(_STANDARD_SCROLL_WAIT_MS)
-        height = int(_evaluate(browser, _CONTENT_HEIGHT_JS) or 0)
-        enforce_pixel_budget(
-            width,
-            max(viewport_height, height),
-            max_pixels,
-        )
-    _scroll_top(browser)
+        height = browser._evaluate(_CONTENT_HEIGHT_JS)
+        enforce_pixel_budget(width, max(viewport_height, height), max_pixels)
+    _scroll_to(browser, 0)
     _sleep_ms(80)
 
 
-def _exhaust_lazy_warmup(
-    browser: Any,
-    viewport_height: int,
-    width: int,
-    max_pixels: Optional[int],
-) -> None:
-    max_scroll = int(_evaluate(browser, _SCROLL_HEIGHT_JS) or 0)
+def _exhaust_lazy_warmup(browser, viewport_height, width, max_pixels):
+    max_scroll = browser._evaluate(_MAX_SCROLL_JS)
     if max_scroll <= 0:
         return
-    best_height = int(_evaluate(browser, _CONTENT_HEIGHT_JS) or 0)
+    best_height = browser._evaluate(_CONTENT_HEIGHT_JS)
     enforce_pixel_budget(width, max(viewport_height, best_height), max_pixels)
     scanned_to = 0
     stable_hits = 0
     for _ in range(_EXHAUST_SCROLL_MAX_ROUNDS):
-        before_scroll = int(_evaluate(browser, _SCROLL_HEIGHT_JS) or 0)
-        start = max(0, scanned_to - viewport_height)
+        # The first round shows every part of the page. Later rounds only
+        # show the content added since, so that endless feeds end.
+        before_scroll = browser._evaluate(_MAX_SCROLL_JS)
+        target = max(0, scanned_to - viewport_height)
         step = max(1, int(viewport_height * 0.85))
-        target = start
         while target < before_scroll:
             _scroll_to(browser, target)
             _sleep_ms(_EXHAUST_TRAVERSE_WAIT_MS)
@@ -321,106 +197,94 @@ def _exhaust_lazy_warmup(
         _sleep_ms(_EXHAUST_SCROLL_WAIT_MS)
         scanned_to = before_scroll
 
-        current_height = int(_evaluate(browser, _CONTENT_HEIGHT_JS) or 0)
-        enforce_pixel_budget(
-            width,
-            max(viewport_height, current_height),
-            max_pixels,
-        )
-        current_scroll = int(_evaluate(browser, _SCROLL_HEIGHT_JS) or 0)
-        if current_height > best_height + 4 or current_scroll > before_scroll + 4:
-            best_height = max(best_height, current_height)
+        height = browser._evaluate(_CONTENT_HEIGHT_JS)
+        enforce_pixel_budget(width, max(viewport_height, height), max_pixels)
+        scroll = browser._evaluate(_MAX_SCROLL_JS)
+        if height > best_height + 4 or scroll > before_scroll + 4:
+            best_height = max(best_height, height)
             stable_hits = 0
         else:
             stable_hits += 1
             if stable_hits >= _EXHAUST_SCROLL_STABLE_ROUNDS:
                 break
-    _scroll_top(browser)
+    _scroll_to(browser, 0)
     _sleep_ms(120)
 
 
-def _bottom_paint_warmup(browser: Any) -> None:
-    max_scroll = int(_evaluate(browser, _SCROLL_HEIGHT_JS) or 0)
+def _bottom_paint_warmup(browser):
+    max_scroll = browser._evaluate(_MAX_SCROLL_JS)
     if max_scroll <= 0:
         return
     for ratio in (0.33, 0.66, 0.9, 1.0):
         _scroll_to(browser, int(max_scroll * ratio))
         _sleep_ms(_BOTTOM_PAINT_WAIT_MS)
-    _scroll_top(browser)
+    _scroll_to(browser, 0)
     _sleep_ms(90)
 
 
-def _overlay_count(browser: Any) -> int:
-    return int(_evaluate(browser, OVERLAY_COUNT_JS) or 0)
+def _settled_document_height(browser, width, viewport_height, profile,
+                             stability_timeout, max_pixels):
+    """Return the height of the page, once the content it loads when
+    scrolled is loaded, as `profile` asks."""
+    if profile == 'fast':
+        return _read_document_height(browser, viewport_height)
 
-
-def _show_overlays(
-    browser: Any,
-    key: str,
-    mode: str,
-    first: bool,
-    last: bool,
-) -> None:
-    _evaluate(browser, show_overlays_js(key, mode, first, last))
-
-
-def _restore_overlays(browser: Any, key: str) -> None:
-    _evaluate(browser, restore_overlays_js(key))
-
-
-def _try_document_capture(
-    browser: Any,
-    *,
-    expected_width: int,
-    expected_height: int,
-    output_format: str,
-) -> Tuple[Optional[bytes], str]:
-    image_bytes = _capture_screenshot_bytes(
-        browser,
-        origin="document",
-        output_format=output_format,
+    height = _measure_stable_document_height(
+        browser, width, viewport_height, max_pixels,
+        deadline=stability_timeout or _STABILITY_DEADLINE_QUICK_S,
+        settle_after=_STABILITY_SETTLE_QUICK_S,
+        min_duration=_STABILITY_MIN_QUICK_S,
     )
+    growth = _lazy_growth_probe(browser, width, viewport_height, max_pixels)
+    if profile == 'balanced':
+        _standard_lazy_warmup(browser, width, viewport_height, max_pixels)
+        if growth >= _AUTO_PROBE_GROWTH_TRIGGER:
+            _standard_lazy_warmup(
+                browser, width, viewport_height, max_pixels
+            )
+    else:
+        # Robust also loads the content that already has its size, which
+        # the growth of the page cannot tell.
+        _exhaust_lazy_warmup(browser, viewport_height, width, max_pixels)
+        _bottom_paint_warmup(browser)
 
-    try:
-        actual_width, actual_height = image_dimensions(image_bytes)
-    except ValueError as exc:
-        return None, f"native document capture returned invalid image data: {exc}"
-
-    if output_format == "png" and not image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-        return None, "native document capture returned non-PNG data"
-    if output_format == "jpeg" and not image_bytes.startswith(b"\xff\xd8"):
-        return None, "native document capture returned non-JPEG data"
-
-    height_delta = abs(actual_height - expected_height)
-    if (
-        actual_width != expected_width
-        or height_delta > _DOCUMENT_DIMENSION_TOLERANCE_PX
-    ):
-        return None, (
-            "native document capture dimensions were "
-            f"{actual_width}x{actual_height}, expected "
-            f"{expected_width}x{expected_height} "
-            f"(height tolerance {_DOCUMENT_DIMENSION_TOLERANCE_PX}px)"
+    if profile == 'robust' or growth >= _AUTO_PROBE_GROWTH_TRIGGER:
+        height = _measure_stable_document_height(
+            browser, width, viewport_height, max_pixels,
+            deadline=stability_timeout or _DEADLINE_AFTER_WARMUP_S,
+            settle_after=_SETTLE_AFTER_WARMUP_S,
+            min_duration=_MIN_AFTER_WARMUP_S,
         )
-    return image_bytes, ""
+    return height
 
 
-def _capture_tiled_viewport(
-    browser,
-    *,
-    width,
-    total_height,
-    viewport_height,
-    output_format,
-    fixed_elements,
-    overlay_state_key,
-    max_pixels,
-    output_file,
-):
+def _show_overlays(browser, key, mode, first, last):
+    browser._evaluate(show_overlays_js(key, mode, first, last))
+
+
+def _try_document_capture(browser, width, height, output_format):
+    """Return an image of the whole page, or None if it does not have the
+    size of the page, for example on a page without doctype, where
+    Firefox only captures the root element."""
+    image = _capture(browser, 'document', output_format)
+    actual_width, actual_height = image_dimensions(image)
+    if (actual_width != width
+            or abs(actual_height - height) > _DOCUMENT_DIMENSION_TOLERANCE_PX):
+        logger.debug(
+            'Firefox captured the page as %dx%d pixels, instead of %dx%d.',
+            actual_width, actual_height, width, height,
+        )
+        return None
+    return image
+
+
+def _capture_tiled_viewport(browser, width, total_height, viewport_height,
+                            output_format, fixed_elements, overlay_key,
+                            max_pixels, output_file):
     """Capture the page one viewport at a time, and join the tiles."""
     # Fail before capturing every tile when the optional stitcher is absent.
     import_pyvips_for_stitching()
-    seams = SeamChecker(lambda script: _evaluate(browser, script), _sleep_ms)
+    seams = SeamChecker(browser._evaluate, _sleep_ms)
     plan, tiles = [], []
     # The top of the next tile, in the layout of the page when the previous
     # tile was captured, and in the image.
@@ -446,7 +310,7 @@ def _capture_tiled_viewport(
                 # Firefox captures the viewport. The page may not stop where
                 # it was asked to, for example if it changed while it was
                 # scrolled.
-                scroll_y = int(_evaluate(browser, _SCROLL_Y_JS) or 0)
+                scroll_y = browser._evaluate(_SCROLL_Y_JS)
                 if not (scroll_y <= top
                         and top + height <= scroll_y + viewport_height):
                     if attempt < _TILE_ATTEMPTS - 1:
@@ -455,24 +319,24 @@ def _capture_tiled_viewport(
                         continue
                     if not scroll_y <= top < scroll_y + viewport_height:
                         raise BrowserError(
-                            "Firefox did not reach the requested tile "
-                            f"position: requested y={top}, "
-                            f"actual y={scroll_y}."
+                            'Firefox did not reach the requested tile '
+                            f'position: requested y={top}, '
+                            f'actual y={scroll_y}.'
                         )
                     # The page cannot be scrolled further: the tile stops
                     # at the bottom of the viewport.
                     height = scroll_y + viewport_height - top
 
-                if fixed_elements != "preserve":
+                if fixed_elements != 'preserve':
                     _show_overlays(
                         browser,
-                        overlay_state_key,
+                        overlay_key,
                         fixed_elements,
                         first=not tiles,
                         last=top + height == total_height,
                     )
                 seams.mark(top + height)
-                tile = _capture_screenshot_bytes(browser, origin="viewport")
+                tile = _capture(browser, 'viewport')
                 # If the page moved while the tile was captured, the tile
                 # may show it before or after it moved.
                 if not seams.moved():
@@ -483,23 +347,16 @@ def _capture_tiled_viewport(
             if top >= total_height:
                 break
 
-            tile_width, tile_height = image_dimensions(tile)
-            if (tile_width, tile_height) != (width, viewport_height):
+            size = image_dimensions(tile)
+            if size != (width, viewport_height):
                 raise BrowserError(
-                    f"Firefox viewport tile {len(tiles)} has dimensions "
-                    f"{tile_width}x{tile_height}; expected "
-                    f"{width}x{viewport_height}."
+                    'Firefox returned a tile of %dx%d pixels, instead of '
+                    '%dx%d.' % (*size, width, viewport_height)
                 )
             tiles.append(tile)
-            plan.append(
-                TileSegment(
-                    capture_y=scroll_y,
-                    capture_height=viewport_height,
-                    paste_y=image_y,
-                    content_height=height,
-                    crop_top=top - scroll_y,
-                )
-            )
+            plan.append(TileSegment(
+                scroll_y, viewport_height, image_y, height, top - scroll_y
+            ))
             seams.next_tile(image_y)
             y = top + height
             image_y += height
@@ -511,192 +368,75 @@ def _capture_tiled_viewport(
         try:
             seams.forget()
         finally:
-            _restore_overlays(browser, overlay_state_key)
+            browser._evaluate(restore_overlays_js(overlay_key))
 
     seams.warn(output_file)
     return stitch_tiles(tiles, plan, width, image_y, output_format)
 
 
-def _validate_options(
-    profile: str,
-    fixed_elements: str,
-) -> None:
-    validate_full_page_profile(profile)
-    validate_fixed_element_mode(fixed_elements)
+def capture_full_page(browser, output_path, output_file, width,
+                      viewport_height, stability_timeout=None,
+                      profile='robust', fixed_elements='auto',
+                      max_pixels=DEFAULT_MAX_PIXELS):
+    """Save an image of the whole page loaded by `browser`.
 
-
-def capture_full_page(
-    browser: Any,
-    output_path: str,
-    output_file: str,
-    width: int,
-    viewport_height: int,
-    stability_timeout: Optional[float] = None,
-    profile: str = "robust",
-    fixed_elements: str = "auto",
-    max_pixels: Optional[int] = DEFAULT_MAX_PIXELS,
-) -> None:
-    """Capture the whole page loaded by ``browser``, with a canonical layout
-    viewport.
-
-    ``width`` is both the CSS layout width and exact output width.
-    ``viewport_height`` remains the rendering viewport height; the final image
-    grows to the measured document height and is never silently clamped.
+    The viewport keeps its size: `width` is also the width of the image,
+    and `viewport_height` changes how the page is laid out and loads its
+    content, but the image will be as high as the page. The options are
+    those of `Html2Image.screenshot()`, already checked.
     """
-    width, viewport_height = validate_viewport(width, viewport_height)
-    _validate_options(profile, fixed_elements)
-    stability_timeout = validate_stability_timeout(stability_timeout)
-    max_pixels = validate_max_pixels(max_pixels)
+    validate_viewport(width, viewport_height)
     output_format = output_format_from_filename(output_file)
-    destination = Path(output_path) / output_file
-    document_diagnostic = "native document capture was not attempted"
-    overlay_state_prepared = False
-    overlay_state_key = f"__html2imagePageFit_{uuid.uuid4().hex}__"
-
+    overlay_key = '__h2i_page_fit_%s' % uuid.uuid4().hex
     try:
         _sleep_ms(250)
-
-        if profile == "fast":
-            total_height = _read_document_height(browser, viewport_height)
-        else:
-            total_height = _measure_stable_document_height(
-                browser,
-                width=width,
-                viewport_height=viewport_height,
-                max_pixels=max_pixels,
-                deadline_s=(
-                    stability_timeout
-                    if stability_timeout is not None
-                    else _STABILITY_DEADLINE_QUICK_S
-                ),
-                settle_after_s=_STABILITY_SETTLE_QUICK_S,
-                min_duration_s=_STABILITY_MIN_QUICK_S,
-            )
-            growth = _lazy_growth_probe(
-                browser,
-                width,
-                viewport_height,
-                max_pixels,
-            )
-            if profile == "balanced":
-                _standard_lazy_warmup(
-                    browser,
-                    width,
-                    viewport_height,
-                    max_pixels,
-                )
-                if growth >= _AUTO_PROBE_GROWTH_TRIGGER:
-                    _standard_lazy_warmup(
-                        browser,
-                        width,
-                        viewport_height,
-                        max_pixels,
-                    )
-            elif profile == "robust":
-                # Robust also handles lazy content with reserved geometry,
-                # which a height-growth probe cannot detect.
-                _exhaust_lazy_warmup(
-                    browser,
-                    viewport_height,
-                    width,
-                    max_pixels,
-                )
-                _bottom_paint_warmup(browser)
-
-            if (
-                profile == "robust"
-                or growth >= _AUTO_PROBE_GROWTH_TRIGGER
-            ):
-                total_height = _measure_stable_document_height(
-                    browser,
-                    width=width,
-                    viewport_height=viewport_height,
-                    max_pixels=max_pixels,
-                    deadline_s=(
-                        stability_timeout
-                        if stability_timeout is not None
-                        else _DEADLINE_AFTER_WARMUP_S
-                    ),
-                    settle_after_s=_SETTLE_AFTER_WARMUP_S,
-                    min_duration_s=_MIN_AFTER_WARMUP_S,
-                )
-
+        total_height = _settled_document_height(
+            browser, width, viewport_height, profile, stability_timeout,
+            max_pixels,
+        )
         enforce_pixel_budget(width, total_height, max_pixels)
-        _set_viewport(browser, width, viewport_height)
-        _scroll_top(browser)
+        browser._set_viewport(width, viewport_height)
+        _scroll_to(browser, 0)
         _sleep_ms(_PRE_CAPTURE_SETTLE_MS)
 
-        overlay_count = _overlay_count(browser)
+        overlay_count = browser._evaluate(OVERLAY_COUNT_JS)
+        image = None
+        # Fixed elements are only shown once in tiles.
         force_tiling = (
             total_height > viewport_height
-            and fixed_elements in {"auto", "last"}
+            and fixed_elements in ('auto', 'last')
             and overlay_count > 0
         )
-
-        if max(width, total_height) > _DOCUMENT_CAPTURE_MAX_SIZE:
-            document_diagnostic = (
-                "the page is too large for Firefox to capture in one go"
-            )
-        elif not force_tiling:
-            if fixed_elements == "hide" and overlay_count > 0:
+        too_large = max(width, total_height) > _DOCUMENT_CAPTURE_MAX_SIZE
+        if not force_tiling and not too_large:
+            if fixed_elements == 'hide' and overlay_count > 0:
                 _show_overlays(
-                    browser,
-                    overlay_state_key,
-                    "hide",
-                    first=True,
-                    last=True,
+                    browser, overlay_key, 'hide', first=True, last=True
                 )
-                overlay_state_prepared = True
-            image_bytes, document_diagnostic = _try_document_capture(
-                browser,
-                expected_width=width,
-                expected_height=total_height,
-                output_format=output_format,
+            image = _try_document_capture(
+                browser, width, total_height, output_format
             )
-            if image_bytes is not None:
-                destination.write_bytes(image_bytes)
-                return
-            if overlay_state_prepared:
-                _restore_overlays(browser, overlay_state_key)
-                overlay_state_prepared = False
-        else:
-            document_diagnostic = (
-                "native document capture skipped because fixed_elements="
-                f"{fixed_elements!r} requires explicit tile placement"
+            browser._evaluate(restore_overlays_js(overlay_key))
+
+        if image is None:
+            # The page may have changed while it was captured in one go.
+            total_height = _read_document_height(browser, viewport_height)
+            enforce_pixel_budget(width, total_height, max_pixels)
+            image = _capture_tiled_viewport(
+                browser, width, total_height, viewport_height,
+                output_format, fixed_elements, overlay_key, max_pixels,
+                output_file,
             )
-
-        # The document may have changed while Firefox attempted the native
-        # capture.
-        total_height = _read_document_height(browser, viewport_height)
-        enforce_pixel_budget(width, total_height, max_pixels)
-
-        logger.debug(
-            "Firefox captures the full page in tiles: %s.", document_diagnostic
-        )
-        stitched = _capture_tiled_viewport(
-            browser,
-            width=width,
-            total_height=total_height,
-            viewport_height=viewport_height,
-            output_format=output_format,
-            fixed_elements=fixed_elements,
-            overlay_state_key=overlay_state_key,
-            max_pixels=max_pixels,
-            output_file=output_file,
-        )
-        destination.write_bytes(stitched)
+        Path(output_path, output_file).write_bytes(image)
     finally:
-        # Temporary overlay visibility and scrolling never leak into a browser
-        # instance kept open by the caller, including on capture failures.
-        try:
-            _restore_overlays(browser, overlay_state_key)
-        except Exception:
-            pass
-        try:
-            _scroll_top(browser)
-        except Exception:
-            pass
-        try:
-            _set_viewport(browser, width, viewport_height)
-        except Exception:
-            pass
+        # The page is put back as it was, if it can be: the browser may be
+        # lost, and the error that stopped the capture is the one to raise.
+        for cleanup in (
+            lambda: browser._evaluate(restore_overlays_js(overlay_key)),
+            lambda: _scroll_to(browser, 0),
+            lambda: browser._set_viewport(width, viewport_height),
+        ):
+            try:
+                cleanup()
+            except Exception:
+                pass

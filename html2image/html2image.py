@@ -16,12 +16,7 @@ from textwrap import dedent
 from typing import List
 
 from html2image.browsers import chrome, chrome_cdp, edge, edge_cdp, firefox, firefox_bidi
-from html2image.browsers._page_fit_common import (
-    DEFAULT_MAX_PIXELS,
-    validate_fixed_element_mode,
-    validate_full_page_profile,
-    validate_stability_timeout,
-)
+from html2image.browsers import _page_fit_common as page_fit
 from html2image.browsers.browser import Browser, CDPBrowser, BiDiBrowser
 from html2image.exceptions import CaptureTooLargeError, ElementNotFoundError
 
@@ -412,10 +407,10 @@ class Html2Image():
                 '"firefox-headless".'
             )
 
-        Html2Image._validate_full_page_stability_timeout(stability_timeout)
-        Html2Image._validate_full_page_profile(profile)
-        Html2Image._validate_full_page_fixed_elements(fixed_elements)
-        Html2Image._validate_full_page_max_pixels(max_pixels)
+        page_fit.validate_stability_timeout(stability_timeout)
+        page_fit.validate_full_page_profile(profile)
+        page_fit.validate_fixed_element_mode(fixed_elements)
+        page_fit.validate_max_pixels(max_pixels)
 
         return {
             'full_page': True,
@@ -424,29 +419,6 @@ class Html2Image():
             'full_page_fixed_elements': fixed_elements,
             'full_page_max_pixels': max_pixels,
         }
-
-    @staticmethod
-    def _validate_full_page_stability_timeout(value):
-        validate_stability_timeout(value)
-
-    @staticmethod
-    def _validate_full_page_profile(value: str) -> None:
-        validate_full_page_profile(value)
-
-    @staticmethod
-    def _validate_full_page_fixed_elements(value: str) -> None:
-        validate_fixed_element_mode(value)
-
-    @staticmethod
-    def _validate_full_page_max_pixels(value) -> None:
-        if value is None:
-            return
-
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ValueError(
-                "full_page_max_pixels must be a strictly positive integer "
-                f"or None (got {value!r})"
-            )
 
     @staticmethod
     def _extend_save_as_param(save_as, desired_length):
@@ -737,7 +709,7 @@ class Html2Image():
         full_page_stability_timeout=None,
         full_page_profile='robust',
         full_page_fixed_elements='auto',
-        full_page_max_pixels=DEFAULT_MAX_PIXELS,
+        full_page_max_pixels=page_fit.DEFAULT_MAX_PIXELS,
     ):
         """ Takes a screenshot using different resources.
 

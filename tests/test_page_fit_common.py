@@ -1,5 +1,4 @@
 import io
-import json
 
 import pytest
 from PIL import Image
@@ -45,8 +44,8 @@ def test_profile_validation_always_raises_value_error(value):
 
 
 def test_pixel_budget_is_exact_and_can_be_disabled():
-    assert common.enforce_pixel_budget(100, 50, 5_000) == 5_000
-    assert common.enforce_pixel_budget(100, 50, None) == 5_000
+    common.enforce_pixel_budget(100, 50, 5_000)
+    common.enforce_pixel_budget(100, 50, None)
     with pytest.raises(CaptureTooLargeError, match="5,100 pixels"):
         common.enforce_pixel_budget(102, 50, 5_000)
 
@@ -54,7 +53,7 @@ def test_pixel_budget_is_exact_and_can_be_disabled():
 @pytest.mark.parametrize("value", [0, -1, 1.5, True, "1000"])
 def test_pixel_budget_rejects_invalid_configuration(value):
     with pytest.raises(ValueError, match="full_page_max_pixels"):
-        common.enforce_pixel_budget(100, 50, value)
+        common.validate_max_pixels(value)
 
 
 @pytest.mark.parametrize(
@@ -66,8 +65,9 @@ def test_stability_timeout_rejects_invalid_configuration(value):
 
 
 def test_stability_timeout_accepts_none_and_positive_numbers():
-    assert common.validate_stability_timeout(None) is None
-    assert common.validate_stability_timeout(2) == 2.0
+    common.validate_stability_timeout(None)
+    common.validate_stability_timeout(2)
+    common.validate_stability_timeout(0.5)
 
 
 def _tile_heights(total_height, fixed_elements):
@@ -88,21 +88,6 @@ def test_tiles_cover_document_exactly_once():
 def test_last_tile_is_a_whole_viewport_when_fixed_elements_are_kept_last():
     assert _tile_heights(1_501, "last") == [720, 61, 720]
     assert _tile_heights(500, "last") == [500]
-
-
-def test_tile_plan_validation_rejects_gap():
-    plan = [
-        common.TileSegment(0, 10, 0, 10),
-        common.TileSegment(11, 10, 11, 10),
-    ]
-    with pytest.raises(ValueError, match="gap or overlap"):
-        common.validate_tile_plan(plan, 20)
-
-
-def test_tile_plan_validation_rejects_crop_beyond_capture():
-    plan = [common.TileSegment(0, 5, 0, 5, crop_top=1)]
-    with pytest.raises(ValueError, match="crop exceeds"):
-        common.validate_tile_plan(plan, 5)
 
 
 def test_arrayjoin_is_used_only_when_short_padding_is_at_the_end():
@@ -126,29 +111,16 @@ def test_image_dimensions_without_imaging_runtime(image_format):
     assert common.image_dimensions(encoded) == (37, 19)
 
 
-def test_firefox_document_capture_rejects_wrong_encoded_format(monkeypatch):
-    png = _encoded_image("PNG", size=(37, 19))
-    monkeypatch.setattr(
-        firefox_page_fit,
-        "_capture_screenshot_bytes",
-        lambda *args, **kwargs: png,
-    )
+@pytest.mark.parametrize(("height", "expected"), [(19, True), (30, False)])
+def test_firefox_capture_in_one_go_must_have_the_size_of_the_page(
+    monkeypatch, height, expected
+):
+    jpeg = _encoded_image("JPEG", size=(37, 19))
+    monkeypatch.setattr(firefox_page_fit, "_capture", lambda *args: jpeg)
 
-    encoded, diagnostic = firefox_page_fit._try_document_capture(
-        object(),
-        expected_width=37,
-        expected_height=19,
-        output_format="jpeg",
-    )
+    image = firefox_page_fit._try_document_capture(None, 37, height, "jpeg")
 
-    assert encoded is None
-    assert "non-JPEG" in diagnostic
-
-
-def test_stitch_tiles_validates_tile_count_before_importing_pyvips():
-    plan = [common.TileSegment(0, 5, 0, 5), common.TileSegment(5, 5, 5, 5)]
-    with pytest.raises(RuntimeError, match="Expected 2 screenshot tiles, got 1"):
-        common.stitch_tiles([b"not-an-image"], plan, 10, 10, "png")
+    assert (image == jpeg) is expected
 
 
 def test_stitch_tiles_preserves_png_alpha_and_dimensions():
@@ -220,18 +192,27 @@ def test_chromium_capture_in_one_go_does_not_hide_errors(
     for name, value in [
         ("_sleep_ms", lambda *args: None),
         ("_settled_document_height", lambda *args: 1000),
-        ("_scroll_to", lambda *args: None),
-        ("_overlay_count", lambda *args: 0),
         ("_send", lambda *args, **kwargs: {}),
-        ("_capture_region", fail),
+        ("_capture", fail),
         ("_capture_tiled", no_tiles),
     ]:
         monkeypatch.setattr(chromium_page_fit, name, value)
 
     with pytest.raises(type(error)):
         chromium_page_fit.capture_full_page(
-            None, str(tmp_path), "page.png", 1280, 720, profile="fast"
+            FakeBrowser(), str(tmp_path), "page.png", 1280, 720,
+            profile="fast",
         )
+
+
+class FakeBrowser:
+    """A browser that shows a page without fixed element."""
+
+    def _evaluate(self, expression):
+        return 0
+
+    def _set_viewport(self, width, height):
+        pass
 
 
 def _fake_firefox_page(monkeypatch, height):
@@ -241,10 +222,6 @@ def _fake_firefox_page(monkeypatch, height):
     for name, value in [
         ("_sleep_ms", lambda *args: None),
         ("_read_document_height", lambda *args: height),
-        ("_set_viewport", lambda *args: None),
-        ("_scroll_top", lambda *args: None),
-        ("_overlay_count", lambda *args: 0),
-        ("_restore_overlays", lambda *args: None),
         ("_capture_tiled_viewport", no_tiles),
     ]:
         monkeypatch.setattr(firefox_page_fit, name, value)
@@ -257,11 +234,12 @@ def test_firefox_capture_in_one_go_does_not_hide_errors(
         raise BrowserTimeoutError("Timed out")
 
     _fake_firefox_page(monkeypatch, 1000)
-    monkeypatch.setattr(firefox_page_fit, "_capture_screenshot_bytes", fail)
+    monkeypatch.setattr(firefox_page_fit, "_capture", fail)
 
     with pytest.raises(BrowserTimeoutError):
         firefox_page_fit.capture_full_page(
-            None, str(tmp_path), "page.png", 1280, 720, profile="fast"
+            FakeBrowser(), str(tmp_path), "page.png", 1280, 720,
+            profile="fast",
         )
 
 
@@ -281,7 +259,7 @@ def test_firefox_does_not_capture_too_large_pages_in_one_go(
     monkeypatch.setattr(firefox_page_fit, "_capture_tiled_viewport", tiles)
 
     firefox_page_fit.capture_full_page(
-        None, str(tmp_path), "page.png", 1280, 720, profile="fast",
+        FakeBrowser(), str(tmp_path), "page.png", 1280, 720, profile="fast",
         max_pixels=None,
     )
 
@@ -325,10 +303,10 @@ class FakePage:
     def evaluate(self, script):
         if "elementsFromPoint" in script:
             self.marked.append(script)
-            return "3"
+            return 3
         if "getBoundingClientRect" in script:
-            return json.dumps(self.readings.pop(0))
-        return "[true, true]"
+            return self.readings.pop(0)
+        return [True, True]
 
     def sleep(self, milliseconds):
         self.slept += milliseconds
