@@ -454,3 +454,136 @@ def test_short_fixed_page_does_not_require_the_optional_stitcher(
 
     with Image.open(output) as image:
         assert image.size == (400, 600)
+
+
+TILED_BROWSERS = pytest.mark.parametrize(
+    "browser", ["chrome-cdp", "edge-cdp"], ids=["chrome", "edge"]
+)
+
+# A small fixed badge, so that the page is captured in tiles.
+_BADGE = (
+    '<div style="position:fixed; bottom:0; right:0; width:20px;'
+    ' height:20px; background:#0000ff"></div>'
+)
+
+
+def _band_color(index):
+    return (index * 8, 255 - index * 8, 128)
+
+
+def _bands_html(script=""):
+    """Returns a page with a header of 100 px, then 30 bands of 100 px,
+    each of its own color, and made of 4 boxes side by side."""
+    bands = "".join(
+        '<div class="band">%s</div>'
+        % ('<div style="background:rgb%s"></div>' % (_band_color(index),) * 4)
+        for index in range(30)
+    )
+    return (
+        "<!doctype html><style>.band { display:flex; height:100px }"
+        " .band div { flex:1 }</style>"
+        '<body style="margin:0">'
+        '<header id="header" style="height:100px; background:#282828">'
+        "</header>%s%s<script>%s</script>" % (bands, _BADGE, script)
+    )
+
+
+def _assert_bands(path, header_height=100):
+    with Image.open(path) as image:
+        rgb = image.convert("RGB")
+    assert rgb.size == (400, header_height + 3000)
+    for index in range(30):
+        top = header_height + index * 100
+        for y in (top + 1, top + 98):
+            assert rgb.getpixel((10, y)) == _band_color(index), (index, y)
+
+
+@TILED_BROWSERS
+def test_tiles_do_not_resize_the_page(browser, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    output = hti.screenshot(
+        html_str=_bands_html(
+            "addEventListener('resize', () =>"
+            " document.body.style.filter = 'invert(1)');"
+        ),
+        save_as="no-resize.png",
+        size=(400, 600),
+        full_page=True,
+        full_page_profile="fast",
+    )[0]
+
+    # The colors would be inverted after the first resize event.
+    _assert_bands(output)
+
+
+@TILED_BROWSERS
+@pytest.mark.parametrize("profile", ["fast", "balanced"])
+def test_tiles_follow_a_header_that_shrinks_when_scrolled(
+    browser, profile, tmp_path
+):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    output = hti.screenshot(
+        html_str=_bands_html(
+            "addEventListener('scroll', () =>"
+            " header.style.height = scrollY > 0 ? '80px' : '100px');"
+        ),
+        save_as="shrinking-header.png",
+        size=(400, 600),
+        full_page=True,
+        full_page_profile=profile,
+    )[0]
+
+    # The first tile shows the header before it shrinks, and the next
+    # tiles start 20 px higher, where the page moved.
+    _assert_bands(output)
+
+
+def test_tiles_of_a_page_that_cannot_be_scrolled(tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti("chrome-cdp", tmp_path)
+
+    output = hti.screenshot(
+        html_str=_bands_html(
+            "addEventListener('scroll', () => scrollTo(0, 0));"
+        ),
+        save_as="not-scrolled.png",
+        size=(400, 600),
+        full_page=True,
+        full_page_profile="fast",
+    )[0]
+
+    # The tiles below the viewport are captured beyond it.
+    _assert_bands(output)
+
+
+def test_tiles_with_virtual_time_budget(tmp_path):
+    pytest.importorskip("pyvips")
+    try:
+        hti = Html2Image(
+            browser="chrome-cdp",
+            output_path=str(tmp_path),
+            disable_logging=True,
+            custom_flags=["--virtual-time-budget=1000", "--hide-scrollbars"],
+        )
+    except FileNotFoundError:
+        pytest.skip("'chrome-cdp' executable not found")
+
+    for profile in ("fast", "robust"):
+        output = hti.screenshot(
+            html_str=_bands_html(
+                # Shown once the virtual time budget is spent.
+                "setTimeout(() => header.style.background = '#ff0000', 500);"
+            ),
+            save_as=f"virtual-time-{profile}.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile=profile,
+        )[0]
+
+        _assert_bands(output)
+        with Image.open(output) as image:
+            assert image.convert("RGB").getpixel((10, 50)) == (255, 0, 0)

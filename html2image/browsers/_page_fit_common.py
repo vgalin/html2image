@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import struct
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
 from ..exceptions import CaptureTooLargeError
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_MAX_PIXELS = 100_000_000
@@ -117,6 +122,185 @@ def show_overlays_js(key: str, mode: str, first: bool, last: bool) -> str:
 def restore_overlays_js(key: str) -> str:
     """Return the script undoing every change made by `show_overlays_js`."""
     return _RESTORE_OVERLAYS_JS % json.dumps(key)
+
+
+# The elements that cross the row just above `seam`, remembered with their
+# position in the page. Fixed and sticky elements, and the elements inside
+# of them, do not move with the page: they are left out.
+_MARK_ANCHORS_JS = r"""
+(() => {
+  const [key, seam] = %s;
+  const isFloating = (element) => {
+    for (; element && element !== document.body;
+         element = element.parentElement) {
+      const position = getComputedStyle(element).position;
+      if (position === 'fixed' || position === 'sticky') return true;
+    }
+    return false;
+  };
+  const row = Math.min(innerHeight - 1, Math.max(0, seam - scrollY - 1));
+  const anchors = [];
+  for (const x of [0.08, 0.2, 0.33, 0.45, 0.55, 0.67, 0.8, 0.92]) {
+    for (const element of document.elementsFromPoint(innerWidth * x, row)) {
+      if (element === document.documentElement
+          || element === document.body) break;
+      if (isFloating(element)) continue;
+      if (!anchors.some(anchor => anchor.element === element)) {
+        const top = element.getBoundingClientRect().top + scrollY;
+        anchors.push({element, top});
+      }
+      break;
+    }
+  }
+  window[key] = anchors;
+  return JSON.stringify(anchors.length);
+})()
+"""
+
+_ANCHOR_SHIFTS_JS = r"""
+JSON.stringify((window[%s] || [])
+  .filter(anchor => anchor.element.isConnected)
+  .map(anchor =>
+    anchor.element.getBoundingClientRect().top + scrollY - anchor.top))
+"""
+
+_FORGET_ANCHORS_JS = r"""
+JSON.stringify(%s.map(key => delete window[key]))
+"""
+
+_UNCHECKED_SEAMS = {
+    'no anchor': (
+        '%s: the full page image was joined from several screenshots, and '
+        'the joins at %s could not be checked, as too few elements of the '
+        'page were found there. The image may be wrong there if the page '
+        'moved while it was captured.'
+    ),
+    'uneven': (
+        '%s: the page moved unevenly while it was captured, near the joins '
+        'between screenshots at %s. The image may be wrong there.'
+    ),
+    'moving': (
+        '%s: the page kept moving while it was captured, near the joins '
+        'between screenshots at %s. The image may be wrong there.'
+    ),
+}
+
+
+def page_shift(shifts):
+    """Return how far the page moved, from how far its anchors moved.
+
+    Returns None if it cannot be told: no anchor, or anchors that moved in
+    different ways. A single anchor that disagrees with at least two others
+    is ignored: it is an element that moves by itself, such as an animated
+    picture. A single anchor cannot confirm that the page moved.
+    """
+    best = []
+    for shift in shifts:
+        group = [other for other in shifts if abs(other - shift) <= 1]
+        if len(group) > len(best):
+            best = group
+    if not best or len(shifts) - len(best) > (len(best) > 1):
+        return None
+    shift = round(sorted(best)[len(best) // 2])
+    if len(best) == 1 and shift:
+        return None
+    return shift
+
+
+class SeamChecker:
+    """Keeps the tiles of a full page capture in line with the page.
+
+    Before a tile is captured, the elements that cross its bottom row, the
+    seam with the next tile, are marked. Before the next tile, they are
+    read again: if they all moved the same way, so did the page, and the
+    next tile will start that much higher or lower. When it cannot be told,
+    nothing is changed, and a warning will be logged by `warn()`.
+
+    `evaluate` runs a script in the page and returns its value, which the
+    scripts give as JSON. `sleep` waits for a number of milliseconds.
+    """
+
+    poll_ms = 60
+    settle_timeout = 2
+
+    def __init__(self, evaluate, sleep):
+        self.evaluate = evaluate
+        self.sleep = sleep
+        key = '__h2i_seam_%s' % uuid.uuid4().hex
+        # The anchors of the seams above and below the current tile.
+        self.above, self.below = key + '_above', key + '_below'
+        self.has_above = False
+        self.problem = None
+        self.unchecked = {problem: [] for problem in _UNCHECKED_SEAMS}
+
+    def _read(self, key):
+        return json.loads(self.evaluate(_ANCHOR_SHIFTS_JS % json.dumps(key)))
+
+    def shift(self):
+        """Return how far the page moved since the seam above the current
+        tile was marked, or 0 if it cannot be told or if there is no such
+        seam.
+
+        If the page moved, it is first given the time to stop moving.
+        """
+        self.problem = None
+        if not self.has_above:
+            return 0
+        shifts = self._read(self.above)
+        shift = page_shift(shifts)
+        if any(abs(value) >= 0.5 for value in shifts):
+            deadline = time.monotonic() + self.settle_timeout
+            while True:
+                self.sleep(self.poll_ms)
+                shifts = self._read(self.above)
+                previous, shift = shift, page_shift(shifts)
+                if shift == previous:
+                    break
+                if time.monotonic() > deadline:
+                    self.problem = 'moving'
+                    return 0
+        if shift is None:
+            self.problem = 'uneven' if len(shifts) > 1 else 'no anchor'
+            logger.debug('Seam not checked (%s): %s', self.problem, shifts)
+            return 0
+        if shift:
+            logger.debug('The page moved by %d px: %s', shift, shifts)
+        return shift
+
+    def mark(self, seam):
+        """Mark the anchors of the seam below the current tile, at the row
+        `seam` of the page."""
+        self.evaluate(_MARK_ANCHORS_JS % json.dumps([self.below, seam]))
+
+    def moved(self):
+        """Return True if the page moved since `mark()`."""
+        shifts = self._read(self.below)
+        if page_shift(shifts) in (0, None):
+            return False
+        logger.debug('The page moved during the capture: %s', shifts)
+        return True
+
+    def next_tile(self, row):
+        """Move on to the next tile, whose top will be at `row` in the image.
+        """
+        if self.problem:
+            self.unchecked[self.problem].append(row)
+        self.above, self.below = self.below, self.above
+        self.has_above = True
+
+    def forget(self):
+        """Remove the anchors from the page."""
+        self.evaluate(_FORGET_ANCHORS_JS % json.dumps([self.above, self.below]))
+
+    def warn(self, name):
+        """Log a warning for each kind of seam that could not be checked."""
+        for problem, rows in self.unchecked.items():
+            if rows:
+                logger.warning(
+                    _UNCHECKED_SEAMS[problem],
+                    name,
+                    ', '.join('%d px' % row for row in rows),
+                )
 
 
 @dataclass(frozen=True)

@@ -1,10 +1,12 @@
 import io
+import json
 
 import pytest
 from PIL import Image
 
-from html2image import CaptureTooLargeError
+from html2image import BrowserError, BrowserTimeoutError, CaptureTooLargeError
 from html2image.browsers import _page_fit_common as common
+from html2image.browsers import _chromium_page_fit as chromium_page_fit
 from html2image.browsers import _firefox_page_fit as firefox_page_fit
 
 
@@ -200,3 +202,139 @@ def test_stitch_tiles_preserves_irregular_bottom_aligned_geometry():
         assert image.getpixel((0, 5)) == (0, 255, 0)
         assert image.getpixel((0, 6)) == (0, 255, 0)
         assert image.getpixel((0, 7)) == (0, 0, 255)
+
+
+@pytest.mark.parametrize("error", [
+    BrowserTimeoutError("Timed out"),
+    BrowserError("The connection to the browser was lost."),
+])
+def test_chromium_capture_in_one_go_does_not_hide_errors(
+    monkeypatch, tmp_path, error
+):
+    def fail(*args, **kwargs):
+        raise error
+
+    def no_tiles(*args, **kwargs):
+        raise AssertionError("no tile should be captured")
+
+    for name, value in [
+        ("_sleep_ms", lambda *args: None),
+        ("_settled_document_height", lambda *args: 1000),
+        ("_scroll_to", lambda *args: None),
+        ("_overlay_count", lambda *args: 0),
+        ("_send", lambda *args, **kwargs: {}),
+        ("_capture_region", fail),
+        ("_capture_tiled", no_tiles),
+    ]:
+        monkeypatch.setattr(chromium_page_fit, name, value)
+
+    with pytest.raises(type(error)):
+        chromium_page_fit.capture_full_page(
+            None, str(tmp_path), "page.png", 1280, 720, profile="fast"
+        )
+
+
+# How far the anchors of a seam moved, as measured on recorded pages on
+# Nov. 16, 2026, and how far the page moved according to them.
+@pytest.mark.parametrize(("shifts", "expected"), [
+    # BBC and Le Monde: the header shrank once the page was scrolled.
+    ([-16, -16, -16], -16),
+    ([-15.9, -15.9, -15.9], -16),
+    ([-76, -76, -76], -76),
+    # Tailwind: an animated picture moved by itself.
+    ([0, 0, 0, 0, 0.7], 0),
+    ([0, 0, 0, 0, 3.3], 0),
+    ([0, 0, 0, 0, -5.6], 0),
+    # CSS-Tricks: two elements of the same column moved.
+    ([0, 0, 0, 11.8, 11.8], None),
+    ([0, 0, 0, 8.1, 8.1], None),
+    # NPR: no element crossed the seam.
+    ([], None),
+    # A single element cannot tell that the page moved.
+    ([0], 0),
+    ([-16], None),
+    ([0, -16], None),
+])
+def test_page_shift(shifts, expected):
+    assert common.page_shift(shifts) == expected
+
+
+class FakePage:
+    """Answers the scripts of `SeamChecker`, with the given shifts of the
+    anchors, one list per reading."""
+
+    def __init__(self, *readings):
+        self.readings = list(readings)
+        self.marked = []
+        self.slept = 0
+
+    def evaluate(self, script):
+        if "elementsFromPoint" in script:
+            self.marked.append(script)
+            return "3"
+        if "getBoundingClientRect" in script:
+            return json.dumps(self.readings.pop(0))
+        return "[true, true]"
+
+    def sleep(self, milliseconds):
+        self.slept += milliseconds
+
+
+def _checker(page):
+    seams = common.SeamChecker(page.evaluate, page.sleep)
+    seams.mark(720)
+    seams.next_tile(0)
+    return seams
+
+
+def test_seam_checker_does_not_check_the_first_tile():
+    page = FakePage()
+    seams = common.SeamChecker(page.evaluate, page.sleep)
+    assert seams.shift() == 0
+    assert not page.readings
+
+
+def test_seam_checker_waits_until_the_page_stops_moving():
+    page = FakePage([0, 0, 0], [-8, -8, -8], [-16, -16, -16], [-16, -16, -16])
+    seams = _checker(page)
+
+    assert seams.shift() == 0
+    assert seams.shift() == -16
+    assert page.slept == 2 * common.SeamChecker.poll_ms
+    assert seams.problem is None
+
+
+def test_seam_checker_gives_up_on_a_page_that_keeps_moving(monkeypatch):
+    monkeypatch.setattr(common.SeamChecker, "settle_timeout", 0)
+    page = FakePage([-8, -8, -8], [-16, -16, -16])
+    seams = _checker(page)
+
+    assert seams.shift() == 0
+    assert seams.problem == "moving"
+
+
+def test_seam_checker_tells_if_the_page_moved_during_a_capture():
+    page = FakePage([-76, -76, -76], [0, 0, 3.3])
+    seams = common.SeamChecker(page.evaluate, page.sleep)
+    seams.mark(1440)
+    assert seams.moved()
+    assert not seams.moved()
+
+
+def test_seam_checker_warns_once_per_kind_of_unchecked_seam(caplog):
+    uneven = [0, 0, 0, 11.8, 11.8]
+    # Anchors that moved are read once more, to wait until they stop.
+    page = FakePage([], uneven, uneven, [])
+    seams = _checker(page)
+    for row in (720, 1440, 2160):
+        seams.shift()
+        seams.mark(row + 720)
+        seams.next_tile(row)
+
+    with caplog.at_level("WARNING", logger=common.__name__):
+        seams.warn("page.png")
+
+    assert [record.getMessage() for record in caplog.records] == [
+        common._UNCHECKED_SEAMS["no anchor"] % ("page.png", "720 px, 2160 px"),
+        common._UNCHECKED_SEAMS["uneven"] % ("page.png", "1440 px"),
+    ]

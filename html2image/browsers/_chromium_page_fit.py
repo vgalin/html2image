@@ -7,17 +7,19 @@ native CDP capture; long documents are captured in bounded regions and stitched.
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import math
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ..exceptions import BrowserError
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
+    SeamChecker,
     TileSegment,
     enforce_pixel_budget,
     image_dimensions,
@@ -51,6 +53,8 @@ _ROBUST_SCROLL_WAIT_MS = 260
 _ROBUST_MAX_ROUNDS = 18
 _ROBUST_STABLE_ROUNDS = 3
 _TILE_SCROLL_SETTLE_MS = 140
+# Tries to capture a tile while the page moves or does not show it.
+_TILE_ATTEMPTS = 4
 _AUTO_PROBE_GROWTH_TRIGGER = 0.03
 
 _DOM_DIMENSIONS_JS = r"""
@@ -316,11 +320,12 @@ def _capture_region(
     width: int,
     height: int,
     output_format: str,
+    beyond_viewport=True,
 ) -> bytes:
     params: Dict[str, Any] = {
         "format": output_format,
         "fromSurface": True,
-        "captureBeyondViewport": True,
+        "captureBeyondViewport": beyond_viewport,
         "omitBackground": output_format == "png",
         "clip": {
             "x": x,
@@ -380,71 +385,139 @@ def _restore_overlays(browser: Any, key: Optional[str]) -> None:
         _evaluate(browser, restore_overlays_js(key))
 
 
+def _settle(browser, profile):
+    _wait_for_paint(browser)
+    if profile != 'fast':
+        _sleep_ms(browser, _TILE_SCROLL_SETTLE_MS)
+
+
+def _is_visible(browser, top, height):
+    """Return True if the rows `top` to `top + height` of the page are all
+    in the viewport."""
+    scroll_y, viewport_height = json.loads(
+        _evaluate(browser, 'JSON.stringify([scrollY, innerHeight])')
+    )
+    return scroll_y <= top and top + height <= scroll_y + viewport_height
+
+
 def _capture_tiled(
-    browser: Any,
-    width: int,
-    viewport_height: int,
-    total_height: int,
-    profile: str,
-    fixed_elements: str,
-    output_format: str,
-    max_pixels: Optional[int],
-) -> bytes:
+    browser,
+    width,
+    viewport_height,
+    total_height,
+    profile,
+    fixed_elements,
+    output_format,
+    max_pixels,
+    output_file,
+):
+    """Capture the page one viewport at a time, and join the tiles.
+
+    The tiles are captured as they are shown in the viewport. Capturing
+    beyond it would show the page a viewport of 1 x 1 pixel for a moment,
+    and some pages lay themselves out again when this happens.
+    """
     # Fail before capturing every tile when the optional stitcher is absent.
     import_pyvips_for_stitching()
     tile_height = _choose_tile_height(width, viewport_height)
-    registry_key: Optional[str] = None
-    if fixed_elements != "preserve":
+    registry_key = None
+    if fixed_elements != 'preserve':
         registry_key = _overlay_registry_key()
+    seams = SeamChecker(
+        lambda script: _evaluate(browser, script),
+        lambda milliseconds: _sleep_ms(browser, milliseconds),
+    )
 
-    plan: List[TileSegment] = []
-    tiles: List[bytes] = []
-    y = 0
+    plan, tiles = [], []
+    # The top of the next tile, in the layout of the page when the previous
+    # tile was captured, and in the image.
+    y = image_y = 0
     try:
-        while y < total_height:
-            _scroll_to(browser, y)
-            _wait_for_paint(browser)
-            if profile != "fast":
-                _sleep_ms(browser, _TILE_SCROLL_SETTLE_MS)
+        _scroll_to(browser, y)
+        _settle(browser, profile)
+        while True:
+            for _ in range(_TILE_ATTEMPTS):
+                # Scrolling can change the height of a page (a header that
+                # collapses, content loaded on demand). The tiles follow the
+                # page as it is now, not as it was when first measured.
+                total_height = _measure_once(browser, viewport_height)
+                enforce_pixel_budget(width, total_height, max_pixels)
+                top = y + seams.shift()
+                if top >= total_height:
+                    break
+                height = next_tile_height(
+                    top, total_height, tile_height, viewport_height,
+                    fixed_elements,
+                )
+                # The page may not stop where it was asked to, for example
+                # if it changed while it was scrolled.
+                visible = _is_visible(browser, top, height)
+                if not visible:
+                    _scroll_to(browser, top)
+                    _settle(browser, profile)
+                    continue
 
-            # Scrolling can change the height of a page (a header that
-            # collapses, content loaded on demand). The tiles follow the page
-            # as it is now, not as it was when first measured.
-            total_height = _measure_once(browser, viewport_height)
-            enforce_pixel_budget(width, total_height, max_pixels)
+                if registry_key is not None:
+                    _show_overlays(
+                        browser,
+                        registry_key,
+                        fixed_elements,
+                        first=not tiles,
+                        last=top + height == total_height,
+                    )
+                seams.mark(top + height)
+                tile = _capture_region(
+                    browser,
+                    x=0,
+                    y=top,
+                    width=width,
+                    height=height,
+                    output_format='png',
+                    beyond_viewport=False,
+                )
+                # If the page moved while the tile was captured, the tile
+                # may show it before or after it moved.
+                if not seams.moved():
+                    break
+                _settle(browser, profile)
+            else:
+                if visible:
+                    seams.problem = 'moving'
+                else:
+                    # The page could not be scrolled to show the tile.
+                    logger.debug(
+                        'Capturing the tile at %d px beyond the viewport.',
+                        top,
+                    )
+                    tile = _capture_region(
+                        browser,
+                        x=0,
+                        y=top,
+                        width=width,
+                        height=height,
+                        output_format='png',
+                    )
+            if top >= total_height:
+                break
+            _validate_capture(tile, width, height, 'png')
+            tiles.append(tile)
+            plan.append(TileSegment(top, height, image_y, height))
+            seams.next_tile(image_y)
+            y = top + height
+            image_y += height
             if y >= total_height:
                 break
-            height = next_tile_height(
-                y, total_height, tile_height, viewport_height, fixed_elements
-            )
-
-            if registry_key is not None:
-                _show_overlays(
-                    browser,
-                    registry_key,
-                    fixed_elements,
-                    first=y == 0,
-                    last=y + height == total_height,
-                )
-            tile = _capture_region(
-                browser,
-                x=0,
-                y=y,
-                width=width,
-                height=height,
-                output_format="png",
-            )
-            _validate_capture(tile, width, height, "png")
-            tiles.append(tile)
-            plan.append(TileSegment(y, height, y, height))
-            y += height
+            _scroll_to(browser, y)
+            _settle(browser, profile)
     finally:
         try:
             _scroll_to(browser, 0)
+            seams.forget()
         finally:
             _restore_overlays(browser, registry_key)
 
-    return stitch_tiles(tiles, plan, width, y, output_format)
+    seams.warn(output_file)
+    return stitch_tiles(tiles, plan, width, image_y, output_format)
 
 
 def capture_full_page(
@@ -505,51 +578,35 @@ def capture_full_page(
             )
             _wait_for_paint(browser)
 
-        native_error: Optional[Exception] = None
-        native_bytes: Optional[bytes] = None
         force_tiled = (
             total_height > viewport_height
             and overlay_count > 0
             and fixed_elements in {"auto", "last"}
         )
+        # Chrome does not refuse a larger capture, but its image is wrong
+        # beyond 16,384 pixels, see `chrome_cdp.MAX_CAPTURE_SIZE`.
         if total_height <= _NATIVE_CAPTURE_MAX_HEIGHT and not force_tiled:
-            try:
-                native_bytes = _capture_region(
-                    browser,
-                    x=0,
-                    y=0,
-                    width=width,
-                    height=total_height,
-                    output_format=output_format,
-                )
-                _validate_capture(
-                    native_bytes,
-                    width,
-                    total_height,
-                    output_format,
-                )
-            except BrowserError as error:
-                native_error = error
-                native_bytes = None
-        if native_bytes is not None:
-            destination.write_bytes(native_bytes)
-            return
-
-        if native_error is not None:
-            logger.debug(
-                "Chromium native full-page capture failed, capturing tiles "
-                "instead: %s", native_error,
+            encoded = _capture_region(
+                browser,
+                x=0,
+                y=0,
+                width=width,
+                height=total_height,
+                output_format=output_format,
             )
-        encoded = _capture_tiled(
-            browser,
-            width,
-            viewport_height,
-            total_height,
-            profile,
-            fixed_elements,
-            output_format,
-            max_pixels,
-        )
+            _validate_capture(encoded, width, total_height, output_format)
+        else:
+            encoded = _capture_tiled(
+                browser,
+                width,
+                viewport_height,
+                total_height,
+                profile,
+                fixed_elements,
+                output_format,
+                max_pixels,
+                output_file,
+            )
         destination.write_bytes(encoded)
     finally:
         # Cleanup is deliberately best-effort so it never replaces the capture
