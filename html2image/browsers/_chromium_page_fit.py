@@ -386,7 +386,6 @@ def capture_full_page(browser, output_path, output_file, width,
         cleanups = [
             lambda: _scroll_to(browser, 0),
             lambda: _restore_overlays(browser, hidden_registry),
-            lambda: _send(browser, 'Emulation.clearDeviceMetricsOverride'),
         ]
         if transparent_background:
             cleanups.append(lambda: _send(

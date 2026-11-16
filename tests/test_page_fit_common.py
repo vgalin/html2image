@@ -462,3 +462,30 @@ def test_seam_checker_without_anchor_on_a_page_that_did_not_move():
     assert seams.problem is None
     assert seams.shift(still=lambda: False) == 0
     assert seams.problem == "no anchor"
+
+
+@pytest.mark.parametrize("page_fit", [chromium_page_fit, firefox_page_fit])
+def test_full_page_leaves_the_viewport_as_it_is(
+    monkeypatch, tmp_path, page_fit
+):
+    calls = []
+    browser = FakeBrowser()
+    browser._set_viewport = lambda *args: calls.append("_set_viewport")
+    for name, value in [
+        ("_sleep_ms", lambda *args: None),
+        ("_settled_document_height", lambda *args: 70000),
+        ("_read_document_height", lambda *args: 70000),
+        ("_send", lambda browser, method, **kwargs: calls.append(method)),
+        ("capture_tiles", lambda *args: (b"tiles", [])),
+    ]:
+        monkeypatch.setattr(page_fit, name, value, raising=False)
+
+    page_fit.capture_full_page(
+        browser, str(tmp_path), "page.png", 1280, 720, profile="fast",
+        max_pixels=None,
+    )
+
+    # The viewport was given its size before the page was loaded. Setting
+    # it again, or removing it, would send the page a resize event.
+    assert "_set_viewport" not in calls
+    assert "Emulation.clearDeviceMetricsOverride" not in calls

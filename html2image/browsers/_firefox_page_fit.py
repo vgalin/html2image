@@ -342,7 +342,6 @@ def capture_full_page(browser, output_path, output_file, width,
             max_pixels,
         )
         enforce_pixel_budget(width, total_height, max_pixels)
-        browser._set_viewport(width, viewport_height)
         _scroll_to(browser, 0)
         _sleep_ms(_PRE_CAPTURE_SETTLE_MS)
 
@@ -382,7 +381,6 @@ def capture_full_page(browser, output_path, output_file, width,
         for cleanup in (
             lambda: browser._evaluate(restore_overlays_js(overlay_key)),
             lambda: _scroll_to(browser, 0),
-            lambda: browser._set_viewport(width, viewport_height),
         ):
             try:
                 cleanup()
