@@ -20,6 +20,7 @@ from ..exceptions import BrowserError
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
+    SeamChecker,
     TileSegment,
     enforce_pixel_budget,
     image_dimensions,
@@ -57,6 +58,11 @@ _STANDARD_SCROLL_STEPS = 8
 _STANDARD_SCROLL_WAIT_MS = 130
 _BOTTOM_PAINT_WAIT_MS = 180
 _TILE_SCROLL_WAIT_MS = 120
+# Tries to capture a tile while the page moves or does not show it.
+_TILE_ATTEMPTS = 4
+# Firefox refuses to capture more pixels than this in width or in height,
+# see `firefox_bidi.MAX_CAPTURE_SIZE`.
+_DOCUMENT_CAPTURE_MAX_SIZE = 65535
 _PRE_CAPTURE_SETTLE_MS = 150
 
 
@@ -369,14 +375,11 @@ def _try_document_capture(
     expected_height: int,
     output_format: str,
 ) -> Tuple[Optional[bytes], str]:
-    try:
-        image_bytes = _capture_screenshot_bytes(
-            browser,
-            origin="document",
-            output_format=output_format,
-        )
-    except BrowserError as exc:
-        return None, f"native document capture raised {type(exc).__name__}: {exc}"
+    image_bytes = _capture_screenshot_bytes(
+        browser,
+        origin="document",
+        output_format=output_format,
+    )
 
     try:
         actual_width, actual_height = image_dimensions(image_bytes)
@@ -403,59 +406,83 @@ def _try_document_capture(
 
 
 def _capture_tiled_viewport(
-    browser: Any,
+    browser,
     *,
-    width: int,
-    total_height: int,
-    viewport_height: int,
-    output_format: str,
-    fixed_elements: str,
-    overlay_state_key: str,
-    max_pixels: Optional[int],
-) -> bytes:
+    width,
+    total_height,
+    viewport_height,
+    output_format,
+    fixed_elements,
+    overlay_state_key,
+    max_pixels,
+    output_file,
+):
+    """Capture the page one viewport at a time, and join the tiles."""
     # Fail before capturing every tile when the optional stitcher is absent.
     import_pyvips_for_stitching()
-    plan = []
-    tiles = []
-    y = 0
+    seams = SeamChecker(lambda script: _evaluate(browser, script), _sleep_ms)
+    plan, tiles = [], []
+    # The top of the next tile, in the layout of the page when the previous
+    # tile was captured, and in the image.
+    y = image_y = 0
     try:
-        while y < total_height:
-            _scroll_to(browser, y)
-            _sleep_ms(_TILE_SCROLL_WAIT_MS)
-
-            # Scrolling can change the height of a page (a header that
-            # collapses, content loaded on demand). The tiles follow the page
-            # as it is now, not as it was when first measured.
-            total_height = _read_document_height(browser, viewport_height)
-            enforce_pixel_budget(width, total_height, max_pixels)
-            if y >= total_height:
-                break
-            height = next_tile_height(
-                y, total_height, viewport_height, viewport_height, fixed_elements
-            )
-
-            # Firefox captures the viewport, which stops short of ``y`` at the
-            # end of the page: the top of the tile is then cropped.
-            actual_y = int(_evaluate(browser, _SCROLL_Y_JS) or 0)
-            if actual_y > y:
-                raise BrowserError(
-                    "Firefox did not reach the requested tile position: "
-                    f"requested y={y}, actual y={actual_y}."
-                )
-            crop_top = y - actual_y
-            height = min(height, viewport_height - crop_top)
-            if height <= 0:
-                break
-
-            if fixed_elements != "preserve":
-                _show_overlays(
-                    browser,
-                    overlay_state_key,
+        _scroll_to(browser, y)
+        _sleep_ms(_TILE_SCROLL_WAIT_MS)
+        while True:
+            for attempt in range(_TILE_ATTEMPTS):
+                # Scrolling can change the height of a page (a header that
+                # collapses, content loaded on demand). The tiles follow the
+                # page as it is now, not as it was when first measured.
+                total_height = _read_document_height(browser, viewport_height)
+                enforce_pixel_budget(width, total_height, max_pixels)
+                top = y + seams.shift()
+                if top >= total_height:
+                    break
+                height = next_tile_height(
+                    top, total_height, viewport_height, viewport_height,
                     fixed_elements,
-                    first=y == 0,
-                    last=y + height == total_height,
                 )
-            tile = _capture_screenshot_bytes(browser, origin="viewport")
+
+                # Firefox captures the viewport. The page may not stop where
+                # it was asked to, for example if it changed while it was
+                # scrolled.
+                scroll_y = int(_evaluate(browser, _SCROLL_Y_JS) or 0)
+                if not (scroll_y <= top
+                        and top + height <= scroll_y + viewport_height):
+                    if attempt < _TILE_ATTEMPTS - 1:
+                        _scroll_to(browser, top)
+                        _sleep_ms(_TILE_SCROLL_WAIT_MS)
+                        continue
+                    if not scroll_y <= top < scroll_y + viewport_height:
+                        raise BrowserError(
+                            "Firefox did not reach the requested tile "
+                            f"position: requested y={top}, "
+                            f"actual y={scroll_y}."
+                        )
+                    # The page cannot be scrolled further: the tile stops
+                    # at the bottom of the viewport.
+                    height = scroll_y + viewport_height - top
+
+                if fixed_elements != "preserve":
+                    _show_overlays(
+                        browser,
+                        overlay_state_key,
+                        fixed_elements,
+                        first=not tiles,
+                        last=top + height == total_height,
+                    )
+                seams.mark(top + height)
+                tile = _capture_screenshot_bytes(browser, origin="viewport")
+                # If the page moved while the tile was captured, the tile
+                # may show it before or after it moved.
+                if not seams.moved():
+                    break
+                _sleep_ms(_TILE_SCROLL_WAIT_MS)
+            else:
+                seams.problem = 'moving'
+            if top >= total_height:
+                break
+
             tile_width, tile_height = image_dimensions(tile)
             if (tile_width, tile_height) != (width, viewport_height):
                 raise BrowserError(
@@ -466,18 +493,28 @@ def _capture_tiled_viewport(
             tiles.append(tile)
             plan.append(
                 TileSegment(
-                    capture_y=actual_y,
+                    capture_y=scroll_y,
                     capture_height=viewport_height,
-                    paste_y=y,
+                    paste_y=image_y,
                     content_height=height,
-                    crop_top=crop_top,
+                    crop_top=top - scroll_y,
                 )
             )
-            y += height
+            seams.next_tile(image_y)
+            y = top + height
+            image_y += height
+            if y >= total_height:
+                break
+            _scroll_to(browser, y)
+            _sleep_ms(_TILE_SCROLL_WAIT_MS)
     finally:
-        _restore_overlays(browser, overlay_state_key)
+        try:
+            seams.forget()
+        finally:
+            _restore_overlays(browser, overlay_state_key)
 
-    return stitch_tiles(tiles, plan, width, y, output_format)
+    seams.warn(output_file)
+    return stitch_tiles(tiles, plan, width, image_y, output_format)
 
 
 def _validate_options(
@@ -596,7 +633,11 @@ def capture_full_page(
             and overlay_count > 0
         )
 
-        if not force_tiling:
+        if max(width, total_height) > _DOCUMENT_CAPTURE_MAX_SIZE:
+            document_diagnostic = (
+                "the page is too large for Firefox to capture in one go"
+            )
+        elif not force_tiling:
             if fixed_elements == "hide" and overlay_count > 0:
                 _show_overlays(
                     browser,
@@ -641,6 +682,7 @@ def capture_full_page(
             fixed_elements=fixed_elements,
             overlay_state_key=overlay_state_key,
             max_pixels=max_pixels,
+            output_file=output_file,
         )
         destination.write_bytes(stitched)
     finally:

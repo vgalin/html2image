@@ -234,6 +234,60 @@ def test_chromium_capture_in_one_go_does_not_hide_errors(
         )
 
 
+def _fake_firefox_page(monkeypatch, height):
+    def no_tiles(*args, **kwargs):
+        raise AssertionError("no tile should be captured")
+
+    for name, value in [
+        ("_sleep_ms", lambda *args: None),
+        ("_read_document_height", lambda *args: height),
+        ("_set_viewport", lambda *args: None),
+        ("_scroll_top", lambda *args: None),
+        ("_overlay_count", lambda *args: 0),
+        ("_restore_overlays", lambda *args: None),
+        ("_capture_tiled_viewport", no_tiles),
+    ]:
+        monkeypatch.setattr(firefox_page_fit, name, value)
+
+
+def test_firefox_capture_in_one_go_does_not_hide_errors(
+    monkeypatch, tmp_path
+):
+    def fail(*args, **kwargs):
+        raise BrowserTimeoutError("Timed out")
+
+    _fake_firefox_page(monkeypatch, 1000)
+    monkeypatch.setattr(firefox_page_fit, "_capture_screenshot_bytes", fail)
+
+    with pytest.raises(BrowserTimeoutError):
+        firefox_page_fit.capture_full_page(
+            None, str(tmp_path), "page.png", 1280, 720, profile="fast"
+        )
+
+
+def test_firefox_does_not_capture_too_large_pages_in_one_go(
+    monkeypatch, tmp_path
+):
+    def tiles(*args, **kwargs):
+        return b"tiles"
+
+    def no_capture_in_one_go(*args, **kwargs):
+        raise AssertionError("Firefox refuses to capture it in one go")
+
+    _fake_firefox_page(monkeypatch, 70000)
+    monkeypatch.setattr(
+        firefox_page_fit, "_try_document_capture", no_capture_in_one_go
+    )
+    monkeypatch.setattr(firefox_page_fit, "_capture_tiled_viewport", tiles)
+
+    firefox_page_fit.capture_full_page(
+        None, str(tmp_path), "page.png", 1280, 720, profile="fast",
+        max_pixels=None,
+    )
+
+    assert (tmp_path / "page.png").read_bytes() == b"tiles"
+
+
 # How far the anchors of a seam moved, as measured on recorded pages on
 # Nov. 16, 2026, and how far the page moved according to them.
 @pytest.mark.parametrize(("shifts", "expected"), [

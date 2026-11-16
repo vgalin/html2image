@@ -457,7 +457,9 @@ def test_short_fixed_page_does_not_require_the_optional_stitcher(
 
 
 TILED_BROWSERS = pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "edge-cdp"], ids=["chrome", "edge"]
+    "browser",
+    ["chrome-cdp", "edge-cdp", "firefox-bidi"],
+    ids=["chrome", "edge", "firefox"],
 )
 
 # A small fixed badge, so that the page is captured in tiles.
