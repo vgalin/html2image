@@ -194,7 +194,7 @@ def test_chromium_capture_in_one_go_does_not_hide_errors(
         ("_settled_document_height", lambda *args: 1000),
         ("_send", lambda *args, **kwargs: {}),
         ("_capture", fail),
-        ("_capture_tiled", no_tiles),
+        ("capture_tiles", no_tiles),
     ]:
         monkeypatch.setattr(chromium_page_fit, name, value)
 
@@ -222,7 +222,7 @@ def _fake_firefox_page(monkeypatch, height):
     for name, value in [
         ("_sleep_ms", lambda *args: None),
         ("_read_document_height", lambda *args: height),
-        ("_capture_tiled_viewport", no_tiles),
+        ("capture_tiles", no_tiles),
     ]:
         monkeypatch.setattr(firefox_page_fit, name, value)
 
@@ -256,7 +256,7 @@ def test_firefox_does_not_capture_too_large_pages_in_one_go(
     monkeypatch.setattr(
         firefox_page_fit, "_try_document_capture", no_capture_in_one_go
     )
-    monkeypatch.setattr(firefox_page_fit, "_capture_tiled_viewport", tiles)
+    monkeypatch.setattr(firefox_page_fit, "capture_tiles", tiles)
 
     firefox_page_fit.capture_full_page(
         FakeBrowser(), str(tmp_path), "page.png", 1280, 720, profile="fast",

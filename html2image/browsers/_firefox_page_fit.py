@@ -14,16 +14,12 @@ import uuid
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
-    SeamChecker,
-    TileSegment,
+    capture_tiles,
     enforce_pixel_budget,
     image_dimensions,
-    import_pyvips_for_stitching,
-    next_tile_height,
     output_format_from_filename,
     restore_overlays_js,
     show_overlays_js,
-    stitch_tiles,
     validate_viewport,
 )
 from ..exceptions import BrowserError
@@ -49,8 +45,6 @@ _STANDARD_SCROLL_STEPS = 8
 _STANDARD_SCROLL_WAIT_MS = 130
 _BOTTOM_PAINT_WAIT_MS = 180
 _TILE_SCROLL_WAIT_MS = 120
-# Tries to capture a tile while the page moves or does not show it.
-_TILE_ATTEMPTS = 4
 # Firefox refuses to capture more pixels than this in width or in height,
 # see `firefox_bidi.MAX_CAPTURE_SIZE`.
 _DOCUMENT_CAPTURE_MAX_SIZE = 65535
@@ -278,100 +272,54 @@ def _try_document_capture(browser, width, height, output_format):
     return image
 
 
-def _capture_tiled_viewport(browser, width, total_height, viewport_height,
-                            output_format, fixed_elements, overlay_key,
-                            max_pixels, output_file):
-    """Capture the page one viewport at a time, and join the tiles."""
-    # Fail before capturing every tile when the optional stitcher is absent.
-    import_pyvips_for_stitching()
-    seams = SeamChecker(browser._evaluate, _sleep_ms)
-    plan, tiles = [], []
-    # The top of the next tile, in the layout of the page when the previous
-    # tile was captured, and in the image.
-    y = image_y = 0
-    try:
-        _scroll_to(browser, y)
+class _Tiles:
+    """The tiles of a page in Firefox, see `capture_tiles()`.
+
+    Firefox captures the whole viewport, and the tile is cut out of it.
+    """
+
+    name = 'Firefox'
+
+    def __init__(self, browser, width, viewport_height):
+        self.browser = browser
+        self.width = width
+        self.viewport_height = self.tile_height = viewport_height
+
+    def evaluate(self, expression):
+        return self.browser._evaluate(expression)
+
+    def sleep(self, milliseconds):
+        _sleep_ms(milliseconds)
+
+    def scroll_to(self, y):
+        _scroll_to(self.browser, y)
+
+    def settle(self):
         _sleep_ms(_TILE_SCROLL_WAIT_MS)
-        while True:
-            for attempt in range(_TILE_ATTEMPTS):
-                # Scrolling can change the height of a page (a header that
-                # collapses, content loaded on demand). The tiles follow the
-                # page as it is now, not as it was when first measured.
-                total_height = _read_document_height(browser, viewport_height)
-                enforce_pixel_budget(width, total_height, max_pixels)
-                top = y + seams.shift()
-                if top >= total_height:
-                    break
-                height = next_tile_height(
-                    top, total_height, viewport_height, viewport_height,
-                    fixed_elements,
-                )
 
-                # Firefox captures the viewport. The page may not stop where
-                # it was asked to, for example if it changed while it was
-                # scrolled.
-                scroll_y = browser._evaluate(_SCROLL_Y_JS)
-                if not (scroll_y <= top
-                        and top + height <= scroll_y + viewport_height):
-                    if attempt < _TILE_ATTEMPTS - 1:
-                        _scroll_to(browser, top)
-                        _sleep_ms(_TILE_SCROLL_WAIT_MS)
-                        continue
-                    if not scroll_y <= top < scroll_y + viewport_height:
-                        raise BrowserError(
-                            'Firefox did not reach the requested tile '
-                            f'position: requested y={top}, '
-                            f'actual y={scroll_y}.'
-                        )
-                    # The page cannot be scrolled further: the tile stops
-                    # at the bottom of the viewport.
-                    height = scroll_y + viewport_height - top
+    def measure(self):
+        return _read_document_height(self.browser, self.viewport_height)
 
-                if fixed_elements != 'preserve':
-                    _show_overlays(
-                        browser,
-                        overlay_key,
-                        fixed_elements,
-                        first=not tiles,
-                        last=top + height == total_height,
-                    )
-                seams.mark(top + height)
-                tile = _capture(browser, 'viewport')
-                # If the page moved while the tile was captured, the tile
-                # may show it before or after it moved.
-                if not seams.moved():
-                    break
-                _sleep_ms(_TILE_SCROLL_WAIT_MS)
-            else:
-                seams.problem = 'moving'
-            if top >= total_height:
-                break
+    def viewport(self):
+        """Return the scroll position and the height of the viewport."""
+        return self.browser._evaluate(_SCROLL_Y_JS), self.viewport_height
 
-            size = image_dimensions(tile)
-            if size != (width, viewport_height):
-                raise BrowserError(
-                    'Firefox returned a tile of %dx%d pixels, instead of '
-                    '%dx%d.' % (*size, width, viewport_height)
-                )
-            tiles.append(tile)
-            plan.append(TileSegment(
-                scroll_y, viewport_height, image_y, height, top - scroll_y
-            ))
-            seams.next_tile(image_y)
-            y = top + height
-            image_y += height
-            if y >= total_height:
-                break
-            _scroll_to(browser, y)
-            _sleep_ms(_TILE_SCROLL_WAIT_MS)
-    finally:
-        try:
-            seams.forget()
-        finally:
-            browser._evaluate(restore_overlays_js(overlay_key))
+    def shorten(self, top, height, scroll_y):
+        """Return the height of the tile at `top`, when the page cannot be
+        scrolled to show it: the tile stops at the bottom of the viewport.
+        """
+        if not scroll_y <= top < scroll_y + self.viewport_height:
+            raise BrowserError(
+                'Firefox did not reach the requested tile position: '
+                f'requested y={top}, actual y={scroll_y}.'
+            )
+        return scroll_y + self.viewport_height - top
 
-    seams.warn(output_file)
-    return stitch_tiles(tiles, plan, width, image_y, output_format)
+    def capture(self, top, height, scroll_y, visible):
+        """Return the tile, with the place and the height of what was
+        captured, and the first row of the tile that is kept."""
+        tile = _capture(self.browser, 'viewport')
+        return tile, scroll_y, self.viewport_height, top - scroll_y
 
 
 def capture_full_page(browser, output_path, output_file, width,
@@ -422,10 +370,9 @@ def capture_full_page(browser, output_path, output_file, width,
             # The page may have changed while it was captured in one go.
             total_height = _read_document_height(browser, viewport_height)
             enforce_pixel_budget(width, total_height, max_pixels)
-            image = _capture_tiled_viewport(
-                browser, width, total_height, viewport_height,
-                output_format, fixed_elements, overlay_key, max_pixels,
-                output_file,
+            image = capture_tiles(
+                _Tiles(browser, width, viewport_height),
+                fixed_elements, output_format, max_pixels, output_file,
             )
         Path(output_path, output_file).write_bytes(image)
     finally:

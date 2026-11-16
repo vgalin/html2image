@@ -15,16 +15,11 @@ import uuid
 from ._page_fit_common import (
     DEFAULT_MAX_PIXELS,
     OVERLAY_COUNT_JS,
-    SeamChecker,
-    TileSegment,
+    capture_tiles,
     enforce_pixel_budget,
-    image_dimensions,
-    import_pyvips_for_stitching,
-    next_tile_height,
     output_format_from_filename,
     restore_overlays_js,
     show_overlays_js,
-    stitch_tiles,
     validate_viewport,
 )
 from ..exceptions import BrowserError
@@ -49,8 +44,6 @@ _ROBUST_SCROLL_WAIT_MS = 260
 _ROBUST_MAX_ROUNDS = 18
 _ROBUST_STABLE_ROUNDS = 3
 _TILE_SCROLL_SETTLE_MS = 140
-# Tries to capture a tile while the page moves or does not show it.
-_TILE_ATTEMPTS = 4
 _AUTO_PROBE_GROWTH_TRIGGER = 0.03
 
 # An SVG file has no body.
@@ -233,7 +226,7 @@ def _settled_document_height(browser, width, viewport_height, profile,
 def _choose_tile_height(width, viewport_height):
     target = _TARGET_TILE_PIXELS // width
     adaptive = max(_MIN_TILE_HEIGHT, min(_MAX_TILE_HEIGHT, target))
-    # A tile is captured as shown in the viewport, see `_capture_tiled()`.
+    # A tile is captured as shown in the viewport, see `_Tiles`.
     return min(adaptive, viewport_height)
 
 
@@ -277,116 +270,56 @@ def _settle(browser, profile):
         _sleep_ms(browser, _TILE_SCROLL_SETTLE_MS)
 
 
-def _is_visible(browser, top, height):
-    """Return True if the rows `top` to `top + height` of the page are all
-    in the viewport."""
-    scroll_y, viewport_height = browser._evaluate(
-        'JSON.stringify([scrollY, innerHeight])'
-    )
-    return scroll_y <= top and top + height <= scroll_y + viewport_height
-
-
-def _capture_tiled(browser, width, viewport_height, total_height, profile,
-                   fixed_elements, output_format, max_pixels, output_file):
-    """Capture the page one viewport at a time, and join the tiles.
+class _Tiles:
+    """The tiles of a page in Chrome, see `capture_tiles()`.
 
     The tiles are captured as they are shown in the viewport. Capturing
     beyond it would show the page a viewport of 1 x 1 pixel for a moment,
     and some pages lay themselves out again when this happens.
     """
-    # Fail before capturing every tile when the optional stitcher is absent.
-    import_pyvips_for_stitching()
-    tile_height = _choose_tile_height(width, viewport_height)
-    registry_key = None
-    if fixed_elements != 'preserve':
-        registry_key = '__h2i_page_fit_%s' % uuid.uuid4().hex
-    seams = SeamChecker(
-        browser._evaluate,
-        lambda milliseconds: _sleep_ms(browser, milliseconds),
-    )
 
-    plan, tiles = [], []
-    # The top of the next tile, in the layout of the page when the previous
-    # tile was captured, and in the image.
-    y = image_y = 0
-    try:
-        _scroll_to(browser, y)
-        _settle(browser, profile)
-        while True:
-            for attempt in range(_TILE_ATTEMPTS):
-                # Scrolling can change the height of a page (a header that
-                # collapses, content loaded on demand). The tiles follow the
-                # page as it is now, not as it was when first measured.
-                total_height = _measure_once(browser, viewport_height)
-                enforce_pixel_budget(width, total_height, max_pixels)
-                top = y + seams.shift()
-                if top >= total_height:
-                    break
-                height = next_tile_height(
-                    top, total_height, tile_height, viewport_height,
-                    fixed_elements,
-                )
-                # The page may not stop where it was asked to, for example
-                # if it changed while it was scrolled.
-                visible = _is_visible(browser, top, height)
-                if not visible and attempt < _TILE_ATTEMPTS - 1:
-                    _scroll_to(browser, top)
-                    _settle(browser, profile)
-                    continue
-                if not visible:
-                    # The page cannot be scrolled to show the tile.
-                    logger.debug(
-                        'Capturing the tile at %d px beyond the viewport.',
-                        top,
-                    )
+    name = 'Chromium'
 
-                if registry_key is not None:
-                    _show_overlays(
-                        browser,
-                        registry_key,
-                        fixed_elements,
-                        first=not tiles,
-                        last=top + height == total_height,
-                    )
-                seams.mark(top + height)
-                tile = _capture(
-                    browser, top, width, height, 'png',
-                    beyond_viewport=not visible,
-                )
-                # If the page moved while the tile was captured, the tile
-                # may show it before or after it moved.
-                if not seams.moved():
-                    break
-                _settle(browser, profile)
-            else:
-                seams.problem = 'moving'
-            if top >= total_height:
-                break
+    def __init__(self, browser, width, viewport_height, profile):
+        self.browser = browser
+        self.width = width
+        self.viewport_height = viewport_height
+        self.tile_height = _choose_tile_height(width, viewport_height)
+        self.profile = profile
 
-            size = image_dimensions(tile)
-            if size != (width, height):
-                raise BrowserError(
-                    'Chromium returned a tile of %dx%d pixels, instead of '
-                    '%dx%d.' % (*size, width, height)
-                )
-            tiles.append(tile)
-            plan.append(TileSegment(top, height, image_y, height))
-            seams.next_tile(image_y)
-            y = top + height
-            image_y += height
-            if y >= total_height:
-                break
-            _scroll_to(browser, y)
-            _settle(browser, profile)
-    finally:
-        try:
-            _scroll_to(browser, 0)
-            seams.forget()
-        finally:
-            _restore_overlays(browser, registry_key)
+    def evaluate(self, expression):
+        return self.browser._evaluate(expression)
 
-    seams.warn(output_file)
-    return stitch_tiles(tiles, plan, width, image_y, output_format)
+    def sleep(self, milliseconds):
+        _sleep_ms(self.browser, milliseconds)
+
+    def scroll_to(self, y):
+        _scroll_to(self.browser, y)
+
+    def settle(self):
+        _settle(self.browser, self.profile)
+
+    def measure(self):
+        return _measure_once(self.browser, self.viewport_height)
+
+    def viewport(self):
+        """Return the scroll position and the height of the viewport."""
+        return self.browser._evaluate('JSON.stringify([scrollY, innerHeight])')
+
+    def shorten(self, top, height, scroll_y):
+        """Return the height of the tile at `top`, when the page cannot be
+        scrolled to show it."""
+        logger.debug('Capturing the tile at %d px beyond the viewport.', top)
+        return height
+
+    def capture(self, top, height, scroll_y, visible):
+        """Return the tile, with the place and the height of what was
+        captured, and the first row of the tile that is kept."""
+        tile = _capture(
+            self.browser, top, self.width, height, 'png',
+            beyond_viewport=not visible,
+        )
+        return tile, top, height, 0
 
 
 def capture_full_page(browser, output_path, output_file, width,
@@ -440,8 +373,8 @@ def capture_full_page(browser, output_path, output_file, width,
                 beyond_viewport=True,
             )
         else:
-            image = _capture_tiled(
-                browser, width, viewport_height, total_height, profile,
+            image = capture_tiles(
+                _Tiles(browser, width, viewport_height, profile),
                 fixed_elements, output_format, max_pixels, output_file,
             )
         Path(output_path, output_file).write_bytes(image)

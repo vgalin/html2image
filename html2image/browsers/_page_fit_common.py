@@ -11,13 +11,15 @@ import struct
 import time
 import uuid
 
-from ..exceptions import CaptureTooLargeError
+from ..exceptions import BrowserError, CaptureTooLargeError
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_PIXELS = 100_000_000
 FULL_PAGE_PROFILES = ('fast', 'balanced', 'robust')
 FIXED_ELEMENT_MODES = ('auto', 'preserve', 'first', 'last', 'hide')
+# Tries to capture a tile while the page moves or does not show it.
+_TILE_ATTEMPTS = 4
 
 # A fixed or sticky element that is too small to be seen is ignored. Its
 # content counts, since it can overflow an element that has no size itself.
@@ -492,3 +494,101 @@ def stitch_tiles(tile_bytes, tile_plan, total_width, total_height,
     if png:
         return canvas.write_to_buffer('.png[compression=6]')
     return canvas.write_to_buffer('.jpg[Q=90]')
+
+
+def capture_tiles(page, fixed_elements, output_format, max_pixels,
+                  output_file):
+    """Capture the page one viewport at a time, and join the tiles.
+
+    `page` does what depends on the browser: it has the `name` of the
+    browser, the `width` of the image, the `viewport_height`, the
+    `tile_height`, and the methods `evaluate()`, `sleep()`, `scroll_to()`,
+    `settle()`, `measure()`, `viewport()`, `shorten()` and `capture()`.
+    """
+    # Fail before capturing every tile when the optional stitcher is absent.
+    import_pyvips_for_stitching()
+    width = page.width
+    overlay_key = None
+    if fixed_elements != 'preserve':
+        overlay_key = '__h2i_page_fit_%s' % uuid.uuid4().hex
+    seams = SeamChecker(page.evaluate, page.sleep)
+
+    plan, tiles = [], []
+    # The top of the next tile, in the layout of the page when the previous
+    # tile was captured, and in the image.
+    y = image_y = 0
+    try:
+        page.scroll_to(y)
+        page.settle()
+        while True:
+            for attempt in range(_TILE_ATTEMPTS):
+                # Scrolling can change the height of a page (a header that
+                # collapses, content loaded on demand). The tiles follow the
+                # page as it is now, not as it was when first measured.
+                total_height = page.measure()
+                enforce_pixel_budget(width, total_height, max_pixels)
+                top = y + seams.shift()
+                if top >= total_height:
+                    break
+                height = next_tile_height(
+                    top, total_height, page.tile_height,
+                    page.viewport_height, fixed_elements,
+                )
+                # The page may not stop where it was asked to, for example
+                # if it changed while it was scrolled.
+                scroll_y, shown_height = page.viewport()
+                visible = (
+                    scroll_y <= top and top + height <= scroll_y + shown_height
+                )
+                if not visible and attempt < _TILE_ATTEMPTS - 1:
+                    page.scroll_to(top)
+                    page.settle()
+                    continue
+                if not visible:
+                    height = page.shorten(top, height, scroll_y)
+
+                if overlay_key is not None:
+                    page.evaluate(show_overlays_js(
+                        overlay_key, fixed_elements,
+                        first=not tiles, last=top + height == total_height,
+                    ))
+                seams.mark(top + height)
+                tile, capture_y, capture_height, crop_top = page.capture(
+                    top, height, scroll_y, visible
+                )
+                # If the page moved while the tile was captured, the tile
+                # may show it before or after it moved.
+                if not seams.moved():
+                    break
+                page.settle()
+            else:
+                seams.problem = 'moving'
+            if top >= total_height:
+                break
+
+            size = image_dimensions(tile)
+            if size != (width, capture_height):
+                raise BrowserError(
+                    '%s returned a tile of %dx%d pixels, instead of %dx%d.'
+                    % (page.name, *size, width, capture_height)
+                )
+            tiles.append(tile)
+            plan.append(TileSegment(
+                capture_y, capture_height, image_y, height, crop_top
+            ))
+            seams.next_tile(image_y)
+            y = top + height
+            image_y += height
+            if y >= total_height:
+                break
+            page.scroll_to(y)
+            page.settle()
+    finally:
+        try:
+            seams.forget()
+        finally:
+            if overlay_key is not None:
+                page.evaluate(restore_overlays_js(overlay_key))
+
+    seams.warn(output_file)
+    return stitch_tiles(tiles, plan, width, image_y, output_format)
