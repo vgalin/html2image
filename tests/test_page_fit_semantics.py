@@ -577,8 +577,8 @@ def test_tiles_follow_a_page_that_moves_between_its_seams(browser, tmp_path):
         full_page_profile="fast",
     )[0]
 
-    # The seams are between two bands, where only the element around all
-    # of them can be found, but it does not move with the bands.
+    # The seams are between two bands, where the only element under the
+    # seam is the one around all of them, which does not move with them.
     with Image.open(output) as image:
         rgb = image.convert("RGB")
     assert rgb.size == (400, 3100)
