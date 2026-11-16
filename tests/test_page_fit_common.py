@@ -309,6 +309,11 @@ def test_page_shift(shifts, expected):
     assert common.page_shift(shifts) == expected
 
 
+def _is_from(script, template):
+    before, after = template.split("%s")
+    return script.startswith(before) and script.endswith(after)
+
+
 class FakePage:
     """Answers the scripts of `SeamChecker`, with the given shifts of the
     anchors, one list per reading."""
@@ -319,10 +324,10 @@ class FakePage:
         self.slept = 0
 
     def evaluate(self, script):
-        if script.startswith(common._MARK_ANCHORS_JS.split("%s")[0]):
+        if _is_from(script, common._MARK_ANCHORS_JS):
             self.marked.append(script)
             return 3
-        if script.startswith(common._ANCHOR_SHIFTS_JS.split("%s")[0]):
+        if _is_from(script, common._ANCHOR_SHIFTS_JS):
             return self.readings.pop(0)
         return [True, True]
 
@@ -447,3 +452,13 @@ def test_seam_checker_warns_if_a_tile_moved_unevenly():
     assert _capture_two_tiles(page) == [
         common._UNCHECKED_SEAMS["uneven"] % ("page.png", "720 px"),
     ]
+
+
+def test_seam_checker_without_anchor_on_a_page_that_did_not_move():
+    page = FakePage([], [])
+    seams = _checker(page)
+
+    assert seams.shift(still=lambda: True) == 0
+    assert seams.problem is None
+    assert seams.shift(still=lambda: False) == 0
+    assert seams.problem == "no anchor"

@@ -126,27 +126,32 @@ _RESTORE_OVERLAYS_JS = '''
 })()
 '''
 
+# Fixed and sticky elements, and the elements inside of them, do not move
+# with the page.
+_IS_FLOATING_JS = '''
+const floating = new Map();
+const isFloating = (element) => {
+    if (!element || element === document.documentElement) return false;
+    if (!floating.has(element)) {
+        const position = getComputedStyle(element).position;
+        floating.set(element, position === 'fixed'
+            || position === 'sticky' || isFloating(element.parentElement));
+    }
+    return floating.get(element);
+};
+'''
+
 # The anchors of the seam at the row `seam` of the page: in each of a few
 # columns of the viewport, the top or bottom edge of an element that is the
 # closest above the seam, within a viewport. Content that moves between them
-# and the seam cannot be seen, so they are as close to it as can be. Fixed
-# and sticky elements, and the elements inside of them, do not move with
-# the page: they are left out.
+# and the seam cannot be seen, so they are as close to it as can be. Floating
+# elements are left out.
 _MARK_ANCHORS_JS = '''
 (() => {
-    const [key, seam] = %s;
+    const [key, seam] = %%s;
+    %s
     const columns = [0.08, 0.2, 0.33, 0.45, 0.55, 0.67, 0.8, 0.92]
         .map(x => x * innerWidth);
-    const floating = new Map();
-    const isFloating = (element) => {
-        if (!element || element === document.documentElement) return false;
-        if (!floating.has(element)) {
-            const position = getComputedStyle(element).position;
-            floating.set(element, position === 'fixed'
-                || position === 'sticky' || isFloating(element.parentElement));
-        }
-        return floating.get(element);
-    };
     const closest = columns.map(() => null);
     const root = document.body || document.documentElement;
     for (const element of root.querySelectorAll('*')) {
@@ -175,15 +180,21 @@ _MARK_ANCHORS_JS = '''
     window[key] = anchors;
     return JSON.stringify(anchors.length);
 })()
-'''
+''' % _IS_FLOATING_JS
 
+# How far the anchors moved. An anchor that is no longer shown, or that has
+# become fixed, does not tell anything about the page.
 _ANCHOR_SHIFTS_JS = '''
-JSON.stringify((window[%s] || [])
-    .filter(anchor => anchor.element.isConnected)
-    .map(anchor => [anchor, anchor.element.getBoundingClientRect()])
-    .filter(([anchor, rect]) => rect.width || rect.height)
-    .map(([anchor, rect]) => rect[anchor.edge] + scrollY - anchor.position))
-'''
+(() => {
+    %s
+    return JSON.stringify((window[%%s] || [])
+        .filter(({element}) => element.isConnected && !isFloating(element))
+        .map(anchor => [anchor, anchor.element.getBoundingClientRect()])
+        .filter(([anchor, rect]) => rect.width || rect.height)
+        .map(([anchor, rect]) =>
+            rect[anchor.edge] + scrollY - anchor.position));
+})()
+''' % _IS_FLOATING_JS
 
 _FORGET_ANCHORS_JS = '''
 JSON.stringify(%s.map(key => delete window[key]))
@@ -295,12 +306,14 @@ class SeamChecker:
     def _shifts(self, key):
         return self.evaluate(_ANCHOR_SHIFTS_JS % json.dumps(key))
 
-    def shift(self):
+    def shift(self, still=lambda: False):
         """Return how far the page moved since the seam above the current
         tile was marked, or 0 if it cannot be told or if there is no such
         seam.
 
-        If the page moved, it is first given the time to stop moving.
+        If the page moved, it is first given the time to stop moving. If
+        no anchor was found, `still()` tells if nothing else shows that the
+        page moved, and the seam is then taken as checked.
         """
         self.problem = 'uneven' if self.uneven_above else None
         if not self.has_above:
@@ -319,6 +332,10 @@ class SeamChecker:
                     self.problem = 'moving'
                     return 0
         if shift is None:
+            if not shifts and still():
+                logger.debug('No anchor at the seam, on a page that did '
+                             'not move.')
+                return 0
             self.problem = 'uneven' if len(shifts) > 1 else 'no anchor'
             logger.debug('Seam not checked (%s): %s', self.problem, shifts)
             return 0
@@ -576,10 +593,25 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
 
     plan, tiles = [], []
     # The top of the next tile, in the layout of the page when the previous
-    # tile was captured, and in the image.
-    y = image_y = 0
+    # tile was captured, and in the image. Where the page was last scrolled
+    # to, and its height when the previous tile was captured.
+    y = image_y = requested = 0
+    previous_height = None
+
+    def still():
+        # The page kept its height, and it stopped where it was asked to.
+        scroll_y, shown_height = page.viewport()
+        expected = min(requested, max(0, total_height - shown_height))
+        logger.debug(
+            'Page of %s px, then %d px, scrolled to %s px for %s px.',
+            previous_height, total_height, scroll_y, expected,
+        )
+        return (
+            total_height == previous_height and abs(scroll_y - expected) < 1
+        )
+
     try:
-        page.scroll_to(y)
+        page.scroll_to(requested)
         page.settle()
         while True:
             for attempt in range(_TILE_ATTEMPTS):
@@ -588,7 +620,7 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                 # page as it is now, not as it was when first measured.
                 total_height = page.measure()
                 enforce_pixel_budget(width, total_height, max_pixels)
-                top = y + seams.shift()
+                top = y + seams.shift(still)
                 if top >= total_height:
                     break
                 height = next_tile_height(
@@ -602,7 +634,8 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                     scroll_y <= top and top + height <= scroll_y + shown_height
                 )
                 if not visible and attempt < _TILE_ATTEMPTS - 1:
-                    page.scroll_to(top)
+                    requested = top
+                    page.scroll_to(requested)
                     page.settle()
                     continue
                 if not visible:
@@ -638,11 +671,12 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                 capture_y, capture_height, image_y, height, crop_top
             ))
             seams.next_tile(image_y)
-            y = top + height
+            previous_height = total_height
+            y = requested = top + height
             image_y += height
             if y >= total_height:
                 break
-            page.scroll_to(y)
+            page.scroll_to(requested)
             page.settle()
     finally:
         try:

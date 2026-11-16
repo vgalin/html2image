@@ -1,6 +1,7 @@
 """Semantic browser checks for the public full-page contract."""
 
 from pathlib import Path
+import warnings
 
 import pytest
 from PIL import Image
@@ -241,19 +242,24 @@ def test_full_page_auto_shows_fixed_element_once(browser, case, tmp_path):
     pytest.importorskip("pyvips")
     hti = _make_hti(browser, tmp_path)
 
-    output = hti.screenshot(
-        html_str=(
-            '<!doctype html><body style="margin:0; height:2500px">'
-            # An ordinary fixed element, so that the page is captured in tiles.
-            '<div style="position:fixed; bottom:0; left:0; width:100%;'
-            ' height:20px; background:#0000ff"></div>'
-            + _HARD_TO_HIDE_FIXED_ELEMENTS[case]
-        ),
-        save_as=f"fixed-once-{case}.png",
-        size=(400, 600),
-        full_page=True,
-        full_page_profile="fast",
-    )[0]
+    # The page does not move: no seam is left unchecked, even if an element
+    # becomes fixed.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FullPageWarning)
+        output = hti.screenshot(
+            html_str=(
+                '<!doctype html><body style="margin:0; height:2500px">'
+                # An ordinary fixed element, so that the page is captured in
+                # tiles.
+                '<div style="position:fixed; bottom:0; left:0; width:100%;'
+                ' height:20px; background:#0000ff"></div>'
+                + _HARD_TO_HIDE_FIXED_ELEMENTS[case]
+            ),
+            save_as=f"fixed-once-{case}.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )[0]
 
     red_rows, size = _rows_with_color(output, (255, 0, 0))
     assert size == (400, 2500)
@@ -594,6 +600,50 @@ def test_tiles_warn_when_a_single_anchor_moved(browser, tmp_path):
         hti.screenshot(
             html_str=_spaced_bands_html(1),
             save_as="spaced-bands.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )
+
+
+# A page without anything but a fixed badge, which is not an anchor.
+_EMPTY_HTML = (
+    '<!doctype html><body style="margin:0; height:4000px">%s<script>%%s'
+    "</script>" % _BADGE
+)
+
+
+@TILED_BROWSERS
+def test_tiles_of_a_still_page_without_anchors(browser, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FullPageWarning)
+        output = hti.screenshot(
+            html_str=_EMPTY_HTML % "",
+            save_as="empty.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )[0]
+
+    with Image.open(output) as image:
+        assert image.size == (400, 4000)
+
+
+@TILED_BROWSERS
+def test_tiles_warn_when_a_page_without_anchors_grows(browser, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    with pytest.warns(FullPageWarning, match="could not be checked"):
+        hti.screenshot(
+            html_str=_EMPTY_HTML % (
+                "addEventListener('scroll', () =>"
+                " document.body.style.height = '4100px');"
+            ),
+            save_as="empty.png",
             size=(400, 600),
             full_page=True,
             full_page_profile="fast",
