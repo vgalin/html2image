@@ -47,11 +47,11 @@ _ROBUST_STABLE_ROUNDS = 3
 _TILE_SCROLL_SETTLE_MS = 140
 _AUTO_PROBE_GROWTH_TRIGGER = 0.03
 
-# An SVG file has no body.
+# An SVG file has no body, and its root element has no offsetHeight.
 _CONTENT_HEIGHT_JS = '''
 Math.max(
     document.documentElement.scrollHeight,
-    document.documentElement.offsetHeight,
+    document.documentElement.offsetHeight || 0,
     document.body ? document.body.scrollHeight : 0,
     document.body ? document.body.offsetHeight : 0
 )

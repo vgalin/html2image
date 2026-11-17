@@ -51,11 +51,11 @@ _TILE_SCROLL_WAIT_MS = 120
 _DOCUMENT_CAPTURE_MAX_SIZE = 65535
 _PRE_CAPTURE_SETTLE_MS = 150
 
-# An SVG file has no body.
+# An SVG file has no body, and its root element has no offsetHeight.
 _DOCUMENT_HEIGHT_JS = '''
 JSON.stringify(Math.max(
     document.documentElement.scrollHeight,
-    document.documentElement.offsetHeight,
+    document.documentElement.offsetHeight || 0,
     document.documentElement.clientHeight,
     document.body ? document.body.scrollHeight : 0,
     document.body ? document.body.offsetHeight : 0,

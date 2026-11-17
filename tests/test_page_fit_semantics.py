@@ -467,6 +467,24 @@ _BADGE = (
 )
 
 
+@TILED_BROWSERS
+@pytest.mark.parametrize("profile", ["fast", "balanced"])
+def test_full_page_of_an_svg_file(browser, profile, tmp_path):
+    hti = _make_hti(browser, tmp_path)
+
+    output = hti.screenshot(
+        other_file="./examples/star.svg",
+        save_as="star.png",
+        size=(400, 300),
+        full_page=True,
+        full_page_profile=profile,
+    )[0]
+
+    with Image.open(output) as image:
+        assert image.width == 400
+        assert image.height >= 300
+
+
 def _band_color(index):
     return (index * 8, 255 - index * 8, 128)
 
