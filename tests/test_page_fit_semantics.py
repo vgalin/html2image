@@ -426,6 +426,50 @@ def test_full_page_follows_growth_during_tiling_and_restores_page(
         assert image.size == (400, 3000)
 
 
+# A fixed element at the top of the viewport, one at its bottom, and a
+# sticky element in the middle of the page, each with its own inline style.
+_OVERLAYS_HTML = (
+    '<!doctype html><body style="margin:0; height:2500px">'
+    '<div id="top" style="position:fixed; top:0; width:100%; height:20px;'
+    ' background:#ff0000; opacity:0.5"></div>'
+    '<div id="bottom" style="position:fixed; bottom:0; width:100%;'
+    ' height:20px; background:#0000ff; transition:opacity 1s"></div>'
+    '<div id="sticky" style="position:sticky; top:0; margin-top:900px;'
+    ' height:20px; background:#ff00ff"></div>'
+)
+
+_INLINE_STYLES_JS = (
+    "JSON.stringify([Math.round(scrollY)].concat(['top', 'bottom', 'sticky']"
+    ".map(id => document.getElementById(id).style.cssText)))"
+)
+
+
+@pytest.mark.parametrize(
+    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
+)
+@pytest.mark.parametrize("mode", ["auto", "first", "last", "hide"])
+def test_full_page_puts_the_page_back_as_it_was(browser, mode, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    with hti:
+        hti.screenshot(
+            html_str=_OVERLAYS_HTML, save_as="page.png", size=(400, 600)
+        )
+        expected = hti.browser._evaluate(_INLINE_STYLES_JS)
+        hti.screenshot(
+            html_str=_OVERLAYS_HTML,
+            save_as="full-page.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+            full_page_fixed_elements=mode,
+        )
+        state = hti.browser._evaluate(_INLINE_STYLES_JS)
+
+    assert state == expected
+
+
 @pytest.mark.parametrize(
     "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
 )
