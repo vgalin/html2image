@@ -13,6 +13,7 @@ import time
 import uuid
 import warnings
 
+from .browser import needs_restart
 from ..exceptions import (
     BrowserError,
     CaptureTooLargeError,
@@ -717,6 +718,7 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
     y = image_y = requested = 0
     previous_height = limit = None
     messages = []
+    restart = False
     # In `last` mode, the fixed elements are shown on the last tile. In
     # `auto` mode, so are those fixed at the bottom of the viewport.
     whole_last = fixed_elements == 'last'
@@ -821,12 +823,17 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                 break
             page.scroll_to(requested)
             page.settle()
+    except Exception as error:
+        restart = needs_restart(error)
+        raise
     finally:
-        try:
-            seams.forget()
-        finally:
-            if overlay_key is not None:
-                page.evaluate(restore_overlays_js(overlay_key))
+        # A browser that will be restarted is left as it is.
+        if not restart:
+            try:
+                seams.forget()
+            finally:
+                if overlay_key is not None:
+                    page.evaluate(restore_overlays_js(overlay_key))
 
     image = stitch_tiles(tiles, plan, width, image_y, output_format)
     return image, seams.messages(output_file) + messages

@@ -24,6 +24,7 @@ from ._page_fit_common import (
     warn,
     window_height,
 )
+from .browser import needs_restart
 
 logger = logging.getLogger(__name__)
 
@@ -334,6 +335,7 @@ def capture_full_page(browser, output_path, output_file, width,
     """
     output_format = output_format_from_filename(output_file)
     overlay_key = '__h2i_page_fit_%s' % uuid.uuid4().hex
+    restart = False
     try:
         _sleep_ms(250)
         total_height = _settled_document_height(
@@ -379,10 +381,15 @@ def capture_full_page(browser, output_path, output_file, width,
         Path(output_path, output_file).write_bytes(image)
         for message in messages:
             warn(message)
+    except Exception as error:
+        restart = needs_restart(error)
+        raise
     finally:
         # The page is put back as it was, if it can be: the browser may be
         # lost, and the error that stopped the capture is the one to raise.
-        for cleanup in (
+        # A browser that will be restarted is left as it is: after a delay
+        # passed, each cleanup would wait as long.
+        for cleanup in () if restart else (
             lambda: browser._evaluate(restore_overlays_js(overlay_key)),
             lambda: _scroll_to(browser, 0),
         ):

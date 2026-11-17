@@ -24,6 +24,7 @@ from ._page_fit_common import (
     warn,
     window_height,
 )
+from .browser import needs_restart
 from ..exceptions import BrowserError
 
 logger = logging.getLogger(__name__)
@@ -336,7 +337,7 @@ def capture_full_page(browser, output_path, output_file, width,
     those of `Html2Image.screenshot()`, already checked.
     """
     output_format = output_format_from_filename(output_file)
-    transparent_background = False
+    transparent_background = restart = False
     hidden_registry = None
     try:
         _sleep_ms(browser, 250)
@@ -388,9 +389,14 @@ def capture_full_page(browser, output_path, output_file, width,
         Path(output_path, output_file).write_bytes(image)
         for message in messages:
             warn(message)
+    except Exception as error:
+        restart = needs_restart(error)
+        raise
     finally:
         # The page is put back as it was, if it can be: the browser may be
         # lost, and the error that stopped the capture is the one to raise.
+        # A browser that will be restarted is left as it is: after a delay
+        # passed, each cleanup would wait as long.
         cleanups = [
             lambda: _scroll_to(browser, 0),
             lambda: _restore_overlays(browser, hidden_registry),
@@ -399,7 +405,7 @@ def capture_full_page(browser, output_path, output_file, width,
             cleanups.append(lambda: _send(
                 browser, 'Emulation.setDefaultBackgroundColorOverride'
             ))
-        for cleanup in cleanups:
+        for cleanup in [] if restart else cleanups:
             try:
                 cleanup()
             except Exception:

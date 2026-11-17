@@ -622,6 +622,83 @@ def test_tiles_stop_following_a_page_that_keeps_growing():
     assert common._GREW_TOO_MUCH % ("feed.png", 280) in messages
 
 
+class StuckTiles(EndlessTiles):
+    """The same page, in a browser that stops answering once the first
+    tile is captured."""
+
+    def __init__(self):
+        super().__init__()
+        self.scripts = []
+
+    def evaluate(self, expression):
+        self.scripts.append(expression)
+        return []
+
+    def capture(self, top, height, scroll_y, visible):
+        raise BrowserTimeoutError("the browser did not answer in time")
+
+
+def _cleaned_up(scripts):
+    return [
+        script for script in scripts
+        if _is_from(script, common._FORGET_ANCHORS_JS)
+        or _is_from(script, common._RESTORE_OVERLAYS_JS)
+    ]
+
+
+def test_tiles_leave_a_browser_that_will_be_restarted_as_it_is():
+    page = StuckTiles()
+    with pytest.raises(BrowserTimeoutError):
+        common.capture_tiles(page, "auto", "png", None, "page.png")
+
+    # The browser will be restarted. After a delay passed, each cleanup
+    # would wait as long.
+    assert not _cleaned_up(page.scripts)
+
+
+def test_tiles_put_the_page_back_after_an_error_about_the_page():
+    pytest.importorskip("pyvips")
+    page = StuckTiles()
+    page.capture = EndlessTiles.capture.__get__(page)
+    with pytest.raises(CaptureTooLargeError):
+        common.capture_tiles(page, "auto", "png", 10 * 100, "page.png")
+
+    assert len(_cleaned_up(page.scripts)) == 2
+
+
+@pytest.mark.parametrize("page_fit", [chromium_page_fit, firefox_page_fit])
+def test_full_page_leaves_a_browser_that_will_be_restarted_as_it_is(
+    monkeypatch, tmp_path, page_fit
+):
+    calls = []
+
+    class RecordingBrowser(FakeBrowser):
+        def _evaluate(self, expression):
+            calls.append(expression)
+            return super()._evaluate(expression)
+
+    def stuck(*args):
+        calls.append("stuck")
+        raise BrowserTimeoutError("the browser did not answer in time")
+
+    for name, value in [
+        ("_sleep_ms", lambda *args: None),
+        ("_settled_document_height", lambda *args: 70000),
+        ("_read_document_height", lambda *args: 70000),
+        ("_send", lambda browser, method, **kwargs: calls.append(method)),
+        ("_scroll_to", lambda *args: calls.append("_scroll_to")),
+        ("capture_tiles", stuck),
+    ]:
+        monkeypatch.setattr(page_fit, name, value, raising=False)
+
+    with pytest.raises(BrowserTimeoutError):
+        page_fit.capture_full_page(
+            RecordingBrowser(), str(tmp_path), "page.png", 1280, 720,
+            profile="fast", max_pixels=None,
+        )
+    assert calls[-1] == "stuck"
+
+
 @pytest.mark.parametrize(("scroll_height", "expected"), [
     # The page scrolls in the window.
     (None, (5000, [])),
