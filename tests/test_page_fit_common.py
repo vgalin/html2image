@@ -77,24 +77,24 @@ def test_stability_timeout_accepts_none_and_positive_numbers():
     common.validate_stability_timeout(0.5)
 
 
-def _tile_heights(total_height, fixed_elements):
+def _tile_heights(total_height, whole_last):
     heights = []
     while sum(heights) < total_height:
         heights.append(
             common.next_tile_height(
-                sum(heights), total_height, 720, 720, fixed_elements
+                sum(heights), total_height, 720, 720, whole_last
             )
         )
     return heights
 
 
 def test_tiles_cover_document_exactly_once():
-    assert _tile_heights(1_501, "auto") == [720, 720, 61]
+    assert _tile_heights(1_501, False) == [720, 720, 61]
 
 
-def test_last_tile_is_a_whole_viewport_when_fixed_elements_are_kept_last():
-    assert _tile_heights(1_501, "last") == [720, 61, 720]
-    assert _tile_heights(500, "last") == [500]
+def test_last_tile_can_be_a_whole_viewport():
+    assert _tile_heights(1_501, True) == [720, 61, 720]
+    assert _tile_heights(500, True) == [500]
 
 
 def test_arrayjoin_is_used_only_when_short_padding_is_at_the_end():

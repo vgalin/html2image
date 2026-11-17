@@ -80,8 +80,9 @@ _SHOW_OVERLAYS_JS = '''
         const topDistance = Math.abs(rect.top);
         const bottomDistance = Math.abs(innerHeight - rect.bottom);
         const sticky = getComputedStyle(element).position === 'sticky';
-        if (sticky && mode === 'auto') {
-            // A sticky element stays where it is in the flow of the page.
+        if (sticky) {
+            // A sticky element stays where it is in the flow of the page,
+            // whatever the mode: the modes are for fixed elements.
             element.style.setProperty('position', 'relative', 'important');
             element.style.setProperty('top', 'auto', 'important');
             element.style.setProperty('bottom', 'auto', 'important');
@@ -93,10 +94,10 @@ _SHOW_OVERLAYS_JS = '''
 
     for (const {element, saved, sticky, bottom} of registry.entries) {
         let visible;
-        if (mode === 'hide') visible = false;
+        if (sticky) visible = true;
+        else if (mode === 'hide') visible = false;
         else if (mode === 'first') visible = first;
         else if (mode === 'last') visible = last;
-        else if (sticky) visible = true;
         else visible = bottom ? last : first;
         // Unlike `visibility`, `opacity` cannot be overridden by a
         // descendant.
@@ -111,7 +112,9 @@ _SHOW_OVERLAYS_JS = '''
             }
         }
     }
-    return JSON.stringify(null);
+    // Whether a fixed element was found at the bottom of the viewport.
+    return JSON.stringify(registry.entries.some(
+        ({sticky, bottom}) => bottom && !sticky));
 })()
 ''' % _IS_OVERLAY_JS
 
@@ -262,7 +265,8 @@ def show_overlays_js(key, mode, first, last):
 
     `first` and `last` tell whether the tile about to be captured is the
     first or the last one. The elements found are remembered under
-    `window[key]` until `restore_overlays_js()` is run.
+    `window[key]` until `restore_overlays_js()` is run. The script returns
+    whether one of them is fixed at the bottom of the viewport.
     """
     return _SHOW_OVERLAYS_JS % json.dumps([key, mode, first, last])
 
@@ -533,13 +537,15 @@ def enforce_format_limit(width, height, output_format):
 
 
 def next_tile_height(y, total_height, tile_height, viewport_height,
-                     fixed_elements):
-    """Return the height of the tile starting at `y`."""
+                     whole_last):
+    """Return the height of the tile starting at `y`.
+
+    With `whole_last`, the last tile is the whole last viewport, so that an
+    element fixed in it is shown whole.
+    """
     remaining = total_height - y
-    if fixed_elements != 'last':
+    if not whole_last:
         return min(tile_height, remaining)
-    # The final tile is the whole last viewport, so that an element fixed at
-    # its top is part of the image.
     if remaining <= viewport_height:
         return remaining
     return min(tile_height, remaining - viewport_height)
@@ -659,6 +665,9 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
     # to, and its height when the previous tile was captured.
     y = image_y = requested = 0
     previous_height = None
+    # In `last` mode, the fixed elements are shown on the last tile. In
+    # `auto` mode, so are those fixed at the bottom of the viewport.
+    whole_last = fixed_elements == 'last'
 
     def still():
         # The page kept its height, and it stopped where it was asked to.
@@ -675,6 +684,10 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
     try:
         page.scroll_to(requested)
         page.settle()
+        if fixed_elements == 'auto':
+            whole_last = page.evaluate(show_overlays_js(
+                overlay_key, fixed_elements, first=True, last=False,
+            ))
         while True:
             for attempt in range(_TILE_ATTEMPTS):
                 # Scrolling can change the height of a page (a header that
@@ -688,7 +701,7 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                     break
                 height = next_tile_height(
                     top, total_height, page.tile_height,
-                    page.viewport_height, fixed_elements,
+                    page.viewport_height, whole_last,
                 )
                 # The page may not stop where it was asked to, for example
                 # if it changed while it was scrolled.
@@ -705,10 +718,12 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                     height = page.shorten(top, height, scroll_y)
 
                 if overlay_key is not None:
-                    page.evaluate(show_overlays_js(
+                    bottom = page.evaluate(show_overlays_js(
                         overlay_key, fixed_elements,
                         first=not tiles, last=top + height == total_height,
                     ))
+                    if fixed_elements == 'auto':
+                        whole_last = whole_last or bottom
                 seams.mark(top + height)
                 tile, capture_y, capture_height, crop_top = page.capture(
                     top, height, scroll_y, visible

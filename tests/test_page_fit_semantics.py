@@ -266,36 +266,41 @@ def test_full_page_auto_shows_fixed_element_once(browser, case, tmp_path):
     assert red_rows == list(range(20))
 
 
-def _sticky_only_html():
+def _sticky_only_html(height=2500):
     return """<!doctype html>
 <style>
   html, body { margin: 0; }
   .before { height: 900px; }
   .sticky { position: sticky; top: 0; height: 20px; background: #ff00ff; }
-  .after { height: 1580px; }
+  .after { height: %dpx; }
 </style>
 <div class="before"></div><div class="sticky"></div><div class="after"></div>
-"""
+""" % (height - 920)
 
 
 @pytest.mark.parametrize(
     "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
 )
-def test_full_page_auto_keeps_sticky_at_its_natural_position(browser, tmp_path):
+@pytest.mark.parametrize("mode", ["auto", "first", "last", "hide"])
+# Chrome captures the longer page in tiles in every mode.
+@pytest.mark.parametrize("height", [2500, 17000])
+def test_full_page_keeps_sticky_at_its_natural_position(
+    browser, mode, height, tmp_path
+):
     pytest.importorskip("pyvips")
     hti = _make_hti(browser, tmp_path)
 
     output = hti.screenshot(
-        html_str=_sticky_only_html(),
-        save_as="sticky-auto.png",
+        html_str=_sticky_only_html(height),
+        save_as="sticky-%s.png" % mode,
         size=(400, 600),
         full_page=True,
         full_page_profile="fast",
-        full_page_fixed_elements="auto",
+        full_page_fixed_elements=mode,
     )[0]
 
     magenta_rows, size = _rows_with_color(output, (255, 0, 255))
-    assert size == (400, 2500)
+    assert size == (400, height)
     assert magenta_rows == list(range(900, 920))
 
 
@@ -508,6 +513,31 @@ def test_full_page_that_fits_in_the_viewport_does_not_resize_it(
         rgb = image.convert("RGB")
     assert rgb.size == (400, 600)
     assert rgb.getpixel((200, 300)) == (0, 255, 0)
+
+
+@TILED_BROWSERS
+# What is left for the last tile is shorter than the banner.
+@pytest.mark.parametrize("height", [700, 1250, 1300])
+def test_full_page_auto_shows_a_bottom_banner_whole(browser, height, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    output = hti.screenshot(
+        html_str=(
+            '<!doctype html><body style="margin:0; height:%dpx;'
+            ' background:#eeeeee"><div style="position:fixed; bottom:0;'
+            ' left:0; width:100%%; height:200px; background:#0000ff"></div>'
+            % height
+        ),
+        save_as="bottom-banner.png",
+        size=(400, 600),
+        full_page=True,
+        full_page_profile="fast",
+    )[0]
+
+    blue_rows, size = _rows_with_color(output, (0, 0, 255))
+    assert size == (400, height)
+    assert blue_rows == list(range(height - 200, height))
 
 
 def _band_color(index):
