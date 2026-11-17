@@ -22,6 +22,7 @@ from ._page_fit_common import (
     restore_overlays_js,
     show_overlays_js,
     warn,
+    window_height,
 )
 from ..exceptions import BrowserError
 
@@ -343,6 +344,9 @@ def capture_full_page(browser, output_path, output_file, width,
             browser, width, viewport_height, profile, stability_timeout,
             max_pixels,
         )
+        total_height, messages = window_height(
+            browser._evaluate, total_height, viewport_height, output_file
+        )
         enforce_format_limit(width, total_height, output_format)
         _scroll_to(browser, 0)
         overlay_count = browser._evaluate(OVERLAY_COUNT_JS)
@@ -368,7 +372,6 @@ def capture_full_page(browser, output_path, output_file, width,
             and overlay_count > 0
             and fixed_elements in ('auto', 'last')
         )
-        messages = []
         if total_height <= _NATIVE_CAPTURE_MAX_HEIGHT and not force_tiled:
             # Capturing beyond the viewport sends the page resize events, see
             # `_Tiles`. A page that fits in the viewport does not need it.
@@ -377,10 +380,11 @@ def capture_full_page(browser, output_path, output_file, width,
                 beyond_viewport=total_height > viewport_height,
             )
         else:
-            image, messages = capture_tiles(
+            image, tile_messages = capture_tiles(
                 _Tiles(browser, width, viewport_height, profile),
                 fixed_elements, output_format, max_pixels, output_file,
             )
+            messages += tile_messages
         Path(output_path, output_file).write_bytes(image)
         for message in messages:
             warn(message)

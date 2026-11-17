@@ -22,8 +22,8 @@ from ._page_fit_common import (
     restore_overlays_js,
     show_overlays_js,
     warn,
+    window_height,
 )
-from ..exceptions import BrowserError
 
 logger = logging.getLogger(__name__)
 
@@ -307,13 +307,11 @@ class _Tiles:
 
     def shorten(self, top, height, scroll_y):
         """Return the height of the tile at `top`, when the page cannot be
-        scrolled to show it: the tile stops at the bottom of the viewport.
+        scrolled to show it: the tile stops at the bottom of the viewport,
+        or there is no tile if its top is not shown.
         """
         if not scroll_y <= top < scroll_y + self.viewport_height:
-            raise BrowserError(
-                'Firefox did not reach the requested tile position: '
-                f'requested y={top}, actual y={scroll_y}.'
-            )
+            return 0
         return scroll_y + self.viewport_height - top
 
     def capture(self, top, height, scroll_y, visible):
@@ -342,13 +340,16 @@ def capture_full_page(browser, output_path, output_file, width,
             browser, width, viewport_height, profile, stability_timeout,
             max_pixels,
         )
+        total_height, messages = window_height(
+            browser._evaluate, total_height, viewport_height, output_file
+        )
         enforce_pixel_budget(width, total_height, max_pixels)
         enforce_format_limit(width, total_height, output_format)
         _scroll_to(browser, 0)
         _sleep_ms(_PRE_CAPTURE_SETTLE_MS)
 
         overlay_count = browser._evaluate(OVERLAY_COUNT_JS)
-        image, messages = None, []
+        image = None
         # Fixed elements are only shown once in tiles.
         force_tiling = (
             total_height > viewport_height
@@ -370,10 +371,11 @@ def capture_full_page(browser, output_path, output_file, width,
             # The page may have changed while it was captured in one go.
             total_height = _read_document_height(browser, viewport_height)
             enforce_pixel_budget(width, total_height, max_pixels)
-            image, messages = capture_tiles(
+            image, tile_messages = capture_tiles(
                 _Tiles(browser, width, viewport_height),
                 fixed_elements, output_format, max_pixels, output_file,
             )
+            messages += tile_messages
         Path(output_path, output_file).write_bytes(image)
         for message in messages:
             warn(message)

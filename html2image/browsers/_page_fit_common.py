@@ -29,6 +29,9 @@ FIXED_ELEMENT_MODES = ('auto', 'preserve', 'first', 'last', 'hide')
 _TILE_ATTEMPTS = 4
 # The JPEG images written by pyvips cannot be wider or higher than this.
 _JPEG_MAX_SIZE = 65_500
+# While it is captured in tiles, a page that grows, such as an endless feed,
+# is followed up to twice its height, and at least this many viewports more.
+_GROWTH_LIMIT_VIEWPORTS = 10
 
 # A fixed or sticky element that is too small to be seen is ignored. Its
 # content counts, since it can overflow an element that has no size itself.
@@ -245,6 +248,36 @@ _UNCHECKED_SEAMS = {
     ),
 }
 
+# How high the window can scroll, if the page scrolls inside its body
+# instead: its root element does not let its content overflow, and the body
+# can be scrolled by itself. Otherwise, null.
+_INNER_SCROLL_JS = '''
+JSON.stringify((() => {
+    const root = document.scrollingElement || document.documentElement;
+    const body = document.body;
+    if (!body || body === root) return null;
+    const overflow = (element) => getComputedStyle(element).overflowY;
+    if (overflow(document.documentElement) === 'visible'
+        || ['visible', 'clip'].includes(overflow(body))) return null;
+    return root.scrollHeight;
+})())
+'''
+
+_SCROLLED_INSIDE = (
+    '%s: the page scrolls inside its body, not in the window. The image '
+    'only shows what the window showed.'
+)
+
+_NOT_SCROLLED = (
+    '%s: the page could not be scrolled further than %d px. The image '
+    'stops there.'
+)
+
+_GREW_TOO_MUCH = (
+    '%s: the page kept growing while it was captured. The image stops at '
+    '%d px.'
+)
+
 _JPEG_FRAME_MARKERS = {
     0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
     0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF,
@@ -448,6 +481,24 @@ def warn(message):
             'html2image.'):
         frame, level = frame.f_back, level + 1
     warnings.warn(message, FullPageWarning, stacklevel=level)
+
+
+def window_height(evaluate, total_height, viewport_height, output_file):
+    """Return the height of the page that the window can show, and the
+    warnings to give.
+
+    A page that scrolls inside its body cannot be shown higher than the
+    window, see `_INNER_SCROLL_JS`.
+    """
+    scroll_height = evaluate(_INNER_SCROLL_JS)
+    if scroll_height is None:
+        return total_height, []
+    height = max(scroll_height, viewport_height)
+    if total_height <= height + 1:
+        return total_height, []
+    logger.debug('The page is %d px high, but the window shows %d px.',
+                 total_height, height)
+    return height, [_SCROLLED_INSIDE % output_file]
 
 
 def output_format_from_filename(filename):
@@ -664,7 +715,8 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
     # tile was captured, and in the image. Where the page was last scrolled
     # to, and its height when the previous tile was captured.
     y = image_y = requested = 0
-    previous_height = None
+    previous_height = limit = None
+    messages = []
     # In `last` mode, the fixed elements are shown on the last tile. In
     # `auto` mode, so are those fixed at the bottom of the viewport.
     whole_last = fixed_elements == 'last'
@@ -694,6 +746,15 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                 # collapses, content loaded on demand). The tiles follow the
                 # page as it is now, not as it was when first measured.
                 total_height = page.measure()
+                if limit is None:
+                    limit = total_height + max(
+                        total_height,
+                        _GROWTH_LIMIT_VIEWPORTS * page.viewport_height,
+                    )
+                if total_height > limit:
+                    total_height = limit
+                    if not messages:
+                        messages.append(_GREW_TOO_MUCH % (output_file, limit))
                 enforce_pixel_budget(width, total_height, max_pixels)
                 enforce_format_limit(width, total_height, output_format)
                 top = y + seams.shift(still)
@@ -716,6 +777,10 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                     continue
                 if not visible:
                     height = page.shorten(top, height, scroll_y)
+                if not height:
+                    messages.append(_NOT_SCROLLED % (output_file, top))
+                    total_height = top
+                    break
 
                 if overlay_key is not None:
                     bottom = page.evaluate(show_overlays_js(
@@ -764,4 +829,4 @@ def capture_tiles(page, fixed_elements, output_format, max_pixels,
                 page.evaluate(restore_overlays_js(overlay_key))
 
     image = stitch_tiles(tiles, plan, width, image_y, output_format)
-    return image, seams.messages(output_file)
+    return image, seams.messages(output_file) + messages

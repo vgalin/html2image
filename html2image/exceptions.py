@@ -72,7 +72,8 @@ class CaptureTooLargeError(Html2ImageError):
 class FullPageWarning(UserWarning):
     """The image of a page captured with `full_page=True` was saved, but
     it may be wrong in places, for example because the page moved while
-    it was captured.
+    it was captured, or it stops before the end of the page, because the
+    page could not be scrolled to it.
 
     The message names the image and the places. The `warnings` module of
     Python can ignore this warning, or turn it into an error.

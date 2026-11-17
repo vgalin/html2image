@@ -540,6 +540,36 @@ def test_full_page_auto_shows_a_bottom_banner_whole(browser, height, tmp_path):
     assert blue_rows == list(range(height - 200, height))
 
 
+@TILED_BROWSERS
+def test_tiles_stop_following_an_endless_feed(browser, tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti(browser, tmp_path)
+
+    # Never without a pixel budget: the page would grow until the memory of
+    # the machine is used up, if the tiles followed it.
+    with pytest.warns(FullPageWarning, match="kept growing"):
+        output = hti.screenshot(
+            html_str=(
+                '<!doctype html><body style="margin:0"><div id="feed"></div>'
+                "%s<script>const add = () => feed.appendChild("
+                "Object.assign(document.createElement('div'),"
+                " {style: 'height:600px; background:#808080'}));"
+                "add(); add(); add(); addEventListener('scroll', () => {"
+                " if (scrollY + innerHeight >= document.documentElement"
+                ".scrollHeight - 50) add(); });</script>" % _BADGE
+            ),
+            save_as="endless.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+            full_page_max_pixels=400 * 30_000,
+        )[0]
+
+    # The feed was 1800 px high when the tiles started.
+    with Image.open(output) as image:
+        assert image.size == (400, 1800 + 10 * 600)
+
+
 def _band_color(index):
     return (index * 8, 255 - index * 8, 128)
 
@@ -830,6 +860,62 @@ def test_tiles_of_a_page_that_cannot_be_scrolled(tmp_path):
 
     # The tiles below the viewport are captured beyond it.
     _assert_bands(output)
+
+
+def test_firefox_stops_where_a_page_cannot_be_scrolled(tmp_path):
+    pytest.importorskip("pyvips")
+    hti = _make_hti("firefox-bidi", tmp_path)
+
+    # Firefox only captures what the viewport shows.
+    with pytest.warns(FullPageWarning, match="further than 600 px"):
+        output = hti.screenshot(
+            html_str=_bands_html(
+                "addEventListener('scroll', () => scrollTo(0, 0));"
+            ),
+            save_as="not-scrolled.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )[0]
+
+    with Image.open(output) as image:
+        rgb = image.convert("RGB")
+    assert rgb.size == (400, 600)
+    assert rgb.getpixel((10, 101)) == _band_color(0)
+    assert rgb.getpixel((10, 598)) == _band_color(4)
+
+
+@TILED_BROWSERS
+@pytest.mark.parametrize("badge", ["", _BADGE], ids=["alone", "fixed"])
+def test_full_page_of_a_page_that_scrolls_inside_its_body(
+    browser, badge, tmp_path
+):
+    hti = _make_hti(browser, tmp_path)
+    blocks = "".join(
+        '<div style="height:500px; background:rgb%s"></div>'
+        % (_band_color(index),)
+        for index in range(10)
+    )
+
+    # The window cannot scroll: the image is what it shows.
+    with pytest.warns(FullPageWarning, match="scrolls inside its body"):
+        output = hti.screenshot(
+            html_str=(
+                "<!doctype html><style>html { height:100%%;"
+                " overflow:hidden; margin:0 } body { height:100%%;"
+                " overflow:auto; margin:0 }</style>%s%s" % (blocks, badge)
+            ),
+            save_as="inner-scroll.png",
+            size=(400, 600),
+            full_page=True,
+            full_page_profile="fast",
+        )[0]
+
+    with Image.open(output) as image:
+        rgb = image.convert("RGB")
+    assert rgb.size == (400, 600)
+    assert rgb.getpixel((10, 10)) == _band_color(0)
+    assert rgb.getpixel((10, 550)) == _band_color(1)
 
 
 def test_tiles_with_virtual_time_budget(tmp_path):

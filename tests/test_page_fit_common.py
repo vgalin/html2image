@@ -213,10 +213,11 @@ def test_chromium_capture_in_one_go_does_not_hide_errors(
 
 
 class FakeBrowser:
-    """A browser that shows a page without fixed element."""
+    """A browser that shows a page without fixed element, which scrolls in
+    the window."""
 
     def _evaluate(self, expression):
-        return 0
+        return None if expression == common._INNER_SCROLL_JS else 0
 
     def _set_viewport(self, width, height):
         pass
@@ -581,6 +582,60 @@ def test_tiles_refuse_a_jpeg_image_that_grew_too_high():
     pytest.importorskip("pyvips")
     with pytest.raises(CaptureTooLargeError, match="JPEG"):
         common.capture_tiles(FakeTiles(), "auto", "jpeg", None, "page.jpg")
+
+
+class EndlessTiles(FakeTiles):
+    """A page of 10 x 80 px that grows by 20 px each time it is measured,
+    as an endless feed would, shown 20 px at a time."""
+
+    width = 10
+    viewport_height = tile_height = 20
+
+    def __init__(self):
+        self.height, self.scroll_y = 60, 0
+
+    def measure(self):
+        self.height += 20
+        return self.height
+
+    def scroll_to(self, y):
+        self.scroll_y = y
+
+    def viewport(self):
+        return self.scroll_y, self.viewport_height
+
+    def capture(self, top, height, scroll_y, visible):
+        tile = io.BytesIO()
+        Image.new("RGB", (self.width, height)).save(tile, "PNG")
+        return tile.getvalue(), top, height, 0
+
+
+def test_tiles_stop_following_a_page_that_keeps_growing():
+    pytest.importorskip("pyvips")
+    # Without the limit, the page would grow beyond the pixel budget.
+    image, messages = common.capture_tiles(
+        EndlessTiles(), "auto", "png", 10 * 2_000, "feed.png"
+    )
+
+    # The page was 80 px high when the tiles started.
+    assert common.image_dimensions(image) == (10, 80 + 10 * 20)
+    assert common._GREW_TOO_MUCH % ("feed.png", 280) in messages
+
+
+@pytest.mark.parametrize(("scroll_height", "expected"), [
+    # The page scrolls in the window.
+    (None, (5000, [])),
+    # It scrolls inside its body, and the window only shows 600 px.
+    (600, (600, [common._SCROLLED_INSIDE % "page.png"])),
+    (300, (600, [common._SCROLLED_INSIDE % "page.png"])),
+    # The window shows it all.
+    (5000, (5000, [])),
+    (4999, (5000, [])),
+])
+def test_window_height(scroll_height, expected):
+    assert common.window_height(
+        lambda script: scroll_height, 5000, 600, "page.png"
+    ) == expected
 
 
 def test_stitch_tiles_does_not_let_pyvips_errors_out():
