@@ -370,9 +370,11 @@ def capture_full_page(browser, output_path, output_file, width,
         )
         messages = []
         if total_height <= _NATIVE_CAPTURE_MAX_HEIGHT and not force_tiled:
+            # Capturing beyond the viewport sends the page resize events, see
+            # `_Tiles`. A page that fits in the viewport does not need it.
             image = _capture(
                 browser, 0, width, total_height, output_format,
-                beyond_viewport=True,
+                beyond_viewport=total_height > viewport_height,
             )
         else:
             image, messages = capture_tiles(

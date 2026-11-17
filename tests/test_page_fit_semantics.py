@@ -485,6 +485,31 @@ def test_full_page_of_an_svg_file(browser, profile, tmp_path):
         assert image.height >= 300
 
 
+@TILED_BROWSERS
+def test_full_page_that_fits_in_the_viewport_does_not_resize_it(
+    browser, tmp_path
+):
+    hti = _make_hti(browser, tmp_path)
+
+    output = hti.screenshot(
+        html_str=(
+            '<!doctype html><body style="margin:0; background:#00ff00">'
+            "<script>addEventListener('resize', () =>"
+            " document.body.style.background = '#ff0000');</script>"
+        ),
+        save_as="fits.png",
+        size=(400, 600),
+        full_page=True,
+        full_page_profile="fast",
+    )[0]
+
+    # The page would turn red after a resize event.
+    with Image.open(output) as image:
+        rgb = image.convert("RGB")
+    assert rgb.size == (400, 600)
+    assert rgb.getpixel((200, 300)) == (0, 255, 0)
+
+
 def _band_color(index):
     return (index * 8, 255 - index * 8, 128)
 
