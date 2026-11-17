@@ -91,10 +91,18 @@ def _scroll_to(browser, y):
     )
 
 
-def _wait_for_paint(browser):
+def _wait_for_paint(browser, timeout_ms=None):
+    """Wait until the page has drawn two images.
+
+    With `timeout_ms`, the wait will end after that time even if they have
+    not been drawn.
+    """
+    timer = '' if timeout_ms is None else (
+        "setTimeout(() => done('null'), %d); " % timeout_ms
+    )
     browser._evaluate(
-        "new Promise(done => requestAnimationFrame("
-        "() => requestAnimationFrame(() => done('null'))))"
+        "new Promise(done => { %srequestAnimationFrame("
+        "() => requestAnimationFrame(() => done('null'))); })" % timer
     )
 
 
@@ -402,9 +410,15 @@ def capture_full_page(browser, output_path, output_file, width,
             lambda: _restore_overlays(browser, hidden_registry),
         ]
         if transparent_background:
-            cleanups.append(lambda: _send(
-                browser, 'Emulation.setDefaultBackgroundColorOverride'
-            ))
+            cleanups += [
+                lambda: _send(
+                    browser, 'Emulation.setDefaultBackgroundColorOverride'
+                ),
+                # Without this wait, a JPEG taken just after a PNG was
+                # sometimes black where the page has no background. The wait
+                # is bounded, in case the page does not draw anything.
+                lambda: _wait_for_paint(browser, timeout_ms=500),
+            ]
         for cleanup in [] if restart else cleanups:
             try:
                 cleanup()

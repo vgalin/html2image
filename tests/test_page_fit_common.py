@@ -699,6 +699,42 @@ def test_full_page_leaves_a_browser_that_will_be_restarted_as_it_is(
     assert calls[-1] == "stuck"
 
 
+@pytest.mark.parametrize("output_file", ["page.png", "page.jpg"])
+@pytest.mark.parametrize(
+    "fixed_elements", ["auto", "first", "last", "hide", "preserve"]
+)
+def test_chrome_full_page_waits_for_a_paint_after_the_background_is_reset(
+    monkeypatch, tmp_path, output_file, fixed_elements
+):
+    calls = []
+    for name, value in [
+        ("_sleep_ms", lambda *args: None),
+        ("_settled_document_height", lambda *args: 1000),
+        ("_send", lambda browser, method, **kwargs: calls.append(
+            (method, kwargs)
+        )),
+        ("_capture", lambda *args, **kwargs: b"image"),
+        ("_wait_for_paint", lambda browser, timeout_ms=None: calls.append(
+            ("paint", timeout_ms)
+        )),
+    ]:
+        monkeypatch.setattr(chromium_page_fit, name, value)
+
+    chromium_page_fit.capture_full_page(
+        FakeBrowser(), str(tmp_path), output_file, 400, 600,
+        profile="fast", fixed_elements=fixed_elements, max_pixels=None,
+    )
+    background = "Emulation.setDefaultBackgroundColorOverride"
+    if output_file.endswith(".png"):
+        # Without this wait, a JPEG taken just after a PNG was sometimes
+        # black where the page has no background. The wait is bounded.
+        assert calls[-2] == (background, {})
+        assert calls[-1][0] == "paint" and calls[-1][1] is not None
+    else:
+        assert all(call[0] != background for call in calls)
+        assert all(call[1] is None for call in calls if call[0] == "paint")
+
+
 @pytest.mark.parametrize(("scroll_height", "expected"), [
     # The page scrolls in the window.
     (None, (5000, [])),
