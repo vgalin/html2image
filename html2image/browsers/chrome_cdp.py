@@ -4,6 +4,7 @@ from .browser import (
     CDPBrowser,
     needs_restart,
     read_message,
+    remove_profile,
 )
 from .search_utils import find_chrome
 from . import _selector
@@ -19,7 +20,6 @@ import json
 import logging
 import os
 from pathlib import Path
-import shutil
 import socket
 import subprocess
 import tempfile
@@ -806,12 +806,8 @@ class ChromeCDP(CDPBrowser):
 
         # Clean up temporary user data directory
         if self._user_data_dir:
-            try:
-                shutil.rmtree(self._user_data_dir, ignore_errors=True)
-            except Exception:
-                pass
-            finally:
-                self._user_data_dir = None
+            remove_profile(self._user_data_dir)
+            self._user_data_dir = None
 
         self.proc = None
         self._current_port = None

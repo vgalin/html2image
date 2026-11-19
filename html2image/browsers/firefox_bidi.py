@@ -4,6 +4,7 @@ from .browser import (
     BiDiBrowser,
     needs_restart,
     read_message,
+    remove_profile,
 )
 from .search_utils import find_firefox
 from . import _selector
@@ -19,7 +20,6 @@ import json
 import logging
 import os
 from pathlib import Path
-import shutil
 import socket
 import subprocess
 import tempfile
@@ -609,9 +609,5 @@ class FirefoxBiDi(BiDiBrowser):
         self.proc = None
 
         if self._profile_dir:
-            try:
-                shutil.rmtree(self._profile_dir, ignore_errors=True)
-            except Exception:
-                pass
-            finally:
-                self._profile_dir = None
+            remove_profile(self._profile_dir)
+            self._profile_dir = None

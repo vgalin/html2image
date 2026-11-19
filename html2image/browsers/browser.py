@@ -1,5 +1,8 @@
 from abc import ABC, abstractmethod
 import json
+import os
+import shutil
+import time
 
 from websocket import WebSocketException
 
@@ -40,6 +43,26 @@ def needs_restart(error):
     if isinstance(error, PageLoadTimeoutError):
         return True
     return not isinstance(error, (PageLoadError, ValueError))
+
+
+def remove_profile(path, timeout=5):
+    """Delete the profile directory of a browser that was just closed.
+
+    On Windows, a file cannot be deleted while a process has it open, and
+    the browser may still be exiting. The deletion will be tried again until
+    `timeout` seconds have passed. After that, the files that are still
+    open will be left on the disk.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError:
+            if not os.path.exists(path):
+                return
+            time.sleep(0.1)
+    shutil.rmtree(path, ignore_errors=True)
 
 
 class Browser(ABC):
