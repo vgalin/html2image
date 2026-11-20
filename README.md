@@ -174,9 +174,12 @@ completeness:
   static pages that are already fully rendered.
 - `full_page_profile='balanced'` performs a moderate warmup suitable for most
   pages.
-- `full_page_profile='robust'` is the default and performs the most exhaustive
-  warmup. It is slower, but still cannot guarantee completion for every
-  application or infinite feed.
+- `full_page_profile='robust'` performs the most exhaustive warmup. It is
+  slower, but still cannot guarantee completion for every application or
+  infinite feed.
+
+By default, pages given as HTML or as a file will be captured with `fast`, and
+URLs with `balanced`.
 
 `full_page_stability_timeout` is the budget for each layout-stability pass, not
 a deadline for the complete screenshot operation. The `fast` profile does not

@@ -335,7 +335,7 @@ class _Tiles:
 
 def capture_full_page(browser, output_path, output_file, width,
                       viewport_height, stability_timeout=None,
-                      profile='robust', fixed_elements='auto',
+                      profile='balanced', fixed_elements='auto',
                       max_pixels=DEFAULT_MAX_PIXELS):
     """Save an image of the whole page loaded by `browser`.
 

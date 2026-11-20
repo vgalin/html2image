@@ -411,7 +411,8 @@ class Html2Image():
             )
 
         page_fit.validate_stability_timeout(stability_timeout)
-        page_fit.validate_full_page_profile(profile)
+        if profile is not None:
+            page_fit.validate_full_page_profile(profile)
         page_fit.validate_fixed_element_mode(fixed_elements)
         page_fit.validate_max_pixels(max_pixels)
         # The same names and sizes as those `_render()` will use.
@@ -719,7 +720,7 @@ class Html2Image():
         skip_missing=False,
         full_page=False,
         full_page_stability_timeout=None,
-        full_page_profile='robust',
+        full_page_profile=None,
         full_page_fixed_elements='auto',
         full_page_max_pixels=page_fit.DEFAULT_MAX_PIXELS,
     ):
@@ -796,9 +797,11 @@ class Html2Image():
             + changing — not the total operation duration.
             + Must be a strictly positive finite float. None uses the built-in
             + default (~2.8 s). Only relevant when full_page=True.
-        - `full_page_profile`: str, optional
+        - `full_page_profile`: str or None, optional
             + Capture strategy used when full_page=True.
-            + 'robust' (default): exhaustive lazy warmup, pre-scroll per tile,
+            + None (default): 'fast' for pages given as HTML or as a file,
+              'balanced' for URLs.
+            + 'robust': exhaustive lazy warmup, pre-scroll per tile,
               bottom-paint warmup (Firefox). Maximises correctness. Slowest.
             + 'balanced': standard lazy warmup (8 steps x 130 ms), no per-tile
               pre-scroll, no bottom-paint warmup. Good trade-off for most pages.
@@ -1074,6 +1077,14 @@ class Html2Image():
             else:
                 raise FileNotFoundError(css)
 
+        # Without a profile, a page given as HTML or as a file will be
+        # captured as 'fast', and a URL as 'balanced': only pages loaded
+        # from the web usually load content as they are scrolled.
+        url_options = browser_options
+        if browser_options.get('full_page_profile', '') is None:
+            url_options = dict(browser_options, full_page_profile='balanced')
+            browser_options = dict(browser_options, full_page_profile='fast')
+
         for html in html_strings:
             names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
             current_size = sizes.pop(0)
@@ -1126,7 +1137,7 @@ class Html2Image():
 
             page_results.append(self._screenshot_page(
                 target_url, names, current_size, selectors, selector_padding,
-                browser_options,
+                url_options,
             ))
 
         screenshot_paths, missing, too_large = [], [], []

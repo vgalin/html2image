@@ -873,10 +873,23 @@ def test_full_page_profile_invalid_raises():
         page_fit.validate_full_page_profile('turbo')
 
 
-def test_full_page_profile_default_is_robust():
-    import inspect
-    sig = inspect.signature(Html2Image.screenshot)
-    assert sig.parameters['full_page_profile'].default == 'robust'
+def test_full_page_profile_depends_on_the_source(monkeypatch, tmp_path):
+    page = tmp_path / '_profile_file_test.html'
+    page.write_text('<p>x</p>')
+    received = []
+    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    monkeypatch.setattr(
+        hti.browser, 'screenshot', lambda **kw: received.append(kw)
+    )
+    hti.screenshot(
+        html_str='<p>x</p>',
+        html_file=str(page),
+        url='https://example.com',
+        save_as=['_profile_str.png', '_profile_file.png', '_profile_url.png'],
+        full_page=True,
+    )
+    profiles = [kw['full_page_profile'] for kw in received]
+    assert profiles == ['fast', 'fast', 'balanced']
 
 
 def test_screenshot_rejects_unknown_profile():

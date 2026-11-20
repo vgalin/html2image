@@ -637,7 +637,7 @@ class ChromeCDP(CDPBrowser):
         selector_padding=0,
         full_page=False,
         full_page_stability_timeout=None,
-        full_page_profile='robust',
+        full_page_profile='balanced',
         full_page_fixed_elements='auto',
         full_page_max_pixels=DEFAULT_MAX_PIXELS,
     ):
