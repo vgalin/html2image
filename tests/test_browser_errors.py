@@ -14,7 +14,7 @@ from html2image import (
     PageLoadTimeoutError,
 )
 from html2image.browsers import chrome_cdp, firefox_bidi
-from html2image.browsers.browser import needs_restart
+from html2image.browsers.browser import needs_restart, remove_profile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from PIL import Image
 from websocket import (
@@ -26,6 +26,7 @@ import base64
 import json
 import os
 import pytest
+import shutil
 import signal
 import socket
 import subprocess
@@ -417,6 +418,62 @@ def test_firefox_is_stopped_if_it_does_not_close(
     assert bidi_browser.proc is None
 
 
+@pytest.mark.parametrize("fixture, attribute", [
+    ("cdp_browser", "_user_data_dir"),
+    ("bidi_browser", "_profile_dir"),
+])
+@pytest.mark.parametrize("error", [
+    PermissionError(13, "The file is used by a process"),
+    # The browser deleted one of its files while it was exiting.
+    FileNotFoundError(2, "The file was deleted"),
+], ids=["open file", "deleted file"])
+def test_profile_is_removed_once_its_files_are_closed(
+    monkeypatch, request, tmp_path, fixture, attribute, error,
+):
+    browser = request.getfixturevalue(fixture)
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    (profile_dir / "cache").write_text("cache")
+    setattr(browser, attribute, str(profile_dir))
+    # On Windows, the processes of a closed browser can keep files of the
+    # profile open for a moment, while they exit.
+    rmtree = shutil.rmtree
+    attempts = []
+
+    def locked_rmtree(path, ignore_errors=False):
+        attempts.append(path)
+        if len(attempts) < 3:
+            if not ignore_errors:
+                raise error
+            return
+        rmtree(path)
+
+    monkeypatch.setattr(shutil, "rmtree", locked_rmtree)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+
+    browser.__exit__()
+
+    assert not profile_dir.exists()
+    assert getattr(browser, attribute) is None
+
+
+def test_profile_files_that_stay_open_are_left(monkeypatch, tmp_path):
+    attempts = []
+
+    def locked_rmtree(path, ignore_errors=False):
+        attempts.append(ignore_errors)
+        if not ignore_errors:
+            raise PermissionError(13, "The file is used by a process")
+
+    monkeypatch.setattr(shutil, "rmtree", locked_rmtree)
+
+    remove_profile(str(tmp_path), timeout=0.3)
+
+    # A last pass still deletes the files that are not open.
+    assert attempts[0] is False
+    assert attempts[-1] is True
+
+
 def test_firefox_downloads_go_in_the_profile(tmp_path, bidi_browser):
     bidi_browser._write_profile_prefs(str(tmp_path))
 
@@ -619,6 +676,7 @@ def test_browser_that_does_not_close_is_killed(monkeypatch, tmp_path, browser):
 
     with hti:
         port = hti.browser._current_port
+        profile_dir = hti.browser._user_data_dir
         # The browser is not asked to close, as if it took too long.
         send = hti.browser.cdp_send
         monkeypatch.setattr(
@@ -633,3 +691,15 @@ def test_browser_that_does_not_close_is_killed(monkeypatch, tmp_path, browser):
         )
 
     assert _port_is_closed(port)
+    assert not os.path.exists(profile_dir)
+
+
+@pytest.mark.parametrize("browser", ["chrome", "edge"])
+def test_profile_is_removed_after_closing(tmp_path, browser):
+    hti = _make_hti(browser, tmp_path)
+
+    with hti:
+        _assert_screenshot_works(hti)
+        profile_dir = hti.browser._user_data_dir
+
+    assert not os.path.exists(profile_dir)
