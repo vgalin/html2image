@@ -1140,20 +1140,36 @@ class Html2Image():
                 url_options,
             ))
 
-        screenshot_paths, missing, too_large = [], [], []
-        for paths, page_missing, page_too_large in page_results:
+        screenshot_paths, missing, too_large, errors = [], [], [], []
+        for paths, page_missing, page_too_large, page_errors in page_results:
             screenshot_paths += paths
             missing += page_missing
             too_large += page_too_large
+            errors += page_errors
 
-        if too_large and browser_options.get('full_page'):
+        if errors and browser_options.get('full_page'):
             max_pixels = browser_options['full_page_max_pixels']
+            reasons = {}
+            for (_, name), error in zip(too_large, errors):
+                if isinstance(error, page_fit.FormatLimitError):
+                    reason = (
+                        'A JPEG image cannot be wider or higher than '
+                        f'{page_fit.JPEG_MAX_SIZE:,} pixels. Save it as a '
+                        'PNG image instead.'
+                    )
+                else:
+                    reason = (
+                        'The image would have had more than '
+                        f'{max_pixels:,} pixels, the limit set by '
+                        'full_page_max_pixels. Raise the limit, or set it to '
+                        'None to remove it.'
+                    )
+                reasons.setdefault(reason, []).append(name)
             raise CaptureTooLargeError(
-                'Too large to be captured: '
-                f'{", ".join(name for _, name in too_large)}.\n'
-                f'The image would have had more than {max_pixels:,} pixels, '
-                'the limit set by full_page_max_pixels. Raise the limit, or '
-                'set it to None to remove it.',
+                '\n'.join(
+                    f'Too large to be captured: {", ".join(names)}.\n{reason}'
+                    for reason, names in reasons.items()
+                ),
                 paths=screenshot_paths,
                 too_large=too_large,
             )
@@ -1196,11 +1212,12 @@ class Html2Image():
 
         Returns
         -------
-        - tuple of three lists
+        - tuple of four lists
             + The paths of the saved files, then the (selector, name)
             + pairs of the missing elements and of the elements too large
-            + to be captured. The selector of a too large page captured
-            + with `full_page` is None.
+            + to be captured, then the errors raised for the pages too
+            + large to be captured with `full_page`, whose selector is
+            + None.
         """
         if not selectors:
             try:
@@ -1211,11 +1228,11 @@ class Html2Image():
                     size=size,
                     **browser_options,
                 )
-            except CaptureTooLargeError:
+            except CaptureTooLargeError as error:
                 # As with a too large element, the other pages will be
                 # saved before the error is raised.
-                return [], [], [(None, names[0])]
-            return [os.path.join(self.output_path, names[0])], [], []
+                return [], [], [(None, names[0])], [error]
+            return [os.path.join(self.output_path, names[0])], [], [], []
 
         elements = list(zip(selectors, names))
         missing, too_large = self.browser.screenshot(
@@ -1230,7 +1247,7 @@ class Html2Image():
             for selector, name in elements
             if (selector, name) not in missing + too_large
         ]
-        return paths, missing, too_large
+        return paths, missing, too_large, []
 
     @staticmethod
     def _describe_elements(elements):

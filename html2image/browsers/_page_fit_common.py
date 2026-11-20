@@ -29,7 +29,7 @@ FIXED_ELEMENT_MODES = ('auto', 'preserve', 'first', 'last', 'hide')
 # Tries to capture a tile while the page moves or does not show it.
 _TILE_ATTEMPTS = 4
 # The JPEG images written by pyvips cannot be wider or higher than this.
-_JPEG_MAX_SIZE = 65_500
+JPEG_MAX_SIZE = 65_500
 # While it is captured in tiles, a page that grows, such as an endless feed,
 # is followed up to twice its height, and at least this many viewports more.
 _GROWTH_LIMIT_VIEWPORTS = 10
@@ -578,13 +578,17 @@ def enforce_pixel_budget(width, height, max_pixels):
         )
 
 
+class FormatLimitError(CaptureTooLargeError):
+    """The image would be too large to be saved in its format."""
+
+
 def enforce_format_limit(width, height, output_format):
-    """Raise CaptureTooLargeError if the image would be too large to be
-    saved in its format, before capturing it."""
-    if output_format == 'jpeg' and max(width, height) > _JPEG_MAX_SIZE:
-        raise CaptureTooLargeError(
+    """Raise FormatLimitError if the image would be too large to be saved
+    in its format, before capturing it."""
+    if output_format == 'jpeg' and max(width, height) > JPEG_MAX_SIZE:
+        raise FormatLimitError(
             f'Full-page capture would be {width}x{height} pixels, but a '
-            f'JPEG image cannot be larger than {_JPEG_MAX_SIZE:,} pixels '
+            f'JPEG image cannot be larger than {JPEG_MAX_SIZE:,} pixels '
             'in width or in height. Save it as a PNG image instead.'
         )
 

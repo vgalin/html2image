@@ -1072,6 +1072,52 @@ def test_too_large_full_page_does_not_stop_the_other_pages(
     assert error.value.too_large == [(None, "tall.png")]
 
 
+def test_too_large_full_page_gives_the_reason_of_each_image(
+    monkeypatch, tmp_path
+):
+    hti = Html2Image(browser="chrome", output_path=str(tmp_path))
+
+    def screenshot(output_file, **kwargs):
+        if output_file == "big.png":
+            page_fit.enforce_pixel_budget(10_000, 20_000, 100_000_000)
+        page_fit.enforce_format_limit(400, 66_000, "jpeg")
+
+    monkeypatch.setattr(hti.browser, "screenshot", screenshot)
+
+    with pytest.raises(CaptureTooLargeError) as error:
+        hti.screenshot(
+            html_str=["big", "high"],
+            save_as=["big.png", "high.jpg"],
+            full_page=True,
+        )
+
+    assert str(error.value) == (
+        "Too large to be captured: big.png.\n"
+        "The image would have had more than 100,000,000 pixels, the limit "
+        "set by full_page_max_pixels. Raise the limit, or set it to None to "
+        "remove it.\n"
+        "Too large to be captured: high.jpg.\n"
+        "A JPEG image cannot be wider or higher than 65,500 pixels. Save it "
+        "as a PNG image instead."
+    )
+
+
+def test_too_high_jpeg_without_a_pixel_limit(monkeypatch, tmp_path):
+    hti = Html2Image(browser="chrome", output_path=str(tmp_path))
+    monkeypatch.setattr(
+        hti.browser, "screenshot",
+        lambda **kwargs: page_fit.enforce_format_limit(400, 66_000, "jpeg"),
+    )
+
+    with pytest.raises(CaptureTooLargeError, match="A JPEG image cannot"):
+        hti.screenshot(
+            html_str="high",
+            save_as="high.jpg",
+            full_page=True,
+            full_page_max_pixels=None,
+        )
+
+
 @pytest.mark.parametrize("save_as", ["../escaped.png", os.path.abspath("escaped.png")])
 def test_screenshot_save_as_path_writes_nothing(tmp_path, save_as):
     temp_path = tmp_path / "temp"
