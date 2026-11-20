@@ -40,7 +40,7 @@ def test_output_format_rejects_unsupported_extension():
 
 @pytest.mark.parametrize("size", [(0, 10), (10, -1), (10.5, 10), (True, 10)])
 def test_validate_viewport_rejects_invalid_size(size):
-    with pytest.raises(ValueError, match="strictly positive integers"):
+    with pytest.raises(ValueError, match="two positive integers"):
         common.validate_viewport(*size)
 
 

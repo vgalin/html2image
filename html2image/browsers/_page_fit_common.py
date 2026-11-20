@@ -511,7 +511,7 @@ def output_format_from_filename(filename):
     if name.endswith(('.jpg', '.jpeg')):
         return 'jpeg'
     raise ValueError(
-        'full_page output_file must end with .png, .jpg, or .jpeg '
+        'With full_page=True, save_as must end with .png, .jpg or .jpeg '
         f'(got {filename!r})'
     )
 
@@ -523,7 +523,7 @@ def _is_positive_int(value):
 def validate_viewport(width, height):
     if not (_is_positive_int(width) and _is_positive_int(height)):
         raise ValueError(
-            'full_page size must contain two strictly positive integers '
+            'With full_page=True, size must contain two positive integers '
             f'(got {(width, height)!r})'
         )
 
@@ -547,8 +547,8 @@ def validate_fixed_element_mode(mode):
 def validate_max_pixels(max_pixels):
     if max_pixels is not None and not _is_positive_int(max_pixels):
         raise ValueError(
-            'full_page_max_pixels must be a strictly positive integer or '
-            f'None (got {max_pixels!r})'
+            'full_page_max_pixels must be a positive integer or None '
+            f'(got {max_pixels!r})'
         )
 
 
@@ -561,8 +561,8 @@ def validate_stability_timeout(timeout):
         or not 0 < timeout < math.inf
     ):
         raise ValueError(
-            'full_page_stability_timeout must be a strictly positive finite '
-            f'float or None (got {timeout!r})'
+            'full_page_stability_timeout must be a positive finite number '
+            f'or None (got {timeout!r})'
         )
 
 
