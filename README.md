@@ -52,15 +52,18 @@ Or with `uv`:
 uv pip install html2image
 ```
 
-Long full-page captures may need to assemble several browser screenshots. Install
-the optional `pyvips` support when you use that fallback:
+Some full-page screenshots need the `pyvips` package to join several
+screenshots into one image. The `full-page` extra will install it along with
+html2image:
 
 ```console
 pip install "html2image[full-page]"
 ```
 
-`pyvips` is only required when stitching is actually needed. A full-page capture
-that the browser can produce directly does not require this extra.
+It will be needed when a page taller than the window has a fixed or sticky
+element, such as a header that stays at the top, as most websites do. It will
+also be needed for pages taller than 16,000 px under Chrome and Edge, or
+65,535 px under Firefox. Without it, these captures will raise an `ImportError`.
 
 In addition to this package, at least one of the following browsers **must** be installed on your machine :
 -   Google Chrome (Windows, MacOS)
@@ -147,8 +150,8 @@ hti.screenshot(other_file='star.svg', size=(500, 500))
 
 ### Full-page screenshots
 
-Protocol backends (`chrome`, `chromium`, `edge` and `firefox`) can capture the
-complete document instead of stopping at the visible viewport:
+The `chrome`, `chromium`, `edge` and `firefox` browsers can capture the whole
+page instead of stopping at the bottom of the window:
 
 ```python
 hti.screenshot(
@@ -159,42 +162,50 @@ hti.screenshot(
 )
 ```
 
-With `full_page=True`, `size` does not describe a fixed output rectangle. Its
-width is the canonical layout viewport width and the final image width. Its
-height is the browser viewport height used to render and scroll the page. The
-final image grows to the document height, so the requested height is a natural
-minimum for a short page, not a maximum. Changing the viewport height can change
-`vh`-based layouts, lazy loading, the number of captured tiles and the overall
-capture time.
+With `full_page=True`, the image will be as wide as `size`, and as high as the
+page, but not less than the height of `size`. That height will be the height of
+the window, which changes how some pages look, for example a first section that
+fills the window.
 
-The loading profile controls the trade-off between speed and best-effort page
-completeness:
+`full_page_profile` sets how long to wait for the content that loads as the page
+is scrolled:
 
-- `full_page_profile='fast'` skips stability and lazy-loading warmups. Use it for
-  static pages that are already fully rendered.
-- `full_page_profile='balanced'` performs a moderate warmup suitable for most
-  pages.
-- `full_page_profile='robust'` performs the most exhaustive warmup. It is
-  slower, but still cannot guarantee completion for every application or
-  infinite feed.
+- `fast` will not wait for it. It is the default for pages given as HTML or as a
+  file. Images in `loading="lazy"` may then be missing.
+- `balanced` will wait until the height of the page stops changing, then scroll
+  through it once. It is the default for URLs.
+- `robust` will scroll through the page until it stops growing. It is the
+  slowest.
 
-By default, pages given as HTML or as a file will be captured with `fast`, and
-URLs with `balanced`.
+`full_page_stability_timeout` is the longest wait, in seconds, each time the
+height of the page has to stop changing, not for the whole capture. `fast` does
+not use it.
 
-`full_page_stability_timeout` is the budget for each layout-stability pass, not
-a deadline for the complete screenshot operation. The `fast` profile does not
-use stability passes.
+Some elements stay in place while the page scrolls, such as a header fixed at
+the top of the window. `full_page_fixed_elements` sets how they will appear in
+the image:
 
-For tiled captures, `full_page_fixed_elements='auto'` avoids repeating fixed or
-sticky UI and keeps top- and bottom-anchored elements once. Advanced fallback
-modes are `preserve` (do not intervene), `first`, `last`, and `hide`.
+- `auto` (default): each one will appear once, at the top or at the bottom of
+  the image, depending on where it is fixed in the window.
+- `first`: they will appear once, as they are when the page is opened.
+- `last`: they will appear once, as they are when the page is scrolled to the
+  end.
+- `hide`: they will not appear.
+- `preserve`: they will be left as the browser shows them, and can appear
+  several times in the image.
 
-`full_page_max_pixels` limits the final image area to 100,000,000 pixels by
-default. Crossing the limit raises an explicit error rather than returning a
-truncated image. Set a larger positive integer to raise the limit, or `None` to
-disable it. Disabling the limit can make a capture consume substantial memory
-and time. The exception can be caught as
-`html2image.CaptureTooLargeError`.
+Sticky elements will stay in their place in the page, except with `preserve`.
+
+`full_page_max_pixels` limits the image to 100,000,000 pixels by default, and
+`None` removes the limit, which can use a lot of memory. A larger page, or a
+JPEG image wider or higher than 65,500 px, will raise `CaptureTooLargeError`
+instead of giving a cut image.
+
+A `FullPageWarning` will be given when an image was saved but may be wrong in
+places, for example if the page moved while it was captured, or when the image
+stops before the end of the page. An endless feed, which keeps loading content
+as it is scrolled, will stop at a limit, at least twice the height it had when
+the capture started.
 
 ---
 
@@ -513,11 +524,13 @@ html2image raises its own exceptions when the browser or the page fails. They al
 | `PageLoadError` | the page could not be loaded, but the browser is fine |
 | `PageLoadTimeoutError` | the page did not finish loading in time |
 | `ElementNotFoundError` | an element given by `selector` had nothing to capture |
-| `CaptureTooLargeError` | an element was too large for the browser to capture in one go, or a page captured with `full_page=True` was larger than `full_page_max_pixels` |
+| `CaptureTooLargeError` | an element was too large for the browser to capture in one go, or a page captured with `full_page=True` was larger than `full_page_max_pixels` or than a JPEG image can be |
 
 With `selector`, `ElementNotFoundError` and `CaptureTooLargeError` will only be raised once all the other images have been saved. Their `paths` attribute lists the saved images, and `missing` or `too_large` lists the (selector, filename) pairs of the others.
 
 With `full_page=True`, `CaptureTooLargeError` will also only be raised once all the other images have been saved. The selector in its `too_large` pairs will be `None`.
+
+With `full_page=True`, an image that was saved but may be wrong in places will give a `FullPageWarning`, see [Full-page screenshots](#full-page-screenshots).
 
 For example, to skip the pages that cannot be loaded:
 
@@ -629,9 +642,9 @@ On top of that, you can also use [volumes](https://docs.docker.com/storage/volum
 ## FAQ
 
 - Can I automatically take a full page screenshot?  
-**Yes.** Use a protocol backend and pass `full_page=True`; see
-[Full-page screenshots](#full-page-screenshots). The legacy command-line
-backends do not support this mode.
+**Yes.** Use the `chrome`, `edge` or `firefox` browser and pass `full_page=True`, see
+[Full-page screenshots](#full-page-screenshots). The `-headless` browsers do not
+support it.
 
 - Can I add delay before taking a screenshot?   
 **Yes** you can, please take a look at the `Change browser flags` section of the readme.
