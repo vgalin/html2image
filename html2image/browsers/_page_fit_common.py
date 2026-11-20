@@ -234,14 +234,15 @@ JSON.stringify(%s.map(key => delete window[key]))
 
 _UNCHECKED_SEAMS = {
     'no anchor': (
-        '%s: the full page image was joined from several screenshots, and '
-        'the joins at %s could not be checked, as too few elements of the '
-        'page were found there. The image may be wrong there if the page '
-        'moved while it was captured.'
+        '%s: the image was joined from several screenshots, and the joins '
+        'at %s could not be checked, because too few elements of the page '
+        'were found there. The image may be wrong there if the page moved '
+        'while it was captured.'
     ),
     'uneven': (
-        '%s: the page moved unevenly while it was captured, near the joins '
-        'between screenshots at %s. The image may be wrong there.'
+        '%s: parts of the page moved by different amounts while it was '
+        'captured, near the joins between screenshots at %s. The image may '
+        'be wrong there.'
     ),
     'moving': (
         '%s: the page kept moving while it was captured, near the joins '

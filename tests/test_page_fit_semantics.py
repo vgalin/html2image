@@ -795,7 +795,7 @@ def test_tiles_do_not_follow_a_block_that_moves_by_itself(browser, tmp_path):
         '<div style="height:30px; background:#000000"></div>'
         '<div style="height:70px"></div>'
     )
-    with pytest.warns(FullPageWarning, match="moved unevenly"):
+    with pytest.warns(FullPageWarning, match="moved by different amounts"):
         output = hti.screenshot(
             html_str=_blocks_html(content, "moving.style.top = '12px';"),
             save_as="moving-block.png",
