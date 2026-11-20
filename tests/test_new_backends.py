@@ -217,9 +217,8 @@ def test_firefox_bidi_html_file():
 # full_page integration tests
 # ---------------------------------------------------------------------------
 
-# Short card fixture — body height is explicitly 800px.
-# 800 > _PROBE_VIEWPORT_H (720) > user viewport (600), so full_page must capture
-# 800px rather than the user viewport height (600px).
+# A short card: the body is 800 px high, more than the viewport of the
+# test (600 px), so the full page is higher than the viewport.
 _SHORT_CARD_HTML = """\
 <!DOCTYPE html>
 <html>
@@ -231,7 +230,7 @@ _SHORT_CARD_HTML = """\
 </html>
 """
 
-# Long article fixture — ~3000px tall with 30 paragraphs.
+# A long article: 30 paragraphs, about 3,300 px high.
 _LONG_ARTICLE_HTML = """\
 <!DOCTYPE html>
 <html>
@@ -255,9 +254,9 @@ def test_chrome_cdp_full_page_short_card():
         full_page=True,
     )
     img = Image.open(paths[0])
-    # body height is 800px — full_page must capture 800px, not the user viewport (600px)
+    # The body is 800 px high: the full page is higher than the viewport.
     assert img.width == viewport[0]
-    assert img.height > viewport[1]   # 800 > 600 : captured beyond user viewport
+    assert img.height > viewport[1]   # 800 > 600: captured beyond the viewport
     assert img.height < 1200          # not as tall as long article (~3000px)
 
 
@@ -272,7 +271,7 @@ def test_chrome_cdp_full_page_long_article():
         full_page=True,
     )
     img = Image.open(paths[0])
-    # 30 × (100px + 10px margin) + header ≈ 3300px — must exceed the viewport.
+    # 30 x (100 px + 10 px of margin) + the header, about 3,300 px.
     assert img.width == viewport[0]
     assert img.height > viewport[1]
 

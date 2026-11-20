@@ -710,7 +710,7 @@ def test_mozilla_firefox_alias_maps_to_firefox_bidi():
 # ---------------------------------------------------------------------------
 
 def test_full_page_default_is_false():
-    """full_page defaults to False — signature check without instantiating a browser."""
+    """full_page defaults to False, checked without starting a browser."""
     import inspect
     from html2image.html2image import Html2Image as _H2I
     sig = inspect.signature(_H2I.screenshot)
