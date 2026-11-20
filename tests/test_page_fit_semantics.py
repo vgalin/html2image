@@ -870,7 +870,7 @@ def test_tiles_warn_when_a_single_column_moves(browser, tmp_path):
         for index in range(30)
     )
 
-    with pytest.warns(FullPageWarning, match="unevenly"):
+    with pytest.warns(FullPageWarning, match="moved by different amounts"):
         hti.screenshot(
             html_str=(
                 '<!doctype html><body style="margin:0">'
