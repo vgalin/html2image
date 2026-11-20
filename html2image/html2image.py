@@ -757,11 +757,9 @@ class Html2Image():
             + method is called.
             + With `selector`, this is the size of the window in which
             + each page will be displayed, with one size per page.
-            + With full_page=True, the width is both the canonical layout
-              viewport width and the final image width. The height remains the
-              rendering viewport height: it can affect responsive CSS, lazy
-              loading and capture time, and is the natural minimum for a short
-              page, but it does not cap the final image height.
+            + With `full_page=True`, the image will be as wide as `size`,
+            + and as high as the page, but not less than the height of
+            + `size`, which will be the height of the window.
         - `selector`: list of str or str, optional
             + CSS selector of an element, e.g. '#chart'. The image will
             + then show this element only, instead of the window, even if
@@ -787,41 +785,50 @@ class Html2Image():
             + contain the saved images.
             + Default is False.
         - `full_page`: bool, optional
-            + If True, captures the full page height rather than just the
-            + visible viewport. Requires a protocol backend (ChromeCDP,
-            + EdgeCDP or FirefoxBiDi). Default is False.
-        - `full_page_stability_timeout`: float or None, optional
-            + Budget in seconds applied to each DOM/layout stabilisation pass
-            + (initial measurement and any post-warmup re-measurement).
-            + Controls how long html2image waits for page dimensions to stop
-            + changing — not the total operation duration.
-            + Must be a strictly positive finite float. None uses the built-in
-            + default (~2.8 s). Only relevant when full_page=True.
+            + If True, the image will show the whole page, not only what
+            + fits in the window.
+            + Only works with the 'chrome', 'edge' and 'firefox' browsers.
+            + Some pages will need `pyvips`, installed with
+            + `pip install "html2image[full-page]"`.
+            + Default is False.
+        - `full_page_stability_timeout`: int, float or None, optional
+            + The longest wait, in seconds, each time the height of the
+            + page has to stop changing, not for the whole capture.
+            + 'fast' does not use it.
+            + Default is None: about 2.8 seconds.
         - `full_page_profile`: str or None, optional
-            + Capture strategy used when full_page=True.
-            + None (default): 'fast' for pages given as HTML or as a file,
-              'balanced' for URLs.
-            + 'robust': exhaustive lazy warmup, pre-scroll per tile,
-              bottom-paint warmup (Firefox). Maximises correctness. Slowest.
-            + 'balanced': standard lazy warmup (8 steps x 130 ms), no per-tile
-              pre-scroll, no bottom-paint warmup. Good trade-off for most pages.
-            + 'fast': single JS snapshot, no lazy probe, no warmup. Fastest.
-              It may produce partial captures on pages that load content
-              dynamically on scroll (lazy feeds, intersection observers). The
-              fixed/sticky policy below applies independently of the profile.
-              Use fast only when the page is already fully rendered at load.
-            + Only relevant when full_page=True.
+            + How long to wait for the content that loads as the page is
+            + scrolled.
+            + 'fast' will not wait for it. Images in `loading="lazy"` may
+            + then be missing.
+            + 'balanced' will wait until the height of the page stops
+            + changing, then scroll through it once.
+            + 'robust' will scroll through the page until it stops
+            + growing. It is the slowest.
+            + Default is None: 'fast' for pages given as HTML or as a
+            + file, 'balanced' for URLs.
         - `full_page_fixed_elements`: str, optional
-            + How fixed and sticky elements are handled in tiled captures.
-            + 'auto' (default) keeps top- and bottom-anchored elements once;
-              'preserve' leaves browser rendering untouched; 'first' or 'last'
-              keeps them only on that tile; 'hide' removes them from all tiles.
-            + Only relevant when full_page=True.
+            + How the elements that stay in place while the page scrolls,
+            + such as a fixed header, will appear in the image.
+            + 'auto': each one will appear once, at the top or at the
+            + bottom of the image, depending on where it is fixed in the
+            + window.
+            + 'first': they will appear once, as they are when the page
+            + is opened.
+            + 'last': they will appear once, as they are when the page is
+            + scrolled to the end.
+            + 'hide': they will not appear.
+            + 'preserve': they will be left as the browser shows them, and
+            + can appear several times in the image.
+            + Sticky elements will stay in their place in the page, except
+            + with 'preserve'.
+            + Default is 'auto'.
         - `full_page_max_pixels`: int or None, optional
-            + Maximum final image area (width x height). The default is
-              100,000,000 pixels. Exceeding it raises an explicit error instead
-              of returning a truncated image. Use None to disable the limit.
-            + Only relevant when full_page=True.
+            + The largest number of pixels of the image. A larger page
+            + will raise `CaptureTooLargeError` instead of giving a cut
+            + image. None removes the limit, which can use a lot of
+            + memory.
+            + Default is 100,000,000.
 
         Returns
         -------
@@ -831,6 +838,9 @@ class Html2Image():
         Raises
         ------
         - `FileNotFoundError`
+        - `ImportError`
+            + With `full_page=True`, if `pyvips` is needed but not
+            + installed.
         - `ValueError`
             + If a name given in `save_as` is a path and not a filename,
             + or if a name given in `save_as` ends with .pdf: use the
@@ -838,12 +848,12 @@ class Html2Image():
             + or if `selector` is used with 'chrome-headless',
             + 'edge-headless' or 'firefox-headless', or is not a valid CSS
             + selector, or if `selector_padding` is negative.
-            + If full_page=True is used with a non-protocol backend.
-            + If full_page_stability_timeout is not None and is not a strictly
-              positive finite float.
-            + If full_page_profile or full_page_fixed_elements is unknown.
-            + If full_page_max_pixels is neither a positive integer nor None.
-            + If `selector` and `full_page=True` are used together.
+            + If `full_page=True` is used with 'chrome-headless',
+            + 'edge-headless' or 'firefox-headless', or with `selector`.
+            + With `full_page=True`, if a `full_page_*` option has an
+            + invalid value, if a name given in `save_as` does not end
+            + with .png, .jpg or .jpeg, or if a size is not made of two
+            + positive integers.
         - `ElementNotFoundError`
             + If an element has nothing to capture: no element matches its
             + selector, or it is hidden, empty or outside of the page.
@@ -853,8 +863,19 @@ class Html2Image():
             + even with `skip_missing=True`. The other images will be
             + saved first.
             + With `full_page=True`, if a page is larger than
-            + `full_page_max_pixels`. The other images will be saved
-            + first.
+            + `full_page_max_pixels`, or than a JPEG image can be (65,500
+            + pixels in width or in height). The other images will be
+            + saved first.
+        - `Html2ImageError`
+            + With `full_page=True`, if `pyvips` could not join the
+            + screenshots of a page.
+
+        Warns
+        -----
+        - `FullPageWarning`
+            + With `full_page=True`, if an image was saved but may be
+            + wrong in places, for example if the page moved while it was
+            + captured, or if it stops before the end of the page.
         """
 
         # TODO / NOTE : This does not pose any problem for now but setting
