@@ -1,4 +1,5 @@
 import io
+import sys
 import warnings
 
 import pytest
@@ -576,6 +577,16 @@ class FakeTiles:
 
     def measure(self):
         return 66000
+
+
+def test_tiles_need_pyvips_before_the_page_is_scrolled(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pyvips", None)
+    scrolled = []
+    page = FakeTiles()
+    page.scroll_to = scrolled.append
+    with pytest.raises(ImportError, match="pyvips"):
+        common.capture_tiles(page, "auto", "png", None, "page.png")
+    assert scrolled == []
 
 
 def test_tiles_refuse_a_jpeg_image_that_grew_too_high():
