@@ -52,7 +52,7 @@ class ElementNotFoundError(Html2ImageError):
 class CaptureTooLargeError(Html2ImageError):
     """An area was too large for the browser to capture in one go, or a
     page captured with `full_page=True` was larger than
-    `full_page_max_pixels`.
+    `full_page_max_pixels` or than a JPEG image can be.
 
     The other images were saved anyway.
 
