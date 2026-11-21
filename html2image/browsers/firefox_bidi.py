@@ -6,8 +6,9 @@ from .browser import (
     read_message,
     remove_profile,
 )
+from ._page_fit_common import DEFAULT_MAX_PIXELS
 from .search_utils import find_firefox
-from . import _selector
+from . import _firefox_page_fit, _selector
 from ..exceptions import (
     BrowserError,
     BrowserTimeoutError,
@@ -533,6 +534,11 @@ class FirefoxBiDi(BiDiBrowser):
         pdf_options=None,
         elements=None,
         selector_padding=0,
+        full_page=False,
+        full_page_stability_timeout=None,
+        full_page_profile='balanced',
+        full_page_fixed_elements='auto',
+        full_page_max_pixels=DEFAULT_MAX_PIXELS,
     ):
         """Take a screenshot using Firefox via WebDriver BiDi.
 
@@ -540,6 +546,9 @@ class FirefoxBiDi(BiDiBrowser):
 
         If `elements` is given, an image of each element is saved instead,
         as with `ChromeCDP.screenshot()`.
+
+        If `full_page` is True, an image of the whole page will be saved
+        instead, see `_firefox_page_fit.capture_full_page()`.
         """
         target_url = self._normalize_input(input)
         auto_started = self._ws is None
@@ -556,6 +565,18 @@ class FirefoxBiDi(BiDiBrowser):
             elif elements is not None:
                 return self._capture_elements(
                     output_path, elements, selector_padding
+                )
+            elif full_page:
+                _firefox_page_fit.capture_full_page(
+                    self,
+                    output_path,
+                    output_file,
+                    width,
+                    height,
+                    stability_timeout=full_page_stability_timeout,
+                    profile=full_page_profile,
+                    fixed_elements=full_page_fixed_elements,
+                    max_pixels=full_page_max_pixels,
                 )
             else:
                 self._capture(os.path.join(output_path, output_file))

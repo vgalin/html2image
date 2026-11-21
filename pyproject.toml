@@ -41,6 +41,10 @@ Issues = "https://github.com/vgalin/html2image/issues"
 Changelog = "https://github.com/vgalin/html2image/releases"
 
 [project.optional-dependencies]
+full-page = [
+    "pyvips>=2.2.1",
+    "pyvips-binary>=8.15.0",
+]
 test = [
     "Pillow>=8.2.0",
     "pytest",
@@ -49,7 +53,7 @@ lint = [
     "flake8",
 ]
 dev = [
-    "html2image[test,lint]",
+    "html2image[full-page,test,lint]",
     "build",
     "twine",
 ]

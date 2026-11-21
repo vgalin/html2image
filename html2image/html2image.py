@@ -16,6 +16,7 @@ from textwrap import dedent
 from typing import List
 
 from html2image.browsers import chrome, chrome_cdp, edge, edge_cdp, firefox, firefox_bidi
+from html2image.browsers import _page_fit_common as page_fit
 from html2image.browsers.browser import Browser, CDPBrowser, BiDiBrowser
 from html2image.exceptions import CaptureTooLargeError, ElementNotFoundError
 
@@ -378,6 +379,60 @@ class Html2Image():
             size=size
         )
 
+    def _full_page_options(
+        self, full_page, stability_timeout, profile, fixed_elements,
+        max_pixels, save_as, size,
+    ):
+        """ Checks the full page options, see `screenshot()`.
+
+        The names of the images and the sizes of the window are checked
+        too, before any page is loaded.
+
+        Returns
+        -------
+        - dict
+            + The options to pass to the `screenshot()` method of the
+            browser, or an empty dict if `full_page` is False.
+
+        Raises
+        ------
+        - `ValueError`
+            + If the browser cannot capture a full page, or if an option,
+            a name or a size has an invalid value.
+        """
+        if not full_page:
+            return {}
+
+        if not isinstance(self.browser, (CDPBrowser, BiDiBrowser)):
+            raise ValueError(
+                'full_page works with the "chrome", "edge" and "firefox" '
+                'browsers, not with "chrome-headless", "edge-headless" or '
+                '"firefox-headless".'
+            )
+
+        page_fit.validate_stability_timeout(stability_timeout)
+        if profile is not None:
+            page_fit.validate_full_page_profile(profile)
+        page_fit.validate_fixed_element_mode(fixed_elements)
+        page_fit.validate_max_pixels(max_pixels)
+        # The same names and sizes as those `_render()` will use.
+        for name in [save_as] if isinstance(save_as, str) else save_as:
+            if isinstance(name, str):
+                page_fit.output_format_from_filename(name)
+        sizes = [size] if isinstance(size, tuple) else size
+        sizes = [pair for pair in sizes
+                 if isinstance(pair, tuple) and len(pair) == 2]
+        for width, height in sizes or [self.size]:
+            page_fit.validate_viewport(width, height)
+
+        return {
+            'full_page': True,
+            'full_page_stability_timeout': stability_timeout,
+            'full_page_profile': profile,
+            'full_page_fixed_elements': fixed_elements,
+            'full_page_max_pixels': max_pixels,
+        }
+
     @staticmethod
     def _extend_save_as_param(save_as, desired_length):
         """ Extend the save_as parameter of the `screenshot()` method.
@@ -663,6 +718,11 @@ class Html2Image():
         selector=None,
         selector_padding=0,
         skip_missing=False,
+        full_page=False,
+        full_page_stability_timeout=None,
+        full_page_profile=None,
+        full_page_fixed_elements='auto',
+        full_page_max_pixels=page_fit.DEFAULT_MAX_PIXELS,
     ):
         """ Takes a screenshot using different resources.
 
@@ -697,6 +757,9 @@ class Html2Image():
             + method is called.
             + With `selector`, this is the size of the window in which
             + each page will be displayed, with one size per page.
+            + With `full_page=True`, the image will be as wide as `size`,
+            + and as high as the page, but not less than the height of
+            + `size`, which will be the height of the window.
         - `selector`: list of str or str, optional
             + CSS selector of an element, e.g. '#chart'. The image will
             + then show this element only, instead of the window, even if
@@ -721,6 +784,51 @@ class Html2Image():
             + `ElementNotFoundError`, and the returned list will only
             + contain the saved images.
             + Default is False.
+        - `full_page`: bool, optional
+            + If True, the image will show the whole page, not only what
+            + fits in the window.
+            + Only works with the 'chrome', 'edge' and 'firefox' browsers.
+            + Some pages will need `pyvips`, installed with
+            + `pip install "html2image[full-page]"`.
+            + Default is False.
+        - `full_page_stability_timeout`: int, float or None, optional
+            + The longest wait, in seconds, each time the height of the
+            + page has to stop changing, not for the whole capture.
+            + 'fast' does not use it.
+            + Default is None: about 2.8 seconds.
+        - `full_page_profile`: str or None, optional
+            + How long to wait for the content that loads as the page is
+            + scrolled.
+            + 'fast' will not wait for it. Images in `loading="lazy"` may
+            + then be missing.
+            + 'balanced' will wait until the height of the page stops
+            + changing, then scroll through it once.
+            + 'robust' will scroll through the page until it stops
+            + growing. It is the slowest.
+            + Default is None: 'fast' for pages given as HTML or as a
+            + file, 'balanced' for URLs.
+        - `full_page_fixed_elements`: str, optional
+            + How the elements that stay in place while the page scrolls,
+            + such as a fixed header, will appear in the image.
+            + 'auto': each one will appear once, at the top or at the
+            + bottom of the image, depending on where it is fixed in the
+            + window.
+            + 'first': they will appear once, as they are when the page
+            + is opened.
+            + 'last': they will appear once, as they are when the page is
+            + scrolled to the end.
+            + 'hide': they will not appear.
+            + 'preserve': they will be left as the browser shows them, and
+            + can appear several times in the image.
+            + Sticky elements will stay in their place in the page, except
+            + with 'preserve'.
+            + Default is 'auto'.
+        - `full_page_max_pixels`: int or None, optional
+            + The largest number of pixels of the image. A larger page
+            + will raise `CaptureTooLargeError` instead of giving a cut
+            + image. None removes the limit, which can use a lot of
+            + memory.
+            + Default is 100,000,000.
 
         Returns
         -------
@@ -730,6 +838,9 @@ class Html2Image():
         Raises
         ------
         - `FileNotFoundError`
+        - `ImportError`
+            + With `full_page=True`, if `pyvips` is needed but not
+            + installed.
         - `ValueError`
             + If a name given in `save_as` is a path and not a filename,
             + or if a name given in `save_as` ends with .pdf: use the
@@ -737,6 +848,12 @@ class Html2Image():
             + or if `selector` is used with 'chrome-headless',
             + 'edge-headless' or 'firefox-headless', or is not a valid CSS
             + selector, or if `selector_padding` is negative.
+            + If `full_page=True` is used with 'chrome-headless',
+            + 'edge-headless' or 'firefox-headless', or with `selector`.
+            + With `full_page=True`, if a `full_page_*` option has an
+            + invalid value, if a name given in `save_as` does not end
+            + with .png, .jpg or .jpeg, or if a size is not made of two
+            + positive integers.
         - `ElementNotFoundError`
             + If an element has nothing to capture: no element matches its
             + selector, or it is hidden, empty or outside of the page.
@@ -745,6 +862,20 @@ class Html2Image():
             + If an element is too large for the browser to capture,
             + even with `skip_missing=True`. The other images will be
             + saved first.
+            + With `full_page=True`, if a page is larger than
+            + `full_page_max_pixels`, or than a JPEG image can be (65,500
+            + pixels in width or in height). The other images will be
+            + saved first.
+        - `Html2ImageError`
+            + With `full_page=True`, if `pyvips` could not join the
+            + screenshots of a page.
+
+        Warns
+        -----
+        - `FullPageWarning`
+            + With `full_page=True`, if an image was saved but may be
+            + wrong in places, for example if the page moved while it was
+            + captured, or if it stops before the end of the page.
         """
 
         # TODO / NOTE : This does not pose any problem for now but setting
@@ -778,6 +909,18 @@ class Html2Image():
                 f'got {selector_padding}.'
             )
 
+        if selectors and full_page:
+            raise ValueError(
+                'selector and full_page=True cannot be used together: '
+                'selector already captures the whole element, even beyond '
+                'the window.'
+            )
+
+        full_page_options = self._full_page_options(
+            full_page, full_page_stability_timeout, full_page_profile,
+            full_page_fixed_elements, full_page_max_pixels, save_as, size,
+        )
+
         return self._render(
             html_str=html_str,
             html_file=html_file,
@@ -790,6 +933,7 @@ class Html2Image():
             selectors=selectors,
             selector_padding=selector_padding,
             skip_missing=skip_missing,
+            **full_page_options,
         )
 
     def pdf(
@@ -954,6 +1098,14 @@ class Html2Image():
             else:
                 raise FileNotFoundError(css)
 
+        # Without a profile, a page given as HTML or as a file will be
+        # captured as 'fast', and a URL as 'balanced': only pages loaded
+        # from the web usually load content as they are scrolled.
+        url_options = browser_options
+        if browser_options.get('full_page_profile', '') is None:
+            url_options = dict(browser_options, full_page_profile='balanced')
+            browser_options = dict(browser_options, full_page_profile='fast')
+
         for html in html_strings:
             names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
             current_size = sizes.pop(0)
@@ -966,13 +1118,15 @@ class Html2Image():
             )
 
             self.load_str(content=content, as_filename=html_filename)
-            page_results.append(self._screenshot_page(
-                os.path.join(self.temp_path, html_filename),
-                names, current_size, selectors, selector_padding,
-                browser_options,
-            ))
-            if not self.keep_temp_files:
-                self._remove_temp_file(html_filename)
+            try:
+                page_results.append(self._screenshot_page(
+                    os.path.join(self.temp_path, html_filename),
+                    names, current_size, selectors, selector_padding,
+                    browser_options,
+                ))
+            finally:
+                if not self.keep_temp_files:
+                    self._remove_temp_file(html_filename)
 
         for screenshot_target in html_files + other_files:
 
@@ -981,15 +1135,20 @@ class Html2Image():
 
             if os.path.isfile(screenshot_target):
                 self.load_file(src=screenshot_target)
-                page_results.append(self._screenshot_page(
-                    os.path.join(
-                        self.temp_path, os.path.basename(screenshot_target)
-                    ),
-                    names, current_size, selectors, selector_padding,
-                    browser_options,
-                ))
-                if not self.keep_temp_files:
-                    self._remove_temp_file(os.path.basename(screenshot_target))                
+                try:
+                    page_results.append(self._screenshot_page(
+                        os.path.join(
+                            self.temp_path,
+                            os.path.basename(screenshot_target),
+                        ),
+                        names, current_size, selectors, selector_padding,
+                        browser_options,
+                    ))
+                finally:
+                    if not self.keep_temp_files:
+                        self._remove_temp_file(
+                            os.path.basename(screenshot_target)
+                        )
             else:
                 raise FileNotFoundError(screenshot_target)
 
@@ -999,14 +1158,42 @@ class Html2Image():
 
             page_results.append(self._screenshot_page(
                 target_url, names, current_size, selectors, selector_padding,
-                browser_options,
+                url_options,
             ))
 
-        screenshot_paths, missing, too_large = [], [], []
-        for paths, page_missing, page_too_large in page_results:
+        screenshot_paths, missing, too_large, errors = [], [], [], []
+        for paths, page_missing, page_too_large, page_errors in page_results:
             screenshot_paths += paths
             missing += page_missing
             too_large += page_too_large
+            errors += page_errors
+
+        if errors and browser_options.get('full_page'):
+            max_pixels = browser_options['full_page_max_pixels']
+            reasons = {}
+            for (_, name), error in zip(too_large, errors):
+                if isinstance(error, page_fit.FormatLimitError):
+                    reason = (
+                        'A JPEG image cannot be wider or higher than '
+                        f'{page_fit.JPEG_MAX_SIZE:,} pixels. Save it as a '
+                        'PNG image instead.'
+                    )
+                else:
+                    reason = (
+                        'The image would have had more than '
+                        f'{max_pixels:,} pixels, the limit set by '
+                        'full_page_max_pixels. Raise the limit, or set it to '
+                        'None to remove it.'
+                    )
+                reasons.setdefault(reason, []).append(name)
+            raise CaptureTooLargeError(
+                '\n'.join(
+                    f'Too large to be captured: {", ".join(names)}.\n{reason}'
+                    for reason, names in reasons.items()
+                ),
+                paths=screenshot_paths,
+                too_large=too_large,
+            )
 
         # An image that is cut or wrong is never acceptable, so a too large
         # element is an error even with `skip_missing`.
@@ -1046,20 +1233,27 @@ class Html2Image():
 
         Returns
         -------
-        - tuple of three lists
+        - tuple of four lists
             + The paths of the saved files, then the (selector, name)
             + pairs of the missing elements and of the elements too large
-            + to be captured.
+            + to be captured, then the errors raised for the pages too
+            + large to be captured with `full_page`, whose selector is
+            + None.
         """
         if not selectors:
-            self.browser.screenshot(
-                input=input,
-                output_path=self.output_path,
-                output_file=names[0],
-                size=size,
-                **browser_options,
-            )
-            return [os.path.join(self.output_path, names[0])], [], []
+            try:
+                self.browser.screenshot(
+                    input=input,
+                    output_path=self.output_path,
+                    output_file=names[0],
+                    size=size,
+                    **browser_options,
+                )
+            except CaptureTooLargeError as error:
+                # As with a too large element, the other pages will be
+                # saved before the error is raised.
+                return [], [], [(None, names[0])], [error]
+            return [os.path.join(self.output_path, names[0])], [], [], []
 
         elements = list(zip(selectors, names))
         missing, too_large = self.browser.screenshot(
@@ -1074,7 +1268,7 @@ class Html2Image():
             for selector, name in elements
             if (selector, name) not in missing + too_large
         ]
-        return paths, missing, too_large
+        return paths, missing, too_large, []
 
     @staticmethod
     def _describe_elements(elements):

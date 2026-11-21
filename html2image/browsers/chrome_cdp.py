@@ -6,8 +6,9 @@ from .browser import (
     read_message,
     remove_profile,
 )
+from ._page_fit_common import DEFAULT_MAX_PIXELS
 from .search_utils import find_chrome
-from . import _selector
+from . import _chromium_page_fit, _selector
 from ..exceptions import (
     BrowserError,
     BrowserTimeoutError,
@@ -634,6 +635,11 @@ class ChromeCDP(CDPBrowser):
         pdf_options=None,
         elements=None,
         selector_padding=0,
+        full_page=False,
+        full_page_stability_timeout=None,
+        full_page_profile='balanced',
+        full_page_fixed_elements='auto',
+        full_page_max_pixels=DEFAULT_MAX_PIXELS,
     ):
         """Take a screenshot using Chrome DevTools Protocol.
 
@@ -644,6 +650,9 @@ class ChromeCDP(CDPBrowser):
         pixels around it, and `output_file` is not used. The elements that
         could not be captured are returned, as two lists of these pairs:
         the missing elements, and the elements too large to be captured.
+
+        If `full_page` is True, an image of the whole page will be saved
+        instead, see `_chromium_page_fit.capture_full_page()`.
 
         See: https://chromedevtools.github.io/devtools-protocol/
         """
@@ -699,6 +708,20 @@ class ChromeCDP(CDPBrowser):
                 return self._capture_elements(
                     output_path, elements, selector_padding
                 )
+
+            if full_page:
+                _chromium_page_fit.capture_full_page(
+                    self,
+                    output_path,
+                    output_file,
+                    size[0],
+                    size[1],
+                    stability_timeout=full_page_stability_timeout,
+                    profile=full_page_profile,
+                    fixed_elements=full_page_fixed_elements,
+                    max_pixels=full_page_max_pixels,
+                )
+                return
 
             self._capture(
                 os.path.join(output_path, output_file),

@@ -58,7 +58,7 @@ jobs:
           cache-dependency-glob: pyproject.toml
 
       - name: Install dependencies
-        run: uv sync --extra test
+        run: uv sync --extra test --extra full-page
 
       # Recent Ubuntu versions forbid unprivileged user namespaces, which the
       # sandbox of Chromium-based browsers needs to start.
