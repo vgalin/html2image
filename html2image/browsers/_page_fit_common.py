@@ -404,7 +404,7 @@ class SeamChecker:
                 shift, shifts = self._page_shift(self.above)
                 if shift == previous:
                     break
-                if time.monotonic() > deadline:
+                if time.monotonic() >= deadline:
                     self.problem = 'moving'
                     return 0
         if shift is None:
