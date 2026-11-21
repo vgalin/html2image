@@ -764,9 +764,15 @@ class ChromeCDP(CDPBrowser):
             elif max(clip['width'], clip['height']) > MAX_CAPTURE_SIZE:
                 too_large.append(element)
             else:
+                # Capturing beyond the viewport sends the page a resize
+                # event, see `_chromium_page_fit._Tiles`. An element that
+                # the viewport already shows will be captured from it.
+                shown = _selector.viewport_scroll(box, clip) == (
+                    box['scrollX'], box['scrollY']
+                )
                 self._capture(
                     os.path.join(output_path, output_file), clip,
-                    beyond_viewport=True,
+                    beyond_viewport=not shown,
                 )
             if box is not None:
                 self._evaluate(_selector.restore_js(selector, box))

@@ -28,8 +28,9 @@ JSON.stringify(%s.filter(selector => {
 # taller than the viewport. The scroll positions of the ancestors before that
 # are returned, to put them back after the capture with `_RESTORE_JS`.
 #
-# The size of the root element, the scroll position and the size of the
-# viewport are only used by Firefox, on pages without doctype.
+# The scroll position and the size of the viewport tell which part of the
+# page the viewport shows. The size of the root element is only used by
+# Firefox, on pages without doctype.
 _ELEMENT_BOX_JS = '''
 (async () => {
     const element = document.querySelector(%s);

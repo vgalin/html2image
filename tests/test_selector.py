@@ -385,6 +385,24 @@ def test_selector_fixed_header_is_not_drawn_over_element(hti):
     _assert_banded(tall, (300, 2500))
 
 
+def test_selector_in_window_does_not_resize_the_page(hti):
+    # The page would invert its colors on the first resize event. With the
+    # padding, the second element reaches the bottom of the window.
+    page = _page(
+        _box(),
+        _box("u", top=490, style="background: blue"),
+        "<script>addEventListener('resize', () =>"
+        " document.body.style.filter = 'invert(1)')</script>",
+    )
+
+    red, blue = hti.screenshot(
+        html_str=page, selector=["#t", "#u"], selector_padding=10
+    )
+
+    assert _colors(red) == ((220, 120), [RED, WHITE])
+    assert _colors(blue) == ((220, 120), [BLUE, WHITE])
+
+
 def test_selector_padding(hti):
     padded, at_edge = hti.screenshot(
         html_str=_page(
