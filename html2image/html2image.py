@@ -67,6 +67,10 @@ css_units = {
     'px': 96,
 }
 
+# Held while a file is loaded under its own name, see `_load_shared_file()`.
+# Objects may share their `temp_path`, as they do by default.
+_shared_file_lock = threading.Lock()
+
 
 class Html2Image():
     """
@@ -156,7 +160,6 @@ class Html2Image():
         self.keep_temp_files = keep_temp_files
         self.add_doctype = add_doctype
         self.browser: Browser = None
-        self._lock = threading.Lock()  # See `_load_shared_file()`
 
         browser_class = browser_map[browser.lower()]
 
@@ -345,7 +348,7 @@ class Html2Image():
         be reading it. It will only be written again if its content changed.
         """
         dest = os.path.join(self.temp_path, os.path.basename(src))
-        with self._lock:
+        with _shared_file_lock:
             if os.path.isfile(dest):
                 with open(src, 'rb') as new, open(dest, 'rb') as loaded:
                     if new.read() == loaded.read():

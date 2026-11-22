@@ -329,14 +329,27 @@ class ChromeCDP(CDPBrowser):
 
         logger.debug('Attached with sessionId: %s', self._session_id)
 
+    def __getstate__(self):
+        """Return the attributes to copy or pickle, without the locks,
+        which cannot be copied. The copy will get its own.
+        """
+        state = self.__dict__.copy()
+        del state['_slots'], state['_lock']
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._slots = threading.Semaphore(self.concurrency)
+        self._lock = threading.RLock()
+
     def _open_window(self, new_window=True):
         """Return a copy of this object, with its own WebSocket connection
         to Chrome, attached to a window of its own.
 
         Without `new_window`, the window is the page that Chrome opened.
-        A copy only captures pages, it never starts or stops Chrome. Its
-        connection is never set back to None, so that it never connects
-        again by itself, see `ws`.
+        A copy only captures pages, it never starts or stops Chrome, and
+        never uses its locks. Its connection is never set back to None, so
+        that it never connects again by itself, see `ws`.
         """
         window = copy.copy(self)
         window._ws = window._session_id = window._windows = None

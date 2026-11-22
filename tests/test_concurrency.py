@@ -10,7 +10,9 @@ from html2image.browsers import chrome_cdp
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 
+import copy
 import os
+import pickle
 import pytest
 import requests
 import shutil
@@ -332,6 +334,25 @@ def test_css_file_is_only_written_again_if_it_changed(monkeypatch, tmp_path):
 
     assert copies == ["style.css"] * 2
     assert (tmp_path / "temp" / "style.css").read_text() == "p { color: blue }"
+
+
+@pytest.mark.parametrize("concurrency", [1, CONCURRENCY])
+@pytest.mark.parametrize("copy_of", [
+    copy.deepcopy, lambda hti: pickle.loads(pickle.dumps(hti)),
+], ids=["deepcopy", "pickle"])
+def test_objects_can_be_copied(monkeypatch, tmp_path, copy_of, concurrency):
+    monkeypatch.setattr(chrome_cdp, "find_chrome", lambda executable: "c")
+    hti = Html2Image(temp_path=str(tmp_path), concurrency=concurrency)
+
+    browser = copy_of(hti).browser
+
+    assert browser.concurrency == concurrency
+    assert browser._lock is not hti.browser._lock
+    # The copy can take `concurrency` screenshots at once, as the original.
+    assert all(
+        browser._slots.acquire(blocking=False) for _ in range(concurrency)
+    )
+    assert not browser._slots.acquire(blocking=False)
 
 
 @pytest.mark.parametrize("browser", BROWSERS)
