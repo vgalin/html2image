@@ -20,6 +20,8 @@ import signal
 import threading
 import time
 
+# Edge runs the code of Chrome. It is only tried where the result depends on
+# the browser itself: how it draws its windows, and how it is lost or closed.
 BROWSERS = ["chrome", "edge"]
 
 CONCURRENCY = 3
@@ -187,8 +189,11 @@ class _Call(threading.Thread):
             self.error = error
 
 
-@pytest.mark.parametrize("kind", CAPTURES)
-@pytest.mark.parametrize("browser", BROWSERS)
+# Edge is tried with the capture in tiles, the only one that waits for each
+# window to draw its page.
+@pytest.mark.parametrize("browser, kind", [
+    *(("chrome", kind) for kind in CAPTURES), ("edge", "full_page_tiles"),
+])
 def test_captures_at_the_same_time(tmp_path, browser, kind):
     if kind == "full_page_tiles":
         pytest.importorskip("pyvips")
@@ -221,7 +226,7 @@ def test_every_window_draws_its_page(tmp_path, browser):
     assert all(state["drawn"] for state in states), states
 
 
-@pytest.mark.parametrize("browser", BROWSERS)
+@pytest.mark.parametrize("browser", ["chrome"])
 def test_blocked_window_is_replaced(monkeypatch, tmp_path, browser):
     # The blocked page will not load within this time.
     wait_for_navigation = chrome_cdp.ChromeCDP._wait_for_navigation_complete
@@ -297,7 +302,7 @@ def test_exit_during_captures(tmp_path, browser):
 
 
 @pytest.mark.parametrize("concurrency", [1, CONCURRENCY])
-@pytest.mark.parametrize("browser", BROWSERS)
+@pytest.mark.parametrize("browser", ["chrome"])
 def test_temp_files_of_calls_at_the_same_time(tmp_path, browser, concurrency):
     hti = _make_hti(browser, tmp_path, concurrency)
     colors = COLORS[:4]
@@ -562,7 +567,7 @@ def test_objects_can_be_copied(monkeypatch, tmp_path, copy_of, concurrency):
     assert not browser._slots.acquire(blocking=False)
 
 
-@pytest.mark.parametrize("browser", BROWSERS)
+@pytest.mark.parametrize("browser", ["chrome"])
 def test_calls_without_with(tmp_path, browser):
     hti = _make_hti(browser, tmp_path)
 

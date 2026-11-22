@@ -267,7 +267,12 @@ def test_selector_rejects_cli_backends(tmp_path, browser):
 
 # With a browser.
 
-BROWSERS = ["chrome", "edge", "firefox"]
+BROWSERS = ["chrome", "firefox"]
+
+# Edge runs the code of Chrome: it is only tried with two of the tests.
+WITH_EDGE = pytest.mark.parametrize(
+    "hti", ["chrome", "edge", "firefox"], indirect=True
+)
 
 
 @pytest.fixture(params=BROWSERS)
@@ -364,6 +369,7 @@ FIXED_HEADER = (
 LONG_PAGE = '<div style="height: 5000px"></div>'
 
 
+@WITH_EDGE
 def test_selector_fixed_header_is_not_drawn_over_element(hti):
     short, tall = hti.screenshot(
         html_str=_page(
@@ -564,7 +570,7 @@ LATE_ELEMENT = (
 )
 
 
-@pytest.mark.parametrize("browser", ["chrome", "edge"])
+@pytest.mark.parametrize("browser", ["chrome"])
 def test_selector_element_added_after_load(tmp_path, browser):
     # With --virtual-time-budget, the page runs for 5 seconds of virtual
     # time, in much less real time, before the element is measured.
@@ -588,6 +594,7 @@ def test_selector_element_added_after_load(tmp_path, browser):
             _assert_filled(path, (200, 100))
 
 
+@WITH_EDGE
 def test_selector_size_limit(hti):
     # The largest element that the browser captures in one go is exact,
     # without missing or repeated rows. One more pixel is refused.

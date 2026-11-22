@@ -17,6 +17,10 @@ OUTPUT_PATH = "tests_output"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 TEST_BROWSERS = ["edGe", "cHrOme"]
+# Edge runs the code of Chrome. The tests of what html2image does before the
+# page reaches the browser, such as lists of pages, sizes and stylesheets,
+# only use Chrome.
+CHROME_ONLY = ["chrome"]
 ISSUE177_BROWSERS = ["chrome", "chrome-cdp"]
 
 
@@ -432,7 +436,7 @@ def test_screenshot_string(browser):
     # check colors at top left corner
     assert pixels[0, 0][:3] == (0, 0, 255)
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_screenshot_string_different_sizes(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
 
@@ -471,7 +475,7 @@ def test_screenshot_other_svg(browser):
     # for transparent PNG, the alpha channel will be 0
     assert pixels[0, 0][3] == 0  # check alpha channel for full transparency
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_screenshot_file(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
 
@@ -489,7 +493,7 @@ def test_screenshot_file(browser):
     # check colors at top left corner
     assert pixels[0, 0][:3] == (0, 0, 255)  # blue + no transparency
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_screenshot_file_different_sizes(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
 
@@ -530,7 +534,7 @@ def test_screenshot_html_str_with_css_file_only(browser):
     # Check top-left corner for blue background
     assert pixels[0, 0][:3] == (0, 0, 255)  # blue
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_screenshot_html_str_with_css_str_and_css_file(browser):
     """Test html_str styled by both css_str (for a green block) and css_file (for blue body background)."""
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
@@ -572,7 +576,7 @@ def test_screenshot_html_str_with_css_str_and_css_file(browser):
     assert pixels[150, 125][:3] == (0, 255, 0)  # green
 
       
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_screenshot_html_str_with_multiple_css_files(browser):
     """Test html_str styled by multiple css_files using distinct background colors."""
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
@@ -1490,6 +1494,8 @@ section { width: 1280px; height: 720px; break-after: page; }
 """
 
 PDF_BROWSERS = ["chrome", "edge", "firefox"]
+# Edge runs the code of Chrome: it is only tried with the slides.
+PDF_BROWSERS_WITHOUT_EDGE = ["chrome", "firefox"]
 
 
 def _pdf_hti(browser, tmp_path):
@@ -1518,7 +1524,7 @@ def test_pdf_slides(tmp_path, browser):
     assert _pdf_page_sizes(paths[0]) == [(960, 540)] * 3
 
 
-@pytest.mark.parametrize("browser", PDF_BROWSERS)
+@pytest.mark.parametrize("browser", PDF_BROWSERS_WITHOUT_EDGE)
 @pytest.mark.parametrize("landscape", [None, True])
 def test_pdf_a4(tmp_path, browser, landscape):
     hti = _pdf_hti(browser, tmp_path)
@@ -1537,7 +1543,7 @@ def test_pdf_a4(tmp_path, browser, landscape):
     assert size == pytest.approx(expected, abs=1)
 
 
-@pytest.mark.parametrize("browser", PDF_BROWSERS)
+@pytest.mark.parametrize("browser", PDF_BROWSERS_WITHOUT_EDGE)
 def test_screenshot_after_pdf(tmp_path, browser):
     hti = _pdf_hti(browser, tmp_path)
 

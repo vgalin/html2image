@@ -504,6 +504,12 @@ def test_short_fixed_page_does_not_require_the_optional_stitcher(
 
 
 TILED_BROWSERS = pytest.mark.parametrize(
+    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
+)
+
+# Edge runs the code of Chrome: it is only tried with one page captured in
+# tiles, and with one page captured in one go.
+TILED_BROWSERS_WITH_EDGE = pytest.mark.parametrize(
     "browser",
     ["chrome-cdp", "edge-cdp", "firefox-bidi"],
     ids=["chrome", "edge", "firefox"],
@@ -645,7 +651,7 @@ def _assert_bands(path, header_height=100):
             assert rgb.getpixel((10, y)) == _band_color(index), (index, y)
 
 
-@TILED_BROWSERS
+@TILED_BROWSERS_WITH_EDGE
 def test_tiles_do_not_resize_the_page(browser, tmp_path):
     pytest.importorskip("pyvips")
     hti = _make_hti(browser, tmp_path)

@@ -139,7 +139,8 @@ def closed_port_url():
     return f"http://127.0.0.1:{port}/"
 
 
-@pytest.mark.parametrize("browser", ["chrome", "edge", "firefox"])
+# Edge runs the code of Chrome.
+@pytest.mark.parametrize("browser", ["chrome", "firefox"])
 def test_unreachable_page_raises_page_load_error(browser, closed_port_url):
     try:
         hti = Html2Image(
