@@ -17,6 +17,8 @@ from ..exceptions import (
 )
 
 import base64
+import contextlib
+import copy
 import json
 import logging
 import os
@@ -24,6 +26,7 @@ from pathlib import Path
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -50,6 +53,15 @@ CERT_VERIFIER_CHANGED = 'net::ERR_CERT_VERIFIER_CHANGED'
 # CDP backend reads its value and applies it through the protocol instead.
 VIRTUAL_TIME_BUDGET_FLAG = '--virtual-time-budget='
 
+# With several windows, on macOS, a page waited more than 30 seconds for
+# Chrome to draw it. These flags keep Chrome from treating the pages of
+# windows that are hidden or not in front as pages in the background.
+WINDOW_FLAGS = [
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
+]
+
 # Chrome draws a wrong image, without any error, when it captures an area
 # larger than this number of pixels, in width or in height, in one go.
 MAX_CAPTURE_SIZE = 16384
@@ -61,7 +73,12 @@ class ChromeCDP(CDPBrowser):
         self, executable=None, flags=None,
         print_command=False, cdp_port=None,
         disable_logging=False, allow_scripts_to_read_files=False,
+        concurrency=1,
     ):
+        if not isinstance(concurrency, int) or concurrency < 1:
+            raise ValueError(
+                f'concurrency should be 1 or more, got {concurrency!r}.'
+            )
         self.executable = executable
         if not flags:
             self.flags = [
@@ -74,9 +91,17 @@ class ChromeCDP(CDPBrowser):
         self.cdp_port = cdp_port
         self._disable_logging = disable_logging
         self.allow_scripts_to_read_files = allow_scripts_to_read_files
+        self.concurrency = concurrency
 
         self._ws = None  # Websocket connection
         self._session_id = None  # CDP session ID from Target.attachToTarget
+        self._target_id = None  # Page the session is attached to
+        # At most `concurrency` captures at once, and, with more than one,
+        # the windows that are not in use, see `_window()`.
+        self._slots = threading.Semaphore(concurrency)
+        self._windows = None
+        # Held while Chrome starts or stops, and while a window is taken.
+        self._lock = threading.RLock()
         self.proc = None  # Headless browser Popen object
         self._user_data_dir = None
         self._current_port = None
@@ -140,6 +165,10 @@ class ChromeCDP(CDPBrowser):
             launch_flags.append('--remote-allow-origins=*')
         if self.allow_scripts_to_read_files:
             launch_flags.append('--allow-file-access-from-files')
+        if self.concurrency > 1:
+            launch_flags += [
+                flag for flag in WINDOW_FLAGS if flag not in launch_flags
+            ]
 
         command = [
             f'{self.executable}',
@@ -171,10 +200,11 @@ class ChromeCDP(CDPBrowser):
         self._current_port = int(port_line)
         return self._current_port
 
-    def _connect_ws(self):
+    def _connect_ws(self, new_window=False):
         """Connect to Chrome's browser-level CDP WebSocket and attach to a page target.
 
         If Chrome has not been started yet, it will be started automatically.
+        With `new_window`, the page target will be a new window.
         """
         # Auto-start Chrome if not running
         self._start_chrome()
@@ -205,7 +235,7 @@ class ChromeCDP(CDPBrowser):
                 self._deny_downloads()
 
                 # Discover page targets and attach to the first one
-                self._attach_to_page_target()
+                self._attach_to_page_target(new_window)
                 return
             except Exception as error:
                 if self._ws:
@@ -267,18 +297,25 @@ class ChromeCDP(CDPBrowser):
         except BrowserError:
             logger.debug('Could not keep Chrome from saving downloads.')
 
-    def _attach_to_page_target(self):
-        """Discover page targets and attach to the first one with a flattened session."""
+    def _attach_to_page_target(self, new_window=False):
+        """Discover page targets and attach to the first one with a
+        flattened session.
+
+        With `new_window`, a new window is opened and attached to instead.
+        """
         targets_id = self.cdp_send('Target.getTargets')
         targets_result = self._wait_for_result(targets_id)
 
         targets = targets_result.get('result', {}).get('targetInfos', [])
         page_targets = [t for t in targets if t.get('type') == 'page']
 
-        if not page_targets:
-            # Chrome started but has not created a page target yet.
-            logger.debug('No page targets found - creating about:blank target.')
-            create_id = self.cdp_send('Target.createTarget', url='about:blank')
+        if new_window or not page_targets:
+            # Without `new_window`, Chrome started but has not created a
+            # page target yet.
+            logger.debug('Creating an about:blank target.')
+            create_id = self.cdp_send(
+                'Target.createTarget', url='about:blank', newWindow=new_window
+            )
             create_result = self._wait_for_result(create_id)
             target_id = create_result.get('result', {}).get('targetId')
             if not target_id:
@@ -301,8 +338,117 @@ class ChromeCDP(CDPBrowser):
             raise BrowserError(
                 'Failed to get sessionId from Target.attachToTarget.'
             )
+        self._target_id = target_id
 
         logger.debug('Attached with sessionId: %s', self._session_id)
+
+    def __getstate__(self):
+        """Return the attributes to copy or pickle, without the locks,
+        which cannot be copied. The copy will get its own.
+        """
+        state = self.__dict__.copy()
+        del state['_slots'], state['_lock']
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._slots = threading.Semaphore(self.concurrency)
+        self._lock = threading.RLock()
+
+    def _open_window(self, new_window=True):
+        """Return a copy of this object, with its own WebSocket connection
+        to Chrome, attached to a window of its own.
+
+        Without `new_window`, the window is the page that Chrome opened.
+        A copy only captures pages, it never starts or stops Chrome, and
+        never uses its locks. Its connection is never set back to None, so
+        that it never connects again by itself, see `ws`.
+        """
+        window = copy.copy(self)
+        window._ws = window._session_id = window._windows = None
+        window._connect_ws(new_window)
+        return window
+
+    def _close_target(self, target_id):
+        """Close the page target `target_id`.
+
+        Return False if Chrome did not answer.
+        """
+        try:
+            requests.put(
+                f'http://127.0.0.1:{self._current_port}/json/close/'
+                f'{target_id}',
+                timeout=2,
+            )
+        except requests.RequestException:
+            return False
+        return True
+
+    @contextlib.contextmanager
+    def _window(self):
+        """Yield the object that will load and capture a page, see
+        `screenshot()`.
+
+        With `concurrency=1`, or if Chrome was not started with `with`, it
+        is this object, and the calls will run one after the other, as
+        before. Otherwise, it is a window that no other call is using.
+        """
+        with self._slots:
+            with self._lock:
+                windows = self._windows
+                if windows is None:
+                    auto_started = self._ws is None
+                    try:
+                        if auto_started:
+                            # Chrome will only be started for this call,
+                            # without the other windows.
+                            self._connect_ws()
+                        yield self
+                    except Exception as error:
+                        if not auto_started and needs_restart(error):
+                            self.__exit__()
+                            self.__enter__()
+                        raise
+                    finally:
+                        if auto_started:
+                            self.__exit__()
+                    return
+                window = windows.pop()
+
+            try:
+                yield window
+            except Exception as error:
+                if needs_restart(error):
+                    window = self._replace_window(windows, window)
+                raise
+            finally:
+                with self._lock:
+                    if windows is self._windows:
+                        windows.append(window)
+                    else:
+                        # Chrome was closed or restarted during the capture.
+                        window._ws.close()
+
+    def _replace_window(self, windows, window):
+        """Return the window that will replace `window`, after an error that
+        may have left it unusable.
+
+        If Chrome still answers, only the window will be replaced. If not,
+        Chrome will be restarted, unless it was already closed or restarted
+        during the capture.
+        """
+        with self._lock:
+            if windows is not self._windows:
+                return window
+            if self._close_target(window._target_id):
+                window._ws.close()
+                try:
+                    return self._open_window()
+                except BrowserError:
+                    logger.debug('Could not open a window.', exc_info=True)
+            self.__exit__()
+            self.__enter__()
+            return window
 
     @property
     def ws(self):
@@ -657,61 +803,57 @@ class ChromeCDP(CDPBrowser):
         See: https://chromedevtools.github.io/devtools-protocol/
         """
         target_url = self._normalize_input(input)
-        auto_started = self._ws is None
-        if auto_started:
-            self.__enter__()
+        with self._window() as window:
+            enable_id = window.cdp_send('Page.enable')
+            window._wait_for_result(enable_id)
 
-        try:
-            enable_id = self.cdp_send('Page.enable')
-            self._wait_for_result(enable_id)
-
-            lifecycle_id = self.cdp_send(
+            lifecycle_id = window.cdp_send(
                 'Page.setLifecycleEventsEnabled',
                 enabled=True,
             )
-            self._wait_for_result(lifecycle_id)
+            window._wait_for_result(lifecycle_id)
 
             # Set viewport metrics before navigation so layout-sensitive pages
             # compute against the final viewport dimensions.
-            metrics_id = self.cdp_send(
+            metrics_id = window.cdp_send(
                 'Emulation.setDeviceMetricsOverride',
                 width=size[0],
                 height=size[1],
                 deviceScaleFactor=1,
                 mobile=False,
             )
-            self._wait_for_result(metrics_id)
+            window._wait_for_result(metrics_id)
 
-            error_text = self._navigate(target_url)
+            error_text = window._navigate(target_url)
             if error_text == CERT_VERIFIER_CHANGED:
-                error_text = self._navigate(target_url)
+                error_text = window._navigate(target_url)
             if error_text:
-                disable_id = self.cdp_send('Page.disable')
-                self._wait_for_result(disable_id)
+                disable_id = window.cdp_send('Page.disable')
+                window._wait_for_result(disable_id)
                 raise PageLoadError(f'Navigation failed: {error_text}')
 
             logger.debug('Page loaded.')
-            disable_id = self.cdp_send('Page.disable')
-            self._wait_for_result(disable_id)
+            disable_id = window.cdp_send('Page.disable')
+            window._wait_for_result(disable_id)
 
-            virtual_time_budget = self._virtual_time_budget()
+            virtual_time_budget = window._virtual_time_budget()
             if virtual_time_budget:
-                self._spend_virtual_time(virtual_time_budget)
+                window._spend_virtual_time(virtual_time_budget)
 
             if pdf_options is not None:
-                self._print_to_pdf(
+                window._print_to_pdf(
                     os.path.join(output_path, output_file), pdf_options
                 )
                 return
 
             if elements is not None:
-                return self._capture_elements(
+                return window._capture_elements(
                     output_path, elements, selector_padding
                 )
 
             if full_page:
                 _chromium_page_fit.capture_full_page(
-                    self,
+                    window,
                     output_path,
                     output_file,
                     size[0],
@@ -723,18 +865,10 @@ class ChromeCDP(CDPBrowser):
                 )
                 return
 
-            self._capture(
+            window._capture(
                 os.path.join(output_path, output_file),
                 {'x': 0, 'y': 0, 'width': size[0], 'height': size[1]},
             )
-        except Exception as error:
-            if not auto_started and needs_restart(error):
-                self.__exit__()
-                self.__enter__()
-            raise
-        finally:
-            if auto_started:
-                self.__exit__()
 
     def _kill_browser(self):
         """Kill the browser process and the processes it started.
@@ -763,16 +897,33 @@ class ChromeCDP(CDPBrowser):
 
     def __enter__(self):
         """Start a headless Chrome instance with CDP enabled."""
-        self._start_chrome()
-        try:
-            self._connect_ws()
-            return self
-        except Exception:
-            self.__exit__()
-            raise
+        with self._lock:
+            self._start_chrome()
+            try:
+                self._connect_ws()
+                if self.concurrency > 1:
+                    # The first window is the page that Chrome opened.
+                    self._windows = [
+                        self._open_window(new_window=index > 0)
+                        for index in range(self.concurrency)
+                    ]
+                return self
+            except Exception:
+                self.__exit__()
+                raise
 
     def __exit__(self, *exc):
         """Shut down the headless Chrome instance and clean up resources."""
+        with self._lock:
+            # The windows in use will be closed with Chrome, and their
+            # captures will fail.
+            for window in self._windows or []:
+                window._ws.close()
+            self._windows = None
+            self._stop_chrome()
+
+    def _stop_chrome(self):
+        """Close Chrome and delete its profile, see `__exit__()`."""
         if not self.disable_logging:
             logger.info(
                 'Closing headless Chrome instance on port %s.',
