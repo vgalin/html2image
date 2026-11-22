@@ -11,7 +11,6 @@ import json
 import pytest
 import os
 import re
-import socket
 
 OUTPUT_PATH = "tests_output"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -1208,16 +1207,6 @@ def test_cdp_lost_page_raises_immediately():
 
     with pytest.raises(BrowserError, match="Render process gone"):
         browser._wait_for_result(1, timeout=1)
-
-
-@pytest.fixture
-def unresponsive_url():
-    """URL of a local server that accepts connections but never answers."""
-    server = socket.socket()
-    server.bind(("127.0.0.1", 0))
-    server.listen(5)
-    yield f"http://127.0.0.1:{server.getsockname()[1]}/"
-    server.close()
 
 
 def test_cdp_session_recovers_after_navigation_timeout(monkeypatch, unresponsive_url):

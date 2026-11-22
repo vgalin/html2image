@@ -15,7 +15,6 @@ from websocket import WebSocketTimeoutException
 import json
 import pickle
 import pytest
-import socket
 
 OUTPUT_PATH = "tests_output"
 
@@ -128,15 +127,6 @@ def test_missing_browser_executable(monkeypatch, tmp_path, browser):
             browser=browser,
             browser_executable=str(tmp_path / "missing_browser.exe"),
         )
-
-
-@pytest.fixture
-def closed_port_url():
-    """URL of a local port on which nothing listens."""
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-    return f"http://127.0.0.1:{port}/"
 
 
 # Edge runs the code of Chrome.
