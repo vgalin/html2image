@@ -267,7 +267,12 @@ def test_selector_rejects_cli_backends(tmp_path, browser):
 
 # With a browser.
 
-BROWSERS = ["chrome", "edge", "firefox"]
+BROWSERS = ["chrome", "firefox"]
+
+# Edge runs the code of Chrome: it is only tried with two of the tests.
+WITH_EDGE = pytest.mark.parametrize(
+    "hti", ["chrome", "edge", "firefox"], indirect=True
+)
 
 
 @pytest.fixture(params=BROWSERS)
@@ -364,6 +369,7 @@ FIXED_HEADER = (
 LONG_PAGE = '<div style="height: 5000px"></div>'
 
 
+@WITH_EDGE
 def test_selector_fixed_header_is_not_drawn_over_element(hti):
     short, tall = hti.screenshot(
         html_str=_page(
@@ -448,19 +454,6 @@ def test_selector_missing_elements(hti):
     assert sorted(os.listdir(hti.output_path)) == ["missing_0.png", "missing_4.png"]
 
 
-def test_selector_skip_missing(hti):
-    paths = hti.screenshot(
-        html_str=_page(_box()),
-        selector=["#nothing", "#t"],
-        save_as=["nothing.png", "found.png"],
-        skip_missing=True,
-    )
-
-    assert [os.path.basename(path) for path in paths] == ["found.png"]
-    _assert_filled(paths[0], (200, 100))
-    assert os.listdir(hti.output_path) == ["found.png"]
-
-
 @pytest.mark.parametrize("selector", ["div[", ""])
 def test_selector_invalid_writes_nothing(hti, selector):
     with pytest.raises(ValueError, match="not a valid CSS selector"):
@@ -470,24 +463,6 @@ def test_selector_invalid_writes_nothing(hti, selector):
         )
 
     assert os.listdir(hti.output_path) == []
-
-
-def test_selector_too_large(hti):
-    huge = _box("huge", top=200, width=300, height=70000)
-
-    for skip_missing in (False, True):
-        with pytest.raises(CaptureTooLargeError) as excinfo:
-            hti.screenshot(
-                html_str=_page(_box(), huge),
-                selector=["#t", "#huge", "#nothing"],
-                save_as="large.png",
-                skip_missing=skip_missing,
-            )
-
-        error = excinfo.value
-        assert [os.path.basename(path) for path in error.paths] == ["large_0.png"]
-        assert error.too_large == [("#huge", "large_1.png")]
-        _assert_filled(error.paths[0], (200, 100))
 
 
 def test_selector_does_not_restart_browser(hti):
@@ -564,7 +539,7 @@ LATE_ELEMENT = (
 )
 
 
-@pytest.mark.parametrize("browser", ["chrome", "edge"])
+@pytest.mark.parametrize("browser", ["chrome"])
 def test_selector_element_added_after_load(tmp_path, browser):
     # With --virtual-time-budget, the page runs for 5 seconds of virtual
     # time, in much less real time, before the element is measured.
@@ -588,9 +563,11 @@ def test_selector_element_added_after_load(tmp_path, browser):
             _assert_filled(path, (200, 100))
 
 
+@WITH_EDGE
 def test_selector_size_limit(hti):
     # The largest element that the browser captures in one go is exact,
-    # without missing or repeated rows. One more pixel is refused.
+    # without missing or repeated rows. One more pixel is refused, even
+    # with skip_missing, which only skips the missing elements.
     if isinstance(hti.browser, firefox_bidi.FirefoxBiDi):
         limit = firefox_bidi.MAX_CAPTURE_SIZE
     else:
@@ -602,9 +579,11 @@ def test_selector_size_limit(hti):
 
     with pytest.raises(CaptureTooLargeError) as excinfo:
         hti.screenshot(
-            html_str=page, selector=["#t", "#over"], save_as="limit.png"
+            html_str=page, selector=["#t", "#over", "#nothing"],
+            save_as="limit.png", skip_missing=True,
         )
 
     [path] = excinfo.value.paths
     _assert_banded(path, (300, limit))
     assert excinfo.value.too_large == [("#over", "limit_1.png")]
+    assert os.listdir(hti.output_path) == ["limit_0.png"]

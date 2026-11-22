@@ -15,7 +15,6 @@ from html2image import (
 )
 from html2image.browsers import chrome_cdp, firefox_bidi
 from html2image.browsers.browser import needs_restart, remove_profile
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from PIL import Image
 from websocket import (
     WebSocketConnectionClosedException,
@@ -30,9 +29,7 @@ import shutil
 import signal
 import socket
 import subprocess
-import threading
 import time
-import uuid
 
 BROWSERS = ["chrome", "edge", "firefox"]
 
@@ -541,41 +538,6 @@ def _assert_screenshot_works(hti):
         save_as="after.png",
     )
     assert Image.open(path).convert("RGB").getpixel((10, 10)) == (0, 0, 255)
-
-
-@pytest.fixture
-def download_url():
-    """URL of a local server that sends a file to download.
-
-    The file has a unique name. If a browser saves it in the Downloads
-    folder of the user, it is deleted, and the test fails.
-    """
-    filename = f"html2image_test_{uuid.uuid4().hex}.txt"
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header(
-                "Content-Disposition", f'attachment; filename="{filename}"'
-            )
-            self.send_header("Content-Length", "5")
-            self.end_headers()
-            self.wfile.write(b"hello")
-
-        def log_message(self, *args):
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}/file"
-    server.shutdown()
-    server.server_close()
-
-    downloaded = os.path.join(os.path.expanduser("~"), "Downloads", filename)
-    if os.path.exists(downloaded):
-        os.remove(downloaded)
-        pytest.fail(f"The browser saved {downloaded}, which was deleted.")
 
 
 @pytest.mark.parametrize("browser", BROWSERS)

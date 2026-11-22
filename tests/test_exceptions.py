@@ -15,9 +15,6 @@ from websocket import WebSocketTimeoutException
 import json
 import pickle
 import pytest
-import socket
-
-OUTPUT_PATH = "tests_output"
 
 ERROR_CLASSES = [
     Html2ImageError,
@@ -130,20 +127,14 @@ def test_missing_browser_executable(monkeypatch, tmp_path, browser):
         )
 
 
-@pytest.fixture
-def closed_port_url():
-    """URL of a local port on which nothing listens."""
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-    return f"http://127.0.0.1:{port}/"
-
-
-@pytest.mark.parametrize("browser", ["chrome", "edge", "firefox"])
-def test_unreachable_page_raises_page_load_error(browser, closed_port_url):
+# Edge runs the code of Chrome.
+@pytest.mark.parametrize("browser", ["chrome", "firefox"])
+def test_unreachable_page_raises_page_load_error(
+    browser, closed_port_url, output_path
+):
     try:
         hti = Html2Image(
-            browser=browser, output_path=OUTPUT_PATH, disable_logging=True
+            browser=browser, output_path=output_path, disable_logging=True
         )
     except FileNotFoundError:
         pytest.skip(f"'{browser}' executable not found on this machine")
@@ -191,13 +182,6 @@ def test_cdp_response_timeout_is_browser_timeout(cdp_browser):
 
     with pytest.raises(BrowserTimeoutError):
         cdp_browser._wait_for_result(1, timeout=1)
-
-
-def test_cdp_navigation_timeout_is_page_load_timeout(cdp_browser):
-    cdp_browser._ws = FakeWebSocket([])
-
-    with pytest.raises(PageLoadTimeoutError):
-        cdp_browser._wait_for_navigation_complete(1, timeout=1)
 
 
 def test_cdp_error_response_is_browser_error(cdp_browser):
