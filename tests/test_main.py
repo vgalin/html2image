@@ -17,11 +17,10 @@ OUTPUT_PATH = "tests_output"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 TEST_BROWSERS = ["edGe", "cHrOme"]
-# Edge runs the code of Chrome. The tests of what html2image does before the
-# page reaches the browser, such as lists of pages, sizes and stylesheets,
-# only use Chrome.
+# Edge runs the code of Chrome, and "chrome-cdp" is another name for
+# "chrome". The tests of what html2image does the same way in both, such as
+# lists of pages, sizes and stylesheets, only use Chrome.
 CHROME_ONLY = ["chrome"]
-ISSUE177_BROWSERS = ["chrome", "chrome-cdp"]
 
 
 def _is_red(rgba):
@@ -254,24 +253,7 @@ def test_add_doctype_screenshot(tmp_path, browser, add_doctype):
     assert Image.open(paths[0]).convert("RGB").getpixel((10, 10)) == expected
 
 
-def test_screenshot_string_chrome_cdp():
-    hti = Html2Image(
-        browser='chrome-cdp',
-        output_path=OUTPUT_PATH,
-        disable_logging=True,
-    )
-
-    paths = hti.screenshot(
-        html_str='Hello from CDP',
-        save_as='cdp_hello.png',
-        size=(320, 240),
-    )
-
-    img = Image.open(paths[0])
-    assert (320, 240) == img.size
-
-
-@pytest.mark.parametrize("browser", ISSUE177_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_issue177_exact_size_contract(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
     paths = hti.screenshot(
@@ -283,7 +265,7 @@ def test_issue177_exact_size_contract(browser):
     assert img.size == (800, 480)
 
 
-@pytest.mark.parametrize("browser", ISSUE177_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_issue177_no_bottom_strip_100vh(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
     paths = hti.screenshot(
@@ -303,7 +285,7 @@ def test_issue177_no_bottom_strip_100vh(browser):
     assert right_strip <= 2
 
 
-@pytest.mark.parametrize("browser", ISSUE177_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_issue177_svg_transparent_background(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
     paths = hti.screenshot(
@@ -317,7 +299,7 @@ def test_issue177_svg_transparent_background(browser):
     assert img.getpixel((0, 0))[3] == 0
 
 
-@pytest.mark.parametrize("browser", ISSUE177_BROWSERS)
+@pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_issue177_jpg_output_format(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
     paths = hti.screenshot(
