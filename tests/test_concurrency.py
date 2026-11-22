@@ -35,6 +35,16 @@ BLACK, WHITE = (0, 0, 0), (255, 255, 255)
 
 BLOCKED_PAGE = "<script>while (true) {}</script>"
 
+# Waits up to 5 seconds for the page to draw two images, as full page
+# screenshots do, and tells whether it did and what the page sees.
+DRAWN_JS = (
+    "new Promise(done => {"
+    " setTimeout(() => done(false), 5000);"
+    " requestAnimationFrame(() => requestAnimationFrame(() => done(true)));"
+    " }).then(drawn => JSON.stringify({drawn,"
+    " visibility: document.visibilityState, focus: document.hasFocus()}))"
+)
+
 
 def _rgb(color):
     return "rgb(%d, %d, %d)" % color
@@ -192,6 +202,23 @@ def test_captures_at_the_same_time(tmp_path, browser, kind):
 
         assert hti.browser._browser_pid == pid
         assert len(_pages(hti)) == CONCURRENCY
+
+
+@pytest.mark.parametrize("browser", BROWSERS)
+def test_every_window_draws_its_page(tmp_path, browser):
+    hti = _make_hti(browser, tmp_path)
+
+    with hti:
+        _capture_all(hti, COLORS[:CONCURRENCY], "loaded")
+        windows = hti.browser._windows
+        assert len(windows) == CONCURRENCY
+        with ThreadPoolExecutor(CONCURRENCY) as executor:
+            states = list(executor.map(
+                lambda window: window._evaluate(DRAWN_JS), windows
+            ))
+
+    # The state of each window, should one of them not draw.
+    assert all(state["drawn"] for state in states), states
 
 
 @pytest.mark.parametrize("browser", BROWSERS)
@@ -551,6 +578,40 @@ def test_calls_without_with(tmp_path, browser):
 def test_concurrency_needs_chrome_or_edge(browser):
     with pytest.raises(ValueError, match="concurrency works with"):
         Html2Image(browser=browser, concurrency=2)
+
+
+@pytest.mark.parametrize("concurrency", [1, CONCURRENCY])
+def test_window_flags_only_with_several_windows(monkeypatch, concurrency):
+    monkeypatch.setattr(chrome_cdp, "find_chrome", lambda executable: "c")
+    commands = []
+
+    class Exited:
+        def poll(self):
+            return 0
+
+    def popen(command, **options):
+        commands.append(command)
+        return Exited()
+
+    monkeypatch.setattr(chrome_cdp.subprocess, "Popen", popen)
+    replaced = chrome_cdp.ChromeCDP(concurrency=concurrency)
+    replaced.flags = ["--mute-audio"]
+    browsers = [
+        Html2Image(concurrency=concurrency).browser,
+        Html2Image(
+            custom_flags=["--mute-audio"], concurrency=concurrency
+        ).browser,
+        replaced,
+    ]
+
+    for browser in browsers:
+        browser._start_chrome()
+        browser.__exit__()
+
+    assert len(commands) == len(browsers)
+    for command in commands:
+        added = [flag in command for flag in chrome_cdp.WINDOW_FLAGS]
+        assert added == [concurrency > 1] * len(added), command
 
 
 @pytest.mark.parametrize("concurrency", [0, -1, 2.5, None])

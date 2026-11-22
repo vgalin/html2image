@@ -53,6 +53,15 @@ CERT_VERIFIER_CHANGED = 'net::ERR_CERT_VERIFIER_CHANGED'
 # CDP backend reads its value and applies it through the protocol instead.
 VIRTUAL_TIME_BUDGET_FLAG = '--virtual-time-budget='
 
+# With several windows, on macOS, a page waited more than 30 seconds for
+# Chrome to draw it. These flags keep Chrome from treating the pages of
+# windows that are hidden or not in front as pages in the background.
+WINDOW_FLAGS = [
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
+]
+
 # Chrome draws a wrong image, without any error, when it captures an area
 # larger than this number of pixels, in width or in height, in one go.
 MAX_CAPTURE_SIZE = 16384
@@ -156,6 +165,10 @@ class ChromeCDP(CDPBrowser):
             launch_flags.append('--remote-allow-origins=*')
         if self.allow_scripts_to_read_files:
             launch_flags.append('--allow-file-access-from-files')
+        if self.concurrency > 1:
+            launch_flags += [
+                flag for flag in WINDOW_FLAGS if flag not in launch_flags
+            ]
 
         command = [
             f'{self.executable}',
