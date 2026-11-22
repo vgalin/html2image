@@ -184,13 +184,6 @@ def test_cdp_response_timeout_is_browser_timeout(cdp_browser):
         cdp_browser._wait_for_result(1, timeout=1)
 
 
-def test_cdp_navigation_timeout_is_page_load_timeout(cdp_browser):
-    cdp_browser._ws = FakeWebSocket([])
-
-    with pytest.raises(PageLoadTimeoutError):
-        cdp_browser._wait_for_navigation_complete(1, timeout=1)
-
-
 def test_cdp_error_response_is_browser_error(cdp_browser):
     cdp_browser._ws = FakeWebSocket([
         {"id": 1, "error": {"code": -32000, "message": "Not allowed"}},

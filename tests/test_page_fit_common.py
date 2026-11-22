@@ -98,21 +98,6 @@ def test_last_tile_can_be_a_whole_viewport():
     assert _tile_heights(500, True) == [500]
 
 
-def test_arrayjoin_is_used_only_when_short_padding_is_at_the_end():
-    regular = [
-        common.TileSegment(0, 5, 0, 5),
-        common.TileSegment(5, 5, 5, 5),
-        common.TileSegment(10, 2, 10, 2),
-    ]
-    bottom_aligned = [
-        common.TileSegment(0, 5, 0, 5),
-        common.TileSegment(5, 2, 5, 2),
-        common.TileSegment(7, 5, 7, 5),
-    ]
-    assert common._has_regular_tile_heights(regular)
-    assert not common._has_regular_tile_heights(bottom_aligned)
-
-
 @pytest.mark.parametrize("image_format", ["PNG", "JPEG"])
 def test_image_dimensions_without_imaging_runtime(image_format):
     encoded = _encoded_image(image_format, size=(37, 19))

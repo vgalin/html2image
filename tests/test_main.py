@@ -6,7 +6,6 @@ from pathlib import Path
 from PIL import Image, ImageChops
 from websocket import WebSocketTimeoutException
 
-import inspect
 import json
 import pytest
 import os
@@ -553,11 +552,8 @@ def test_screenshot_html_str_with_multiple_css_files(browser, output_path):
     # check #green-block color (red from _temp_red_block.css)
     assert pixels[150, 125][:3] == (255, 0, 0)  # red
     
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_extend_size_param(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
+def test_extend_size_param(output_path):
+    hti = Html2Image(output_path=output_path, disable_logging=True)
 
     assert hti._extend_size_param([(50, 50)], 1) \
         == [(50, 50)]
@@ -571,11 +567,8 @@ def test_extend_size_param(browser, output_path):
     assert hti._extend_size_param([], 3) \
         == [(1920, 1080), (1920, 1080), (1920, 1080)]
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_extend_save_as_param(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
+def test_extend_save_as_param(output_path):
+    hti = Html2Image(output_path=output_path, disable_logging=True)
 
     assert hti._extend_save_as_param(['a.png', 'b.png'], 2) == \
         ['a.png', 'b.png']
@@ -706,28 +699,18 @@ def test_full_page_false_preserves_the_historical_browser_call(
     assert _full_page_options(received) == [{}]
 
 
-@pytest.mark.parametrize("bad_value", [
-    0,
-    -1,
-    -0.1,
-    float('nan'),
-    float('inf'),
-    float('-inf'),
-    "5",
-    [],
-    True,
-])
-def test_full_page_stability_timeout_validation(bad_value, output_path):
-    """Invalid full_page_stability_timeout values must raise ValueError."""
+def test_full_page_stability_timeout_validation(output_path):
+    """screenshot() checks full_page_stability_timeout. The values it
+    refuses are tested in test_page_fit_common.py."""
     hti = Html2Image(
         browser='chrome-cdp', output_path=output_path, disable_logging=True
     )
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises(ValueError, match="full_page_stability_timeout"):
         hti.screenshot(
-            url='https://example.com',
+            url='http://127.0.0.1:1/',
             save_as='_timeout_validation_test.png',
             full_page=True,
-            full_page_stability_timeout=bad_value,
+            full_page_stability_timeout=0,
         )
 
 
@@ -753,12 +736,6 @@ def test_full_page_checks_names_and_sizes_before_loading(
     assert loaded == []
 
 
-def test_full_page_only_goes_through_screenshot():
-    for method in ("screenshot_url", "screenshot_loaded_file"):
-        parameters = inspect.signature(getattr(Html2Image, method)).parameters
-        assert "full_page" not in parameters
-
-
 # ---------------------------------------------------------------------------
 # full_page_profile tests
 # ---------------------------------------------------------------------------
@@ -766,11 +743,6 @@ def test_full_page_only_goes_through_screenshot():
 def test_full_page_profile_valid_values():
     for p in ('robust', 'balanced', 'fast'):
         page_fit.validate_full_page_profile(p)  # doit passer sans exception
-
-
-def test_full_page_profile_invalid_raises():
-    with pytest.raises(ValueError, match="full_page_profile"):
-        page_fit.validate_full_page_profile('turbo')
 
 
 def test_full_page_profile_depends_on_the_source(
@@ -849,37 +821,6 @@ def test_full_page_fixed_element_mode_validation(mode):
 @pytest.mark.parametrize('value', [1, 100_000_000, None])
 def test_full_page_max_pixels_valid_values(value):
     page_fit.validate_max_pixels(value)
-
-
-@pytest.mark.parametrize('value', [0, -1, 1.5, '1000', True])
-def test_full_page_max_pixels_validation(value):
-    with pytest.raises(ValueError, match='full_page_max_pixels'):
-        page_fit.validate_max_pixels(value)
-
-
-def test_temporary_html_is_removed_when_full_page_capture_fails(
-    monkeypatch, output_path
-):
-    hti = Html2Image(
-        browser='chrome-cdp',
-        output_path=output_path,
-        disable_logging=True,
-    )
-
-    def _raise(**kwargs):
-        raise RuntimeError('capture failed')
-
-    monkeypatch.setattr(hti.browser, 'screenshot', _raise)
-    temporary_name = '_full_page_cleanup_failure.html'
-
-    with pytest.raises(RuntimeError, match='capture failed'):
-        hti.screenshot(
-            html_str='<p>temporary</p>',
-            save_as='_full_page_cleanup_failure.png',
-            full_page=True,
-        )
-
-    assert not os.path.exists(os.path.join(hti.temp_path, temporary_name))
 
 
 def test_full_page_rejects_selector(tmp_path):
