@@ -228,10 +228,9 @@ COMPAT_MODE_HTML = """
 """
 
 
-@pytest.mark.parametrize("browser", [
-    "chrome", "edge", "firefox",
-    "chrome-headless", "edge-headless", "firefox-headless",
-])
+# The doctype is added by html2image, before the page reaches the browser:
+# one browser of each engine is enough to see how the page is rendered.
+@pytest.mark.parametrize("browser", ["chrome", "firefox"])
 @pytest.mark.parametrize("add_doctype", [False, True])
 def test_add_doctype_screenshot(tmp_path, browser, add_doctype):
     try:

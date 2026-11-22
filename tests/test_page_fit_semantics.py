@@ -281,9 +281,12 @@ def _sticky_only_html(height=2500):
 @pytest.mark.parametrize(
     "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
 )
-@pytest.mark.parametrize("mode", ["auto", "first", "last", "hide"])
-# Chrome captures the longer page in tiles in every mode.
-@pytest.mark.parametrize("height", [2500, 17000])
+# The shorter page is already captured in tiles with auto and last. Chrome
+# captures the longer one in tiles in every mode.
+@pytest.mark.parametrize("height, mode", [
+    (2500, "auto"), (2500, "first"), (2500, "last"), (2500, "hide"),
+    (17000, "first"), (17000, "hide"),
+])
 def test_full_page_keeps_sticky_at_its_natural_position(
     browser, mode, height, tmp_path
 ):
@@ -566,8 +569,9 @@ def test_full_page_that_fits_in_the_viewport_does_not_resize_it(
 
 
 @TILED_BROWSERS
-# What is left for the last tile is shorter than the banner.
-@pytest.mark.parametrize("height", [700, 1250, 1300])
+# What is left for the last tile is shorter than the banner: after one tile
+# of 600 px, or after two.
+@pytest.mark.parametrize("height", [700, 1250])
 def test_full_page_auto_shows_a_bottom_banner_whole(browser, height, tmp_path):
     pytest.importorskip("pyvips")
     hti = _make_hti(browser, tmp_path)
