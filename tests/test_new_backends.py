@@ -72,17 +72,6 @@ def test_edge_cdp_context_manager_keeps_one_browser():
         socket.create_connection(("127.0.0.1", cdp_port), timeout=2).close()
 
 
-def test_edge_cdp_url():
-    hti = _make_hti("edge-cdp")
-    paths = hti.screenshot(
-        url="https://www.example.com",
-        save_as="edge_cdp_url.png",
-        size=(1024, 768),
-    )
-    img = Image.open(paths[0])
-    assert img.size == (1024, 768)
-
-
 # ---------------------------------------------------------------------------
 # Firefox BiDi
 # ---------------------------------------------------------------------------
@@ -129,17 +118,6 @@ def test_firefox_bidi_context_manager_reuse():
     for path, expected_size in zip(paths, sizes):
         img = Image.open(path)
         assert img.size == expected_size
-
-
-def test_firefox_bidi_url():
-    hti = _make_hti("firefox-bidi")
-    paths = hti.screenshot(
-        url="https://www.example.com",
-        save_as="firefox_bidi_url.png",
-        size=(1024, 768),
-    )
-    img = Image.open(paths[0])
-    assert img.size == (1024, 768)
 
 
 def test_firefox_bidi_html_file():

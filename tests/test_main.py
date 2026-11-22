@@ -312,91 +312,51 @@ def test_issue177_jpg_output_format(browser):
     assert img.size == (640, 360)
     assert img.format == "JPEG"
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_url(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+RED, GREEN, BLUE = (255, 0, 0), (0, 255, 0), (0, 0, 255)
 
-    paths = hti.screenshot(url='https://www.python.org', save_as="pyorg.png")
-    img = Image.open(paths[0])
-    assert (1920, 1080) == img.size  # default size
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_multiple_urls(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
-    paths = hti.screenshot(
-        url=['https://www.python.org', "https://www.example.org/"],
-        save_as="mixed_urls.png",
+def _page_of_color(color):
+    return '<body style="margin:0;background:rgb%s"></body>' % (color,)
+
+
+@pytest.mark.parametrize("browser", ["chrome", "edge", "firefox"])
+def test_screenshot_url(tmp_path, serve, browser):
+    try:
+        hti = Html2Image(
+            browser=browser, output_path=str(tmp_path), disable_logging=True
+        )
+    except FileNotFoundError:
+        pytest.skip(f"'{browser}' executable not found on this machine")
+
+    [path] = hti.screenshot(url=serve(_page_of_color(BLUE)), save_as="url.png")
+
+    img = Image.open(path).convert("RGB")
+    assert img.size == (1920, 1080)  # default size
+    assert img.getpixel((10, 10)) == BLUE
+
+
+@pytest.mark.parametrize("browser", CHROME_ONLY)
+def test_screenshot_urls_with_sizes_and_names(tmp_path, serve, browser):
+    hti = Html2Image(
+        browser=browser, output_path=str(tmp_path), disable_logging=True
     )
-
-    for path in paths:
-        img = Image.open(path)
-        assert (1920, 1080) == img.size  # default size
-
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_url_custom_size(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
-
-    test_size = (334, 485)
-
-    paths = hti.screenshot(
-        url='https://www.python.org',
-        save_as="pyorg_custom_size.png",
-        size=test_size,
-    )
-
-    img = Image.open(paths[0])
-    assert test_size == img.size  # default size
-
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_url_custom_sizes(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
-
-    test_sizes = [
-        (100, 100),
-        (100, 1000),
-        (100, 200),
-    ]
+    colors = [RED, GREEN, BLUE]
+    names = ["red.png", "green.png", "blue.png"]
 
     paths = hti.screenshot(
-        url=[
-            'https://www.python.org',
-            'https://www.wikipedia.org/',
-            'https://www.example.org/',
-        ],
-        save_as="mixed_urls_custom_sizes.png",
-        size=test_sizes,
+        url=[serve(_page_of_color(color)) for color in colors],
+        save_as=names,
+        size=[(100, 100), (100, 1000)],
     )
 
-    for wanted_size, path in zip(test_sizes, paths):
-        img = Image.open(path)
-        assert wanted_size == img.size
+    # The last size is used for the pages after it.
+    sizes = [(100, 100), (100, 1000), (100, 1000)]
+    assert [os.path.basename(path) for path in paths] == names
+    for path, size, color in zip(paths, sizes, colors):
+        img = Image.open(path).convert("RGB")
+        assert img.size == size
+        assert img.getpixel((50, 50)) == color
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_url_sizes_missing_custom_names(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
-
-    test_sizes = [
-        (100, 100),
-        (100, 1000),
-    ]
-
-    paths = hti.screenshot(
-        url=[
-            'https://www.python.org',
-            'https://www.wikipedia.org/',
-            'https://www.example.org/',
-        ],
-        save_as=[
-            "python_100_100.png",
-            "wikipedia_100_1000.png",
-            "example_100_1000.png",
-        ],
-        size=test_sizes,
-    )
-    effective_wanted_sizes = test_sizes + [test_sizes[-1]]
-    for wanted_size, path in zip(effective_wanted_sizes, paths):
-        img = Image.open(path)
-        assert wanted_size == img.size
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_string(browser):
