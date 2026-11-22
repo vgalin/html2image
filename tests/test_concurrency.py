@@ -137,10 +137,11 @@ def _pages(hti):
     return [target["url"] for target in targets if target["type"] == "page"]
 
 
-def _loaded(hti, name):
-    """Returns the number of pages whose temporary file is named after
-    `name`. The folder of the file is named after the test."""
-    return sum(f"/{name}_" in url for url in _pages(hti))
+def _loaded(hti, *names):
+    """Returns the number of pages loaded from the temporary files of the
+    images `names`. The folder of the files is named after the test."""
+    files = [f"/{name}.html" for name in names]
+    return sum(url.endswith(tuple(files)) for url in _pages(hti))
 
 
 def _answers(port):
@@ -256,7 +257,9 @@ def test_exit_during_captures(tmp_path, browser):
             )
             for i in range(2)
         ]
-        _wait_until(lambda: _loaded(hti, "blocked") == len(calls))
+        _wait_until(
+            lambda: _loaded(hti, "blocked_0", "blocked_1") == len(calls)
+        )
 
     # The captures in progress fail, and the browser is not started again.
     for call in calls:
@@ -278,8 +281,8 @@ def test_temp_files_of_calls_at_the_same_time(tmp_path, browser, concurrency):
         f".color_{index} {{ background: {_rgb(color)} }}"
         for index, color in enumerate(colors)
     ))
-    # Before, the HTML of `html_str` was named after `save_as`, and a
-    # copied file kept its name: each pair of pages used one file.
+    # The HTML of `html_str` is named after `save_as`, and a copied file
+    # keeps its name: each pair of pages has the same temporary name.
     files = []
     for index in range(len(colors)):
         folder = tmp_path / f"folder_{index}"
@@ -311,13 +314,190 @@ def test_temp_files_of_calls_at_the_same_time(tmp_path, browser, concurrency):
     assert os.listdir(hti.temp_path) == ["style.css"]
 
 
-def test_css_file_is_only_written_again_if_it_changed(monkeypatch, tmp_path):
+def _fake_hti(monkeypatch, tmp_path, screenshot, temp_path=None):
+    """Returns an Html2Image object whose browser calls `screenshot`
+    instead of taking a screenshot."""
     monkeypatch.setattr(chrome_cdp, "find_chrome", lambda executable: "c")
     hti = Html2Image(
         output_path=str(tmp_path / "output"),
-        temp_path=str(tmp_path / "temp"),
+        temp_path=str(temp_path or tmp_path / "temp"),
     )
-    monkeypatch.setattr(hti.browser, "screenshot", lambda **options: None)
+    monkeypatch.setattr(hti.browser, "screenshot", screenshot)
+    return hti
+
+
+def _read(path):
+    """Returns the name and the content of a loaded page."""
+    with open(path) as page:
+        return os.path.basename(path), page.read()
+
+
+def _pages_with_the_same_temp_name(tmp_path, source):
+    """Returns the options of a "first" and a "second" page that are loaded
+    under the same temporary name, and that name."""
+    if source == "html_str":
+        return [
+            dict(html_str=f"<p>{text}</p>", save_as=f"a.{extension}")
+            for text, extension in [("first", "png"), ("second", "jpg")]
+        ], "a.html"
+    pages = []
+    for text in ["first", "second"]:
+        page = tmp_path / text / "page.html"
+        page.parent.mkdir()
+        page.write_text(f"<p>{text}</p>")
+        pages.append(dict(html_file=str(page), save_as=f"{text}.png"))
+    return pages, "page.html"
+
+
+@pytest.mark.parametrize("source", ["html_str", "html_file"])
+def test_calls_at_the_same_time_with_the_same_temp_name(
+    monkeypatch, tmp_path, source
+):
+    loaded = threading.Barrier(2, timeout=10)
+    seen = {}
+
+    def screenshot(input, output_file, **options):
+        # Both pages are loaded before either is read.
+        loaded.wait()
+        seen[output_file] = _read(input)
+
+    hti = _fake_hti(monkeypatch, tmp_path, screenshot)
+    pages, name = _pages_with_the_same_temp_name(tmp_path, source)
+
+    with ThreadPoolExecutor(2) as executor:
+        list(executor.map(lambda options: hti.screenshot(**options), pages))
+
+    names = [seen[page["save_as"]][0] for page in pages]
+    assert name in names and len(set(names)) == 2
+    for page, text in zip(pages, ["first", "second"]):
+        assert f"<p>{text}</p>" in seen[page["save_as"]][1]
+    assert os.listdir(hti.temp_path) == []
+
+
+def test_same_temp_path_through_a_link(monkeypatch, tmp_path):
+    folder, link = tmp_path / "temp", tmp_path / "link"
+    folder.mkdir()
+    try:
+        os.symlink(folder, link, target_is_directory=True)
+    except OSError:
+        pytest.skip("symbolic links cannot be created on this machine")
+    loaded = threading.Barrier(2, timeout=10)
+    seen = {}
+
+    def screenshot(input, output_file, **options):
+        # Both pages are loaded before either is read.
+        loaded.wait()
+        seen[output_file] = _read(input)
+
+    # Two objects whose pages are loaded in the same folder.
+    calls = [
+        (_fake_hti(monkeypatch, tmp_path, screenshot, path), text, save_as)
+        for path, text, save_as in [
+            (folder, "first", "a.png"), (link, "second", "a.jpg"),
+        ]
+    ]
+
+    with ThreadPoolExecutor(2) as executor:
+        list(executor.map(
+            lambda call: call[0].screenshot(
+                html_str=f"<p>{call[1]}</p>", save_as=call[2]
+            ),
+            calls,
+        ))
+
+    assert len({seen[save_as][0] for _, _, save_as in calls}) == 2
+    for _, text, save_as in calls:
+        assert f"<p>{text}</p>" in seen[save_as][1]
+
+
+def test_failed_call_gives_back_its_temp_name(monkeypatch, tmp_path):
+    names = []
+
+    def screenshot(input, **options):
+        names.append(os.path.basename(input))
+        if len(names) == 1:
+            raise RuntimeError("capture failed")
+
+    hti = _fake_hti(monkeypatch, tmp_path, screenshot)
+
+    with pytest.raises(RuntimeError, match="capture failed"):
+        hti.screenshot(html_str="<p>text</p>", save_as="a.png")
+    hti.screenshot(html_str="<p>text</p>", save_as="a.png")
+
+    assert names == ["a.html", "a.html"]
+    assert os.listdir(hti.temp_path) == []
+
+
+def test_temp_file_is_removed_if_its_page_cannot_be_loaded(
+    monkeypatch, tmp_path
+):
+    loaded, release = threading.Event(), threading.Event()
+
+    def screenshot(input, **options):
+        loaded.set()
+        release.wait(10)
+
+    def load_str(**options):
+        raise OSError("No space left on device")
+
+    hti = _fake_hti(monkeypatch, tmp_path, screenshot)
+    first = _Call(hti.screenshot, html_str="<p>first</p>", save_as="a.png")
+    assert loaded.wait(10)
+    monkeypatch.setattr(hti, "load_str", load_str)
+
+    # The second call gets a name of its own, since a.html is in use.
+    with pytest.raises(OSError, match="No space left"):
+        hti.screenshot(html_str="<p>second</p>", save_as="a.png")
+    assert os.listdir(hti.temp_path) == ["a.html"]
+
+    release.set()
+    first.join()
+    assert first.error is None
+    assert os.listdir(hti.temp_path) == []
+
+
+def test_file_left_in_temp_path_keeps_its_name(monkeypatch, tmp_path):
+    seen = []
+    hti = _fake_hti(
+        monkeypatch, tmp_path, lambda input, **options: seen.append(
+            _read(input)
+        ),
+    )
+    # As left by `keep_temp_files=True`, or by a program that was stopped.
+    (tmp_path / "temp" / "a.html").write_text("<p>old</p>")
+
+    hti.screenshot(html_str="<p>new</p>", save_as="a.png")
+
+    [(name, content)] = seen
+    assert name == "a.html" and "<p>new</p>" in content
+    assert os.listdir(hti.temp_path) == []
+
+
+@pytest.mark.parametrize("source", ["html_str", "html_file"])
+def test_list_with_the_same_temp_name_twice(monkeypatch, tmp_path, source):
+    seen = []
+    hti = _fake_hti(
+        monkeypatch, tmp_path, lambda input, **options: seen.append(
+            _read(input)
+        ),
+    )
+    pages, name = _pages_with_the_same_temp_name(tmp_path, source)
+
+    # The pages of a list are captured one after the other, each under the
+    # same name.
+    hti.screenshot(
+        **{source: [page[source] for page in pages]},
+        save_as=[page["save_as"] for page in pages],
+    )
+
+    assert [page_name for page_name, _ in seen] == [name, name]
+    for (_, content), text in zip(seen, ["first", "second"]):
+        assert f"<p>{text}</p>" in content
+    assert os.listdir(hti.temp_path) == []
+
+
+def test_css_file_is_only_written_again_if_it_changed(monkeypatch, tmp_path):
+    hti = _fake_hti(monkeypatch, tmp_path, lambda **options: None)
     copies = []
     copyfile = shutil.copyfile
 
