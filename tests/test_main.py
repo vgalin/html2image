@@ -10,12 +10,26 @@ import json
 import pytest
 import os
 import re
+import socket
 
-TEST_BROWSERS = ["edGe", "cHrOme"]
+# The names of the browsers do not depend on the case.
+TEST_BROWSERS = ["edGe", "cHrOme", "fIrEfOx"]
 # Edge runs the code of Chrome, and "chrome-cdp" is another name for
 # "chrome". The tests of what html2image does the same way in both, such as
 # lists of pages, sizes and stylesheets, only use Chrome.
 CHROME_ONLY = ["chrome"]
+# Firefox has its own code.
+CHROME_AND_FIREFOX = ["chrome", "firefox"]
+
+
+def _make_hti(browser, output_path):
+    """Html2Image for `browser`, or a skipped test if it is not installed."""
+    try:
+        return Html2Image(
+            browser=browser, output_path=output_path, disable_logging=True
+        )
+    except FileNotFoundError:
+        pytest.skip(f"'{browser}' executable not found on this machine")
 
 
 def _is_red(rgba):
@@ -307,11 +321,9 @@ def test_issue177_svg_transparent_background(browser, output_path):
     assert img.getpixel((0, 0))[3] == 0
 
 
-@pytest.mark.parametrize("browser", CHROME_ONLY)
+@pytest.mark.parametrize("browser", CHROME_AND_FIREFOX)
 def test_issue177_jpg_output_format(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
+    hti = _make_hti(browser, output_path)
     paths = hti.screenshot(
         html_str='<body style="margin:0;background:#00aa00"></body>',
         save_as=f'issue177_jpg_{browser}.jpg',
@@ -322,6 +334,7 @@ def test_issue177_jpg_output_format(browser, output_path):
     assert img.size == (640, 360)
     assert img.format == "JPEG"
 
+
 RED, GREEN, BLUE = (255, 0, 0), (0, 255, 0), (0, 0, 255)
 
 
@@ -331,12 +344,7 @@ def _page_of_color(color):
 
 @pytest.mark.parametrize("browser", ["chrome", "edge", "firefox"])
 def test_screenshot_url(output_path, serve, browser):
-    try:
-        hti = Html2Image(
-            browser=browser, output_path=output_path, disable_logging=True
-        )
-    except FileNotFoundError:
-        pytest.skip(f"'{browser}' executable not found on this machine")
+    hti = _make_hti(browser, output_path)
 
     [path] = hti.screenshot(url=serve(_page_of_color(BLUE)), save_as="url.png")
 
@@ -370,9 +378,7 @@ def test_screenshot_urls_with_sizes_and_names(output_path, serve, browser):
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
 def test_screenshot_string(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
+    hti = _make_hti(browser, output_path)
 
     html = "Hello"
     css = "body{background: blue; font-size: 50px;}"
@@ -413,11 +419,9 @@ def test_screenshot_string_different_sizes(browser, output_path):
         img = Image.open(path)
         assert wanted_size == img.size
 
-@pytest.mark.parametrize("browser", CHROME_ONLY)
+@pytest.mark.parametrize("browser", CHROME_AND_FIREFOX)
 def test_screenshot_file(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
+    hti = _make_hti(browser, output_path)
 
     paths = hti.screenshot(
         html_file="./examples/blue_page.html",
@@ -1006,6 +1010,32 @@ def test_chrome_cdp_virtual_time_budget(output_path):
             )
             img = Image.open(paths[0]).convert("RGB")
             assert img.getpixel((0, 0)) == (0, 0, 255)
+
+
+# With the attribute that holds the profile folder of the browser.
+@pytest.mark.parametrize("browser, profile", [
+    ("edge", "_user_data_dir"), ("firefox", "_profile_dir"),
+], ids=["edge", "firefox"])
+def test_context_manager_keeps_one_browser(browser, profile, output_path):
+    hti = _make_hti(browser, output_path)
+    sizes = [(400, 300), (640, 480), (320, 240)]
+
+    with hti:
+        profile_dir = getattr(hti.browser, profile)
+        port = hti.browser._current_port
+
+        for i, size in enumerate(sizes):
+            [path] = hti.screenshot(
+                html_str='<body style="margin:0;background:red"></body>',
+                save_as=f"same_browser_{i}.png",
+                size=size,
+            )
+            assert Image.open(path).size == size
+            assert getattr(hti.browser, profile) == profile_dir
+
+    # The browser is closed: nothing listens on its port anymore.
+    with pytest.raises(OSError):
+        socket.create_connection(("127.0.0.1", port), timeout=2).close()
 
 
 class FakeWebSocket:
