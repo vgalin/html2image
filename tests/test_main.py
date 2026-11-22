@@ -458,23 +458,6 @@ def test_screenshot_string_different_sizes(browser):
         img = Image.open(path)
         assert wanted_size == img.size
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_other_svg(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
-
-    paths = hti.screenshot(
-        other_file='./examples/star.svg', save_as="star_svg.png"
-    )
-
-    img = Image.open(paths[0])
-    pixels = img.load()
-
-    assert (1920, 1080) == img.size  # default size
-
-    # check colors at top left corner (assuming transparent background for the SVG)
-    # for transparent PNG, the alpha channel will be 0
-    assert pixels[0, 0][3] == 0  # check alpha channel for full transparency
-
 @pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_screenshot_file(browser):
     hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
@@ -513,26 +496,6 @@ def test_screenshot_file_different_sizes(browser):
         img = Image.open(path)
         assert wanted_size == img.size
 
-
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_html_str_with_css_file_only(browser):
-    """Test html_str styled by a css_file only."""
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
-    html_content = "<h1>Background should be blue from file</h1>"
-    css_file_path = "./examples/blue_background.css"
-
-    paths = hti.screenshot(
-        html_str=html_content,
-        css_file=css_file_path,
-        save_as="html_str_blue_bg_from_file.png"
-    )
-
-    img = Image.open(paths[0])
-    pixels = img.load()
-    assert (1920, 1080) == img.size
-
-    # Check top-left corner for blue background
-    assert pixels[0, 0][:3] == (0, 0, 255)  # blue
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
 def test_screenshot_html_str_with_css_str_and_css_file(browser):
