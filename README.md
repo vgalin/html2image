@@ -376,7 +376,7 @@ hti.screenshot(url='https://example.org/', selector='#card', save_as='card.png')
 
 The generated image will have the size of the element, even if the element is larger than the window or further down the page. If several elements match, the first one will be used, as with `document.querySelector()` in JavaScript.
 
-With a list of selectors, one image will be saved per selector, for each page. Each page will only be loaded once, and each image will be the same as with one call per selector:
+With a list of selectors, one image will be saved per selector, for each page. Each page will only be loaded once, and each image will be the same as with one call per selector, unless the page changes when it is resized (see the limits below):
 
 ```python
 hti.screenshot(
@@ -399,6 +399,7 @@ Limits:
 - An element inside an `<iframe>` or a shadow DOM will not be found.
 - An element added by a script after the page has loaded may not be found. With Chrome and Edge, the `--virtual-time-budget` flag described in "Change browser flags" will let the page run its scripts before the capture.
 - An element hidden with `visibility: hidden` still has a size: the image will show what is behind it.
+- With Chrome and Edge, an element that is not entirely shown in the window once the page is loaded, with its padding, will be captured beyond the window. The browser will then tell the page that the window was resized (a `resize` event), although the window will keep its size. A page that changes when it is resized may look changed in this image and in the next images of the same call. Firefox will not do this.
 
 If an element has nothing to capture (no element matches the selector, or it is hidden, empty or outside of the page), `ElementNotFoundError` will be raised once all the other images have been saved. Pass `skip_missing=True` to skip such elements instead: the returned list will then only contain the saved images.
 
