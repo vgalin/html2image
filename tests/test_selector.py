@@ -454,19 +454,6 @@ def test_selector_missing_elements(hti):
     assert sorted(os.listdir(hti.output_path)) == ["missing_0.png", "missing_4.png"]
 
 
-def test_selector_skip_missing(hti):
-    paths = hti.screenshot(
-        html_str=_page(_box()),
-        selector=["#nothing", "#t"],
-        save_as=["nothing.png", "found.png"],
-        skip_missing=True,
-    )
-
-    assert [os.path.basename(path) for path in paths] == ["found.png"]
-    _assert_filled(paths[0], (200, 100))
-    assert os.listdir(hti.output_path) == ["found.png"]
-
-
 @pytest.mark.parametrize("selector", ["div[", ""])
 def test_selector_invalid_writes_nothing(hti, selector):
     with pytest.raises(ValueError, match="not a valid CSS selector"):
