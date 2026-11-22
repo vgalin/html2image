@@ -130,6 +130,17 @@ class Html2Image():
               some layouts.
             + Default is True.
 
+        - `concurrency` : int, optional
+            + Number of screenshots that can be taken at the same time,
+              from several threads. Each one will use its own browser
+              window.
+            + Only works with the 'chrome' and 'edge' browsers, inside a
+              `with` block. Outside one, each call will start and close
+              the browser, and the calls will run one after the other.
+            + A list given to a single call will still be captured one
+              page after the other.
+            + Default is 1.
+
         Raises
         ------
         - `FileNotFoundError`
