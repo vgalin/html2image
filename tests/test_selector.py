@@ -465,24 +465,6 @@ def test_selector_invalid_writes_nothing(hti, selector):
     assert os.listdir(hti.output_path) == []
 
 
-def test_selector_too_large(hti):
-    huge = _box("huge", top=200, width=300, height=70000)
-
-    for skip_missing in (False, True):
-        with pytest.raises(CaptureTooLargeError) as excinfo:
-            hti.screenshot(
-                html_str=_page(_box(), huge),
-                selector=["#t", "#huge", "#nothing"],
-                save_as="large.png",
-                skip_missing=skip_missing,
-            )
-
-        error = excinfo.value
-        assert [os.path.basename(path) for path in error.paths] == ["large_0.png"]
-        assert error.too_large == [("#huge", "large_1.png")]
-        _assert_filled(error.paths[0], (200, 100))
-
-
 def test_selector_does_not_restart_browser(hti):
     with hti:
         websocket = hti.browser._ws
@@ -584,7 +566,8 @@ def test_selector_element_added_after_load(tmp_path, browser):
 @WITH_EDGE
 def test_selector_size_limit(hti):
     # The largest element that the browser captures in one go is exact,
-    # without missing or repeated rows. One more pixel is refused.
+    # without missing or repeated rows. One more pixel is refused, even
+    # with skip_missing, which only skips the missing elements.
     if isinstance(hti.browser, firefox_bidi.FirefoxBiDi):
         limit = firefox_bidi.MAX_CAPTURE_SIZE
     else:
@@ -596,9 +579,11 @@ def test_selector_size_limit(hti):
 
     with pytest.raises(CaptureTooLargeError) as excinfo:
         hti.screenshot(
-            html_str=page, selector=["#t", "#over"], save_as="limit.png"
+            html_str=page, selector=["#t", "#over", "#nothing"],
+            save_as="limit.png", skip_missing=True,
         )
 
     [path] = excinfo.value.paths
     _assert_banded(path, (300, limit))
     assert excinfo.value.too_large == [("#over", "limit_1.png")]
+    assert os.listdir(hti.output_path) == ["limit_0.png"]

@@ -32,39 +32,21 @@ def _make_hti(browser, **kwargs):
 # Edge CDP
 # ---------------------------------------------------------------------------
 
-def test_edge_cdp_context_manager_reuse():
-    hti = _make_hti("edge-cdp")
-    sizes = [(400, 300), (640, 480), (320, 240)]
-    paths = []
-
-    with hti:
-        for i, size in enumerate(sizes):
-            result = hti.screenshot(
-                html_str='<body style="margin:0;background:red"></body>',
-                save_as=f"edge_cdp_ctx_{i}.png",
-                size=size,
-            )
-            paths.extend(result)
-
-    assert len(paths) == 3
-    for path, expected_size in zip(paths, sizes):
-        img = Image.open(path)
-        assert img.size == expected_size
-
-
 def test_edge_cdp_context_manager_keeps_one_browser():
     hti = _make_hti("edge-cdp")
+    sizes = [(400, 300), (640, 480), (320, 240)]
 
     with hti:
         user_data_dir = hti.browser._user_data_dir
         cdp_port = hti.browser._current_port
 
-        for i in range(3):
-            hti.screenshot(
+        for i, size in enumerate(sizes):
+            [path] = hti.screenshot(
                 html_str='<body style="margin:0;background:red"></body>',
                 save_as=f"edge_cdp_same_browser_{i}.png",
-                size=(320, 240),
+                size=size,
             )
+            assert Image.open(path).size == size
             assert hti.browser._user_data_dir == user_data_dir
 
     # Edge is closed: nothing listens on its debugging port anymore.
