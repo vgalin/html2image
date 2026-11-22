@@ -244,18 +244,17 @@ def test_lost_browser_is_restarted(tmp_path, browser):
 @pytest.mark.parametrize("browser", BROWSERS)
 def test_exit_during_captures(tmp_path, browser):
     hti = _make_hti(browser, tmp_path)
-    slow_page = (
-        "<script>const end = Date.now() + 3000;"
-        " while (Date.now() < end) {}</script>"
-    )
 
     with hti:
         port = hti.browser._current_port
         calls = [
-            _Call(hti.screenshot, html_str=slow_page, save_as=f"slow_{i}.png")
+            _Call(
+                hti.screenshot, html_str=BLOCKED_PAGE,
+                save_as=f"blocked_{i}.png",
+            )
             for i in range(2)
         ]
-        _wait_until(lambda: _loaded(hti, "slow") == len(calls))
+        _wait_until(lambda: _loaded(hti, "blocked") == len(calls))
 
     # The captures in progress fail, and the browser is not started again.
     for call in calls:
