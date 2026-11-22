@@ -16,8 +16,6 @@ import json
 import pickle
 import pytest
 
-OUTPUT_PATH = "tests_output"
-
 ERROR_CLASSES = [
     Html2ImageError,
     BrowserNotFoundError,
@@ -131,10 +129,12 @@ def test_missing_browser_executable(monkeypatch, tmp_path, browser):
 
 # Edge runs the code of Chrome.
 @pytest.mark.parametrize("browser", ["chrome", "firefox"])
-def test_unreachable_page_raises_page_load_error(browser, closed_port_url):
+def test_unreachable_page_raises_page_load_error(
+    browser, closed_port_url, output_path
+):
     try:
         hti = Html2Image(
-            browser=browser, output_path=OUTPUT_PATH, disable_logging=True
+            browser=browser, output_path=output_path, disable_logging=True
         )
     except FileNotFoundError:
         pytest.skip(f"'{browser}' executable not found on this machine")

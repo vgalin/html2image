@@ -22,6 +22,13 @@ class _Server(ThreadingHTTPServer):
             super().handle_error(request, client_address)
 
 
+@pytest.fixture
+def output_path(tmp_path):
+    """A folder of its own for the images of a test, so that a test never
+    reads an image left there by another one."""
+    return str(tmp_path / "output")
+
+
 @contextmanager
 def _local_server(handler):
     """Runs a local HTTP server in a thread, and yields its base URL."""

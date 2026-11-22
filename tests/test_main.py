@@ -12,9 +12,6 @@ import pytest
 import os
 import re
 
-OUTPUT_PATH = "tests_output"
-os.makedirs(OUTPUT_PATH, exist_ok=True)
-
 TEST_BROWSERS = ["edGe", "cHrOme"]
 # Edge runs the code of Chrome, and "chrome-cdp" is another name for
 # "chrome". The tests of what html2image does the same way in both, such as
@@ -184,11 +181,13 @@ READ_FILE_HTML = """
     "chrome-headless", "edge-headless", "firefox-headless",
 ])
 @pytest.mark.parametrize("allowed", [False, True])
-def test_allow_scripts_to_read_files_screenshot(tmp_path, browser, allowed):
+def test_allow_scripts_to_read_files_screenshot(
+    tmp_path, browser, allowed, output_path
+):
     try:
         hti = Html2Image(
             browser=browser,
-            output_path=OUTPUT_PATH,
+            output_path=output_path,
             temp_path=str(tmp_path / "temp"),
             disable_logging=True,
             allow_scripts_to_read_files=allowed,
@@ -230,11 +229,11 @@ COMPAT_MODE_HTML = """
 # one browser of each engine is enough to see how the page is rendered.
 @pytest.mark.parametrize("browser", ["chrome", "firefox"])
 @pytest.mark.parametrize("add_doctype", [False, True])
-def test_add_doctype_screenshot(tmp_path, browser, add_doctype):
+def test_add_doctype_screenshot(tmp_path, browser, add_doctype, output_path):
     try:
         hti = Html2Image(
             browser=browser,
-            output_path=OUTPUT_PATH,
+            output_path=output_path,
             temp_path=str(tmp_path / "temp"),
             disable_logging=True,
             add_doctype=add_doctype,
@@ -253,8 +252,10 @@ def test_add_doctype_screenshot(tmp_path, browser, add_doctype):
 
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_issue177_exact_size_contract(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_issue177_exact_size_contract(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
     paths = hti.screenshot(
         html_str='<body style="margin:0;background:green"></body>',
         save_as=f'issue177_size_{browser}.png',
@@ -265,8 +266,10 @@ def test_issue177_exact_size_contract(browser):
 
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_issue177_no_bottom_strip_100vh(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_issue177_no_bottom_strip_100vh(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
     paths = hti.screenshot(
         html_str=(
             '<style>html,body{margin:0;padding:0;overflow:hidden;}'
@@ -285,8 +288,10 @@ def test_issue177_no_bottom_strip_100vh(browser):
 
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_issue177_svg_transparent_background(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_issue177_svg_transparent_background(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
     paths = hti.screenshot(
         other_file='./examples/star.svg',
         save_as=f'issue177_svg_alpha_{browser}.png',
@@ -299,8 +304,10 @@ def test_issue177_svg_transparent_background(browser):
 
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_issue177_jpg_output_format(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_issue177_jpg_output_format(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
     paths = hti.screenshot(
         html_str='<body style="margin:0;background:#00aa00"></body>',
         save_as=f'issue177_jpg_{browser}.jpg',
@@ -319,10 +326,10 @@ def _page_of_color(color):
 
 
 @pytest.mark.parametrize("browser", ["chrome", "edge", "firefox"])
-def test_screenshot_url(tmp_path, serve, browser):
+def test_screenshot_url(output_path, serve, browser):
     try:
         hti = Html2Image(
-            browser=browser, output_path=str(tmp_path), disable_logging=True
+            browser=browser, output_path=output_path, disable_logging=True
         )
     except FileNotFoundError:
         pytest.skip(f"'{browser}' executable not found on this machine")
@@ -335,9 +342,9 @@ def test_screenshot_url(tmp_path, serve, browser):
 
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_urls_with_sizes_and_names(tmp_path, serve, browser):
+def test_screenshot_urls_with_sizes_and_names(output_path, serve, browser):
     hti = Html2Image(
-        browser=browser, output_path=str(tmp_path), disable_logging=True
+        browser=browser, output_path=output_path, disable_logging=True
     )
     colors = [RED, GREEN, BLUE]
     names = ["red.png", "green.png", "blue.png"]
@@ -358,8 +365,10 @@ def test_screenshot_urls_with_sizes_and_names(tmp_path, serve, browser):
 
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_string(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_screenshot_string(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
 
     html = "Hello"
     css = "body{background: blue; font-size: 50px;}"
@@ -377,8 +386,10 @@ def test_screenshot_string(browser):
     assert pixels[0, 0][:3] == (0, 0, 255)
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_string_different_sizes(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_screenshot_string_different_sizes(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
 
     test_sizes = [
         (100, 100),
@@ -399,8 +410,10 @@ def test_screenshot_string_different_sizes(browser):
         assert wanted_size == img.size
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_file(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_screenshot_file(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
 
     paths = hti.screenshot(
         html_file="./examples/blue_page.html",
@@ -417,8 +430,10 @@ def test_screenshot_file(browser):
     assert pixels[0, 0][:3] == (0, 0, 255)  # blue + no transparency
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_file_different_sizes(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_screenshot_file_different_sizes(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
 
     test_sizes = [
         (100, 100),
@@ -438,9 +453,11 @@ def test_screenshot_file_different_sizes(browser):
 
 
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_html_str_with_css_str_and_css_file(browser):
+def test_screenshot_html_str_with_css_str_and_css_file(browser, output_path):
     """Test html_str styled by both css_str (for a green block) and css_file (for blue body background)."""
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
     
     # this CSS describes a green block, positioned absolutely,
     # using !important to ensure these styles apply
@@ -480,9 +497,11 @@ def test_screenshot_html_str_with_css_str_and_css_file(browser):
 
       
 @pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_html_str_with_multiple_css_files(browser):
+def test_screenshot_html_str_with_multiple_css_files(browser, output_path):
     """Test html_str styled by multiple css_files using distinct background colors."""
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
 
     # this CSS describes a red block, positioned absolutely,
     # using !important to ensure these styles apply
@@ -496,7 +515,7 @@ def test_screenshot_html_str_with_multiple_css_files(browser):
         left: 50px !important;
     }
     """
-    temp_css_filename = os.path.join(OUTPUT_PATH, "_temp_red_block.css")
+    temp_css_filename = os.path.join(output_path, "_temp_red_block.css")
     with open(temp_css_filename, "w") as f:
         f.write(temp_css_content)
 
@@ -530,8 +549,10 @@ def test_screenshot_html_str_with_multiple_css_files(browser):
     assert pixels[150, 125][:3] == (255, 0, 0)  # red
     
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_extend_size_param(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_extend_size_param(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
 
     assert hti._extend_size_param([(50, 50)], 1) \
         == [(50, 50)]
@@ -546,8 +567,10 @@ def test_extend_size_param(browser):
         == [(1920, 1080), (1920, 1080), (1920, 1080)]
 
 @pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_extend_save_as_param(browser):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_extend_save_as_param(browser, output_path):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
 
     assert hti._extend_save_as_param(['a.png', 'b.png'], 2) == \
         ['a.png', 'b.png']
@@ -626,10 +649,12 @@ def test_full_page_default_is_false():
 
 
 @pytest.mark.parametrize("backend", ['chrome-headless', 'edge-headless', 'firefox-headless'])
-def test_full_page_raises_on_headless_backends(backend):
+def test_full_page_raises_on_headless_backends(backend, output_path):
     """full_page=True must raise ValueError on CLI headless backends."""
     try:
-        hti = Html2Image(browser=backend, output_path=OUTPUT_PATH, disable_logging=True)
+        hti = Html2Image(
+            browser=backend, output_path=output_path, disable_logging=True
+        )
     except FileNotFoundError:
         pytest.skip(f"'{backend}' executable not found on this machine")
     with pytest.raises(ValueError, match='"firefox-headless"'):
@@ -641,14 +666,16 @@ def test_full_page_raises_on_headless_backends(backend):
         )
 
 
-def test_full_page_propagated_to_browser_screenshot(monkeypatch):
+def test_full_page_propagated_to_browser_screenshot(monkeypatch, output_path):
     """screenshot() must pass full_page down to browser.screenshot()."""
     received: dict = {}
 
     def _fake_screenshot(**kwargs):
         received.update(kwargs)
 
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
 
     hti.screenshot(
@@ -660,14 +687,18 @@ def test_full_page_propagated_to_browser_screenshot(monkeypatch):
     assert received.get('full_page') is True
 
 
-def test_full_page_false_preserves_the_historical_browser_call(monkeypatch):
+def test_full_page_false_preserves_the_historical_browser_call(
+    monkeypatch, output_path
+):
     """Disabled page-fit must not add kwargs to custom browser calls."""
     received: dict = {}
 
     def _fake_screenshot(**kwargs):
         received.update(kwargs)
 
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
 
     hti.screenshot(
@@ -680,14 +711,16 @@ def test_full_page_false_preserves_the_historical_browser_call(monkeypatch):
     assert 'full_page_profile' not in received
 
 
-def test_full_page_stability_timeout_propagated(monkeypatch):
+def test_full_page_stability_timeout_propagated(monkeypatch, output_path):
     """screenshot() must pass full_page_stability_timeout down to browser.screenshot()."""
     received: dict = {}
 
     def _fake_screenshot(**kwargs):
         received.update(kwargs)
 
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
 
     hti.screenshot(
@@ -711,9 +744,11 @@ def test_full_page_stability_timeout_propagated(monkeypatch):
     [],
     True,
 ])
-def test_full_page_stability_timeout_validation(bad_value):
+def test_full_page_stability_timeout_validation(bad_value, output_path):
     """Invalid full_page_stability_timeout values must raise ValueError."""
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     with pytest.raises((ValueError, TypeError)):
         hti.screenshot(
             url='https://example.com',
@@ -727,11 +762,15 @@ def test_full_page_stability_timeout_validation(bad_value):
     {"save_as": ["first.png", "second.webp"]},
     {"save_as": ["first.png", "second.png"], "size": [(400, 300), (400.0, 300)]},
 ])
-def test_full_page_checks_names_and_sizes_before_loading(monkeypatch, options):
+def test_full_page_checks_names_and_sizes_before_loading(
+    monkeypatch, options, output_path
+):
     """A name or a size refused by full_page is refused before any page is
     loaded, so that no image of the batch is saved."""
     loaded = []
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     monkeypatch.setattr(
         hti.browser, 'screenshot', lambda **kwargs: loaded.append(kwargs)
     )
@@ -747,14 +786,16 @@ def test_full_page_only_goes_through_screenshot():
         assert "full_page" not in parameters
 
 
-def test_full_page_stability_timeout_none_is_valid(monkeypatch):
+def test_full_page_stability_timeout_none_is_valid(monkeypatch, output_path):
     """None (default) must not raise and must be forwarded as-is."""
     received: dict = {}
 
     def _fake_screenshot(**kwargs):
         received.update(kwargs)
 
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
 
     hti.screenshot(
@@ -780,11 +821,15 @@ def test_full_page_profile_invalid_raises():
         page_fit.validate_full_page_profile('turbo')
 
 
-def test_full_page_profile_depends_on_the_source(monkeypatch, tmp_path):
+def test_full_page_profile_depends_on_the_source(
+    monkeypatch, tmp_path, output_path
+):
     page = tmp_path / '_profile_file_test.html'
     page.write_text('<p>x</p>')
     received = []
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     monkeypatch.setattr(
         hti.browser, 'screenshot', lambda **kw: received.append(kw)
     )
@@ -799,8 +844,10 @@ def test_full_page_profile_depends_on_the_source(monkeypatch, tmp_path):
     assert profiles == ['fast', 'fast', 'balanced']
 
 
-def test_screenshot_rejects_unknown_profile():
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+def test_screenshot_rejects_unknown_profile(output_path):
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     with pytest.raises(ValueError, match="full_page_profile"):
         hti.screenshot(
             html_str='<p>x</p>',
@@ -810,13 +857,15 @@ def test_screenshot_rejects_unknown_profile():
         )
 
 
-def test_full_page_profile_propagated(monkeypatch):
+def test_full_page_profile_propagated(monkeypatch, output_path):
     received = {}
 
     def _fake_screenshot(**kw):
         received.update(kw)
 
-    hti = Html2Image(browser='chrome-cdp', output_path=OUTPUT_PATH, disable_logging=True)
+    hti = Html2Image(
+        browser='chrome-cdp', output_path=output_path, disable_logging=True
+    )
     monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
     hti.screenshot(
         url='https://example.com',
@@ -875,7 +924,7 @@ def test_full_page_max_pixels_validation(value):
         page_fit.validate_max_pixels(value)
 
 
-def test_full_page_policy_options_are_propagated(monkeypatch):
+def test_full_page_policy_options_are_propagated(monkeypatch, output_path):
     received = {}
 
     def _fake_screenshot(**kwargs):
@@ -883,7 +932,7 @@ def test_full_page_policy_options_are_propagated(monkeypatch):
 
     hti = Html2Image(
         browser='chrome-cdp',
-        output_path=OUTPUT_PATH,
+        output_path=output_path,
         disable_logging=True,
     )
     monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
@@ -900,7 +949,9 @@ def test_full_page_policy_options_are_propagated(monkeypatch):
     assert received['full_page_max_pixels'] is None
 
 
-def test_full_page_false_does_not_forward_new_policy_options(monkeypatch):
+def test_full_page_false_does_not_forward_new_policy_options(
+    monkeypatch, output_path
+):
     received = {}
 
     def _fake_screenshot(**kwargs):
@@ -908,7 +959,7 @@ def test_full_page_false_does_not_forward_new_policy_options(monkeypatch):
 
     hti = Html2Image(
         browser='chrome-cdp',
-        output_path=OUTPUT_PATH,
+        output_path=output_path,
         disable_logging=True,
     )
     monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
@@ -922,10 +973,12 @@ def test_full_page_false_does_not_forward_new_policy_options(monkeypatch):
     assert 'full_page_max_pixels' not in received
 
 
-def test_temporary_html_is_removed_when_full_page_capture_fails(monkeypatch):
+def test_temporary_html_is_removed_when_full_page_capture_fails(
+    monkeypatch, output_path
+):
     hti = Html2Image(
         browser='chrome-cdp',
-        output_path=OUTPUT_PATH,
+        output_path=output_path,
         disable_logging=True,
     )
 
@@ -1026,9 +1079,11 @@ def test_too_high_jpeg_without_a_pixel_limit(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("save_as", ["../escaped.png", os.path.abspath("escaped.png")])
-def test_screenshot_save_as_path_writes_nothing(tmp_path, save_as):
+def test_screenshot_save_as_path_writes_nothing(
+    tmp_path, save_as, output_path
+):
     temp_path = tmp_path / "temp"
-    hti = Html2Image(temp_path=str(temp_path), output_path=OUTPUT_PATH)
+    hti = Html2Image(temp_path=str(temp_path), output_path=output_path)
 
     with pytest.raises(ValueError):
         hti.screenshot(html_str="Hello", save_as=save_as)
@@ -1037,9 +1092,9 @@ def test_screenshot_save_as_path_writes_nothing(tmp_path, save_as):
     assert not os.path.exists("escaped.html")
 
 
-def test_load_str_rejects_path(tmp_path):
+def test_load_str_rejects_path(tmp_path, output_path):
     temp_path = tmp_path / "temp"
-    hti = Html2Image(temp_path=str(temp_path), output_path=OUTPUT_PATH)
+    hti = Html2Image(temp_path=str(temp_path), output_path=output_path)
 
     with pytest.raises(ValueError):
         hti.load_str("Hello", as_filename="../escaped.html")
@@ -1047,9 +1102,9 @@ def test_load_str_rejects_path(tmp_path):
     assert not (tmp_path / "escaped.html").exists()
 
 
-def test_load_file_rejects_path(tmp_path):
+def test_load_file_rejects_path(tmp_path, output_path):
     temp_path = tmp_path / "temp"
-    hti = Html2Image(temp_path=str(temp_path), output_path=OUTPUT_PATH)
+    hti = Html2Image(temp_path=str(temp_path), output_path=output_path)
 
     with pytest.raises(ValueError):
         hti.load_file("./examples/blue_page.html", as_filename="../escaped.html")
@@ -1061,8 +1116,12 @@ def test_load_file_rejects_path(tmp_path):
     "browser", ["chrome-headless", "edge-headless", "firefox-headless"]
 )
 @pytest.mark.parametrize("prefix", ["", " ", "\t"])
-def test_cli_backends_reject_input_read_as_flag(tmp_path, browser, prefix):
-    hti = Html2Image(browser=browser, output_path=OUTPUT_PATH, disable_logging=True)
+def test_cli_backends_reject_input_read_as_flag(
+    tmp_path, browser, prefix, output_path
+):
+    hti = Html2Image(
+        browser=browser, output_path=output_path, disable_logging=True
+    )
     injected_output = tmp_path / "injected.png"
 
     # Chromium strips the whitespace around its arguments
@@ -1075,9 +1134,13 @@ def test_cli_backends_reject_input_read_as_flag(tmp_path, browser, prefix):
     assert not injected_output.exists()
 
 
-def test_chrome_instances_use_different_cdp_ports():
-    first = Html2Image(browser="chrome", output_path=OUTPUT_PATH, disable_logging=True)
-    second = Html2Image(browser="chrome", output_path=OUTPUT_PATH, disable_logging=True)
+def test_chrome_instances_use_different_cdp_ports(output_path):
+    first = Html2Image(
+        browser="chrome", output_path=output_path, disable_logging=True
+    )
+    second = Html2Image(
+        browser="chrome", output_path=output_path, disable_logging=True
+    )
 
     with first, second:
         assert first.browser._current_port != second.browser._current_port
@@ -1096,10 +1159,10 @@ def test_chrome_instances_use_different_cdp_ports():
             assert img.getpixel((0, 0)) == rgb
 
 
-def test_chrome_cdp_virtual_time_budget():
+def test_chrome_cdp_virtual_time_budget(output_path):
     hti = Html2Image(
         browser="chrome",
-        output_path=OUTPUT_PATH,
+        output_path=output_path,
         disable_logging=True,
         custom_flags=["--virtual-time-budget=5000", "--hide-scrollbars"],
     )
@@ -1175,8 +1238,10 @@ def test_cdp_navigation_within_same_document_completes():
     assert browser._wait_for_navigation_complete(1, timeout=1) == navigation_result
 
 
-def test_chrome_cdp_screenshot_url_then_its_anchor():
-    hti = Html2Image(browser="chrome", output_path=OUTPUT_PATH, disable_logging=True)
+def test_chrome_cdp_screenshot_url_then_its_anchor(output_path):
+    hti = Html2Image(
+        browser="chrome", output_path=output_path, disable_logging=True
+    )
     hti.load_file("./examples/blue_page.html", as_filename="anchor_page.html")
     page = os.path.join(hti.temp_path, "anchor_page.html")
 
@@ -1209,8 +1274,12 @@ def test_cdp_lost_page_raises_immediately():
         browser._wait_for_result(1, timeout=1)
 
 
-def test_cdp_session_recovers_after_navigation_timeout(monkeypatch, unresponsive_url):
-    hti = Html2Image(browser="chrome", output_path=OUTPUT_PATH, disable_logging=True)
+def test_cdp_session_recovers_after_navigation_timeout(
+    monkeypatch, unresponsive_url, output_path
+):
+    hti = Html2Image(
+        browser="chrome", output_path=output_path, disable_logging=True
+    )
 
     wait_for_navigation = hti.browser._wait_for_navigation_complete
     monkeypatch.setattr(
@@ -1350,7 +1419,9 @@ def test_pdf_rejects_scale_out_of_range(scale):
     "browser", ["chrome-headless", "edge-headless", "firefox-headless"]
 )
 def test_pdf_rejects_cli_backends(tmp_path, browser):
-    hti = Html2Image(browser=browser, output_path=str(tmp_path), disable_logging=True)
+    hti = Html2Image(
+        browser=browser, output_path=str(tmp_path), disable_logging=True
+    )
 
     with pytest.raises(ValueError, match=r"pdf\(\)"):
         hti.pdf(html_str="Hello", save_as="cli.pdf")
@@ -1360,7 +1431,9 @@ def test_pdf_rejects_cli_backends(tmp_path, browser):
 
 @pytest.mark.parametrize("save_as", ["image.pdf", ["image.png", "image.PDF"]])
 def test_screenshot_rejects_pdf(tmp_path, save_as):
-    hti = Html2Image(browser="chrome", output_path=str(tmp_path), disable_logging=True)
+    hti = Html2Image(
+        browser="chrome", output_path=str(tmp_path), disable_logging=True
+    )
 
     with pytest.raises(ValueError, match=r"pdf\(\)"):
         hti.screenshot(html_str=["Hello", "Hello"], save_as=save_as)
@@ -1395,7 +1468,7 @@ def _pdf_hti(browser, tmp_path):
     try:
         return Html2Image(
             browser=browser,
-            output_path=OUTPUT_PATH,
+            output_path=str(tmp_path / "output"),
             temp_path=str(tmp_path / "temp"),
             disable_logging=True,
         )
