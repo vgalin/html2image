@@ -11,6 +11,8 @@ For feedback, usage and to learn more, see https://github.com/vgalin/html2image
 import os
 import re
 import shutil
+import tempfile
+import threading
 
 from textwrap import dedent
 from typing import List
@@ -140,6 +142,7 @@ class Html2Image():
         disable_logging=False,
         allow_scripts_to_read_files=False,
         add_doctype=True,
+        concurrency=1,
     ):
 
         if browser.lower() not in browser_map:
@@ -153,8 +156,16 @@ class Html2Image():
         self.keep_temp_files = keep_temp_files
         self.add_doctype = add_doctype
         self.browser: Browser = None
+        self._lock = threading.Lock()  # See `_load_shared_file()`
 
         browser_class = browser_map[browser.lower()]
+
+        if concurrency != 1 and not issubclass(browser_class, CDPBrowser):
+            raise ValueError(
+                'concurrency works with the "chrome" and "edge" browsers, '
+                'not with "chrome-headless", "edge-headless", "firefox" or '
+                '"firefox-headless".'
+            )
 
         if issubclass(browser_class, CDPBrowser):
             cdp_kwargs = {}
@@ -165,6 +176,7 @@ class Html2Image():
                 flags=custom_flags,
                 disable_logging=disable_logging,
                 allow_scripts_to_read_files=allow_scripts_to_read_files,
+                concurrency=concurrency,
                 **cdp_kwargs,
             )
         elif issubclass(browser_class, BiDiBrowser):
@@ -304,6 +316,41 @@ class Html2Image():
             os.remove(os.path.join(self.temp_path, filename))
         except FileNotFoundError:
             pass
+
+    def _new_temp_file(self, filename):
+        """ Creates an empty file in the `temp_path` directory, named after
+        `filename` with a part that no other call will use.
+
+        Calls made at the same time would otherwise write the same file.
+        The file stays in `temp_path`, so that a page can use the other
+        files loaded there.
+
+        Returns
+        -------
+        - str
+            + The name of the created file.
+        """
+        name, extension = os.path.splitext(filename)
+        handle, path = tempfile.mkstemp(
+            suffix=extension, prefix=name + '_', dir=self.temp_path,
+        )
+        os.close(handle)
+        return os.path.basename(path)
+
+    def _load_shared_file(self, src):
+        """ Loads the file `src` under its own name, as `load_file()` does,
+        unless the loaded file already has the same content.
+
+        Pages use such a file by its name, so a page of another call may
+        be reading it. It will only be written again if its content changed.
+        """
+        dest = os.path.join(self.temp_path, os.path.basename(src))
+        with self._lock:
+            if os.path.isfile(dest):
+                with open(src, 'rb') as new, open(dest, 'rb') as loaded:
+                    if new.read() == loaded.read():
+                        return
+            self.load_file(src=src)
 
     def screenshot_loaded_file(
         self, file, output_file='screenshot.png', size=None
@@ -1094,7 +1141,7 @@ class Html2Image():
 
         for css in css_files:
             if os.path.isfile(css):
-                self.load_file(src=css)
+                self._load_shared_file(css)
             else:
                 raise FileNotFoundError(css)
 
@@ -1111,7 +1158,7 @@ class Html2Image():
             current_size = sizes.pop(0)
 
             base_name, _ = os.path.splitext(names[0])
-            html_filename = base_name + '.html'
+            html_filename = self._new_temp_file(base_name + '.html')
 
             content = Html2Image._prepare_html_string(
                 html, css_style_string, self.add_doctype
@@ -1134,21 +1181,21 @@ class Html2Image():
             current_size = sizes.pop(0)
 
             if os.path.isfile(screenshot_target):
-                self.load_file(src=screenshot_target)
+                temp_filename = self._new_temp_file(
+                    os.path.basename(screenshot_target)
+                )
+                self.load_file(
+                    src=screenshot_target, as_filename=temp_filename
+                )
                 try:
                     page_results.append(self._screenshot_page(
-                        os.path.join(
-                            self.temp_path,
-                            os.path.basename(screenshot_target),
-                        ),
+                        os.path.join(self.temp_path, temp_filename),
                         names, current_size, selectors, selector_padding,
                         browser_options,
                     ))
                 finally:
                     if not self.keep_temp_files:
-                        self._remove_temp_file(
-                            os.path.basename(screenshot_target)
-                        )
+                        self._remove_temp_file(temp_filename)
             else:
                 raise FileNotFoundError(screenshot_target)
 
