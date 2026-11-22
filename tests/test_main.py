@@ -48,23 +48,28 @@ def test_bad_browser():
     with pytest.raises(ValueError):
         Html2Image(browser='watergoupil')
 
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_good_browser(browser):
-    Html2Image(browser=browser)
+BACKENDS = {
+    "chrome": "ChromeCDP",
+    "chrome-cdp": "ChromeCDP",
+    "chrome-headless": "ChromeHeadless",
+    "edge": "EdgeCDP",
+    "edge-cdp": "EdgeCDP",
+    "edge-headless": "EdgeHeadless",
+    "firefox": "FirefoxBiDi",
+    "firefox-bidi": "FirefoxBiDi",
+    "mozilla-firefox": "FirefoxBiDi",
+    "firefox-headless": "FirefoxHeadlessScreenshot",
+}
 
 
-def test_chrome_headless_alias_maps_to_legacy_backend():
-    hti = Html2Image(browser='chrome-headless')
-    assert type(hti.browser).__name__ == 'ChromeHeadless'
+def test_browser_names_map_to_their_backends():
+    for name, backend in BACKENDS.items():
+        hti = Html2Image(browser=name)
+        assert type(hti.browser).__name__ == backend, name
 
 
 def test_cdp_port_forwarded():
     hti = Html2Image(browser='chrome-cdp', browser_cdp_port=9555)
-    assert hti.browser.cdp_port == 9555
-
-
-def test_cdp_port_forwarded_for_default_chrome_backend():
-    hti = Html2Image(browser='chrome', browser_cdp_port=9555)
     assert hti.browser.cdp_port == 9555
 
 
@@ -585,16 +590,6 @@ def test_extend_save_as_param(browser, output_path):
         ['a.png', 'b.png']
 
 
-def test_firefox_bidi_alias_maps_to_firefox_bidi_backend():
-    hti = Html2Image(browser='firefox-bidi')
-    assert type(hti.browser).__name__ == 'FirefoxBiDi'
-
-
-def test_firefox_headless_alias_maps_to_firefox_headless_screenshot():
-    hti = Html2Image(browser='firefox-headless')
-    assert type(hti.browser).__name__ == 'FirefoxHeadlessScreenshot'
-
-
 def test_bidi_port_forwarded():
     hti = Html2Image(browser='firefox-bidi', browser_bidi_port=9333)
     assert hti.browser._bidi_port == 9333
@@ -605,34 +600,9 @@ def test_bidi_port_not_forwarded_to_cdp_browser():
     assert not hasattr(hti.browser, '_bidi_port')
 
 
-def test_edge_cdp_alias_maps_to_edge_cdp_backend():
-    hti = Html2Image(browser='edge-cdp')
-    assert type(hti.browser).__name__ == 'EdgeCDP'
-
-
 def test_edge_cdp_port_forwarded():
     hti = Html2Image(browser='edge-cdp', browser_cdp_port=9444)
     assert hti.browser.cdp_port == 9444
-
-
-def test_edge_headless_alias_maps_to_edge_headless_backend():
-    hti = Html2Image(browser='edge-headless')
-    assert type(hti.browser).__name__ == 'EdgeHeadless'
-
-
-def test_edge_default_maps_to_cdp():
-    hti = Html2Image(browser='edge')
-    assert type(hti.browser).__name__ == 'EdgeCDP'
-
-
-def test_firefox_alias_maps_to_firefox_bidi():
-    hti = Html2Image(browser='firefox')
-    assert type(hti.browser).__name__ == 'FirefoxBiDi'
-
-
-def test_mozilla_firefox_alias_maps_to_firefox_bidi():
-    hti = Html2Image(browser='mozilla-firefox')
-    assert type(hti.browser).__name__ == 'FirefoxBiDi'
 
 
 # ---------------------------------------------------------------------------
@@ -666,71 +636,74 @@ def test_full_page_raises_on_headless_backends(backend, output_path):
         )
 
 
+def _full_page_options(received):
+    return [
+        {key: value for key, value in options.items()
+         if key.startswith('full_page')}
+        for options in received
+    ]
+
+
 def test_full_page_propagated_to_browser_screenshot(monkeypatch, output_path):
-    """screenshot() must pass full_page down to browser.screenshot()."""
-    received: dict = {}
-
-    def _fake_screenshot(**kwargs):
-        received.update(kwargs)
-
+    """screenshot() must pass the full page options, given or not, down to
+    browser.screenshot()."""
+    received = []
     hti = Html2Image(
         browser='chrome-cdp', output_path=output_path, disable_logging=True
     )
-    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+    monkeypatch.setattr(
+        hti.browser, 'screenshot', lambda **kwargs: received.append(kwargs)
+    )
 
     hti.screenshot(
-        url='https://example.com',
-        save_as='_propagation_test.png',
-        size=(800, 600),
-        full_page=True,
+        url='http://127.0.0.1:1/', save_as='default.png', full_page=True
     )
-    assert received.get('full_page') is True
+    hti.screenshot(
+        url='http://127.0.0.1:1/',
+        save_as='options.png',
+        full_page=True,
+        full_page_stability_timeout=7.5,
+        full_page_profile='robust',
+        full_page_fixed_elements='last',
+        full_page_max_pixels=None,
+    )
+
+    assert _full_page_options(received) == [
+        {
+            'full_page': True,
+            'full_page_stability_timeout': None,
+            'full_page_profile': 'balanced',
+            'full_page_fixed_elements': 'auto',
+            'full_page_max_pixels': 100_000_000,
+        },
+        {
+            'full_page': True,
+            'full_page_stability_timeout': 7.5,
+            'full_page_profile': 'robust',
+            'full_page_fixed_elements': 'last',
+            'full_page_max_pixels': None,
+        },
+    ]
 
 
 def test_full_page_false_preserves_the_historical_browser_call(
     monkeypatch, output_path
 ):
     """Disabled page-fit must not add kwargs to custom browser calls."""
-    received: dict = {}
-
-    def _fake_screenshot(**kwargs):
-        received.update(kwargs)
-
+    received = []
     hti = Html2Image(
         browser='chrome-cdp', output_path=output_path, disable_logging=True
     )
-    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
+    monkeypatch.setattr(
+        hti.browser, 'screenshot', lambda **kwargs: received.append(kwargs)
+    )
 
     hti.screenshot(
-        url='https://example.com',
+        url='http://127.0.0.1:1/',
         save_as='_propagation_test_false.png',
         size=(800, 600),
     )
-    assert 'full_page' not in received
-    assert 'full_page_stability_timeout' not in received
-    assert 'full_page_profile' not in received
-
-
-def test_full_page_stability_timeout_propagated(monkeypatch, output_path):
-    """screenshot() must pass full_page_stability_timeout down to browser.screenshot()."""
-    received: dict = {}
-
-    def _fake_screenshot(**kwargs):
-        received.update(kwargs)
-
-    hti = Html2Image(
-        browser='chrome-cdp', output_path=output_path, disable_logging=True
-    )
-    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
-
-    hti.screenshot(
-        url='https://example.com',
-        save_as='_timeout_propagation_test.png',
-        size=(800, 600),
-        full_page=True,
-        full_page_stability_timeout=7.5,
-    )
-    assert received.get('full_page_stability_timeout') == 7.5
+    assert _full_page_options(received) == [{}]
 
 
 @pytest.mark.parametrize("bad_value", [
@@ -786,27 +759,6 @@ def test_full_page_only_goes_through_screenshot():
         assert "full_page" not in parameters
 
 
-def test_full_page_stability_timeout_none_is_valid(monkeypatch, output_path):
-    """None (default) must not raise and must be forwarded as-is."""
-    received: dict = {}
-
-    def _fake_screenshot(**kwargs):
-        received.update(kwargs)
-
-    hti = Html2Image(
-        browser='chrome-cdp', output_path=output_path, disable_logging=True
-    )
-    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
-
-    hti.screenshot(
-        url='https://example.com',
-        save_as='_timeout_none_test.png',
-        full_page=True,
-        full_page_stability_timeout=None,
-    )
-    assert received.get('full_page_stability_timeout') is None
-
-
 # ---------------------------------------------------------------------------
 # full_page_profile tests
 # ---------------------------------------------------------------------------
@@ -857,25 +809,6 @@ def test_screenshot_rejects_unknown_profile(output_path):
         )
 
 
-def test_full_page_profile_propagated(monkeypatch, output_path):
-    received = {}
-
-    def _fake_screenshot(**kw):
-        received.update(kw)
-
-    hti = Html2Image(
-        browser='chrome-cdp', output_path=output_path, disable_logging=True
-    )
-    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
-    hti.screenshot(
-        url='https://example.com',
-        save_as='_profile_propagated_test.png',
-        full_page=True,
-        full_page_profile='balanced',
-    )
-    assert received.get('full_page_profile') == 'balanced'
-
-
 def test_pyvips_import_error_message(monkeypatch):
     """ImportError raised when pyvips is absent must include the install hint."""
     import sys
@@ -922,55 +855,6 @@ def test_full_page_max_pixels_valid_values(value):
 def test_full_page_max_pixels_validation(value):
     with pytest.raises(ValueError, match='full_page_max_pixels'):
         page_fit.validate_max_pixels(value)
-
-
-def test_full_page_policy_options_are_propagated(monkeypatch, output_path):
-    received = {}
-
-    def _fake_screenshot(**kwargs):
-        received.update(kwargs)
-
-    hti = Html2Image(
-        browser='chrome-cdp',
-        output_path=output_path,
-        disable_logging=True,
-    )
-    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
-
-    hti.screenshot(
-        url='https://example.com',
-        save_as='_full_page_policy_propagation.png',
-        full_page=True,
-        full_page_fixed_elements='last',
-        full_page_max_pixels=None,
-    )
-
-    assert received['full_page_fixed_elements'] == 'last'
-    assert received['full_page_max_pixels'] is None
-
-
-def test_full_page_false_does_not_forward_new_policy_options(
-    monkeypatch, output_path
-):
-    received = {}
-
-    def _fake_screenshot(**kwargs):
-        received.update(kwargs)
-
-    hti = Html2Image(
-        browser='chrome-cdp',
-        output_path=output_path,
-        disable_logging=True,
-    )
-    monkeypatch.setattr(hti.browser, 'screenshot', _fake_screenshot)
-
-    hti.screenshot(
-        url='https://example.com',
-        save_as='_non_full_page_policy_propagation.png',
-    )
-
-    assert 'full_page_fixed_elements' not in received
-    assert 'full_page_max_pixels' not in received
 
 
 def test_temporary_html_is_removed_when_full_page_capture_fails(
