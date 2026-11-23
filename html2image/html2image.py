@@ -847,7 +847,8 @@ class Html2Image():
             + With a list, one image will be saved per selector, for each
             + page, and the images of the first page will come first.
             + Each page will only be loaded once, and each image will be
-            + the same as with one call per selector.
+            + the same as with one call per selector, unless the page
+            + changes when it is resized.
             + Only works with the 'chrome', 'edge' and 'firefox' browsers.
             + Default is None: the whole window will be captured. An
             + empty string or list will do the same.
