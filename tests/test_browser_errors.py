@@ -370,13 +370,15 @@ def test_bidi_download_in_another_context_is_ignored(bidi_browser):
 
 
 class FakeFirefoxProcess:
-    """A Firefox process that does not exit by itself."""
+    """A Firefox process that does not exit by itself, or that exited with
+    `returncode`."""
 
-    def __init__(self):
+    def __init__(self, returncode=None):
         self.waits = []
+        self.returncode = returncode
 
     def poll(self):
-        return None
+        return self.returncode
 
     def wait(self, timeout=None):
         self.waits.append(timeout)
@@ -509,6 +511,135 @@ def test_cdp_retries_once_after_cert_verifier_changed(
 
     assert fake_chrome.methods.count("Page.navigate") == len(navigations)
     assert restarts == []
+
+
+# Part E: html2image connects to Firefox while it starts, then asks it once
+# for a session.
+
+class FakeFirefox(FakeWebSocket):
+    """Answers each BiDi command as a started Firefox would.
+
+    The commands in `errors` are answered with that error. Those in
+    `unanswered` are not answered, as if Firefox were too slow.
+    """
+
+    RESULTS = {
+        "session.new": {"sessionId": "session"},
+        "browsingContext.getTree": {"contexts": [{"context": "tab"}]},
+    }
+
+    def __init__(self, errors=None, unanswered=()):
+        super().__init__()
+        self.errors = errors or {}
+        self.unanswered = unanswered
+        self.methods = []
+
+    def send(self, payload):
+        command = json.loads(payload)
+        method = command["method"]
+        self.methods.append(method)
+        if method in self.unanswered:
+            return
+        if method in self.errors:
+            answer = {"type": "error", "error": self.errors[method]}
+        else:
+            result = self.RESULTS.get(method, {})
+            answer = {"type": "success", "result": result}
+        self.messages.append(json.dumps({"id": command["id"], **answer}))
+
+
+def _fake_start(monkeypatch, browser, outcomes, returncode=None):
+    """Makes `browser` start a fake Firefox, which exited with `returncode`
+    if it is given. Each connection will raise or return the next of
+    `outcomes`.
+
+    Returns the options of each connection.
+    """
+    options = []
+
+    def start_firefox():
+        browser.proc = FakeFirefoxProcess(returncode)
+        browser._current_port = 1
+
+    def create_connection(url, **kwargs):
+        options.append(kwargs)
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(browser, "_start_firefox", start_firefox)
+    monkeypatch.setattr(firefox_bidi, "create_connection", create_connection)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+    return options
+
+
+def _refused():
+    return ConnectionRefusedError(10061, "No connection could be made")
+
+
+def test_firefox_is_connected_to_once_it_listens(monkeypatch, bidi_browser):
+    firefox = FakeFirefox()
+    options = _fake_start(
+        monkeypatch, bidi_browser, [_refused(), _refused(), firefox]
+    )
+
+    bidi_browser._connect_ws()
+
+    # Firefox refuses an Origin header, and never answers with a
+    # subprotocol, which websocket-client would then require.
+    assert options == [{"timeout": 10, "suppress_origin": True}] * 3
+    assert firefox.methods == [
+        "session.status", "session.new", "session.subscribe",
+        "browsingContext.getTree",
+    ]
+    assert bidi_browser._session_id == "session"
+    assert bidi_browser._context_id == "tab"
+
+
+@pytest.mark.parametrize("firefox_options, error, message", [
+    # Firefox keeps the session that it was too slow to open, and would
+    # refuse a new one.
+    (dict(unanswered={"session.new"}), BrowserTimeoutError, "Timed out"),
+    (
+        dict(errors={"session.new": "session not created"}),
+        BrowserError, "session not created",
+    ),
+], ids=["too slow", "refused"])
+def test_firefox_is_asked_once_for_a_session(
+    monkeypatch, bidi_browser, firefox_options, error, message,
+):
+    options = _fake_start(
+        monkeypatch, bidi_browser,
+        [FakeFirefox(**firefox_options), FakeFirefox()],
+    )
+
+    with pytest.raises(error, match=message):
+        bidi_browser._connect_ws()
+
+    assert len(options) == 1
+
+
+def test_firefox_that_exited_is_not_waited_for(monkeypatch, bidi_browser):
+    refused = _refused()
+    # Firefox exits with code 69 when its port is already taken.
+    options = _fake_start(monkeypatch, bidi_browser, [refused], returncode=69)
+
+    with pytest.raises(BrowserError, match="exited with code 69") as excinfo:
+        bidi_browser._connect_ws()
+
+    assert len(options) == 1
+    assert excinfo.value.__cause__ is refused
+
+
+def test_firefox_connection_error_is_kept(monkeypatch, bidi_browser):
+    errors = [_refused() for _ in range(40)]
+    _fake_start(monkeypatch, bidi_browser, list(errors))
+
+    with pytest.raises(BrowserError, match="after 40 attempts") as excinfo:
+        bidi_browser._connect_ws()
+
+    assert excinfo.value.__cause__ is errors[-1]
 
 
 # With a browser.
