@@ -76,9 +76,17 @@ jobs:
           microsoft-edge --headless=new --dump-dom about:blank > /dev/null
           firefox --headless --screenshot "$RUNNER_TEMP/warmup.png" about:blank
 
-      # pytest lists the 25 slowest tests at the end of the run.
+      # pytest lists the 25 slowest tests at the end of the run. The duration
+      # of each test will be kept with the run, in test-results.xml.
       - name: Run tests
-        run: uv run pytest --durations=25
+        run: uv run pytest --durations=25 --junitxml=test-results.xml
+
+      - name: Keep the duration of each test
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.os }}-${{ matrix.python-version }}
+          path: test-results.xml
 
   publish:
     name: Build and publish to PyPI
