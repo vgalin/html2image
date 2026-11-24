@@ -110,11 +110,12 @@ class Html2Image():
             + If True, will not automatically remove temporary files created.
 
         - `custom_flags`: list of str or str, optional
-            + Additional custom flags for the headless browser.
+            + Flags for the headless browser. They will replace its default
+              flags, such as ``--hide-scrollbars``.
             + On Windows, the ``'chrome'`` and ``'edge'`` browsers will also
               be started with ``--disable-skia-graphite``, which keeps
-              screenshots fast with a graphics card. Add
-              ``--enable-skia-graphite`` to leave it out.
+              screenshots fast with a graphics card. This flag will not be
+              added if ``custom_flags`` holds ``--enable-skia-graphite``.
 
         - `allow_scripts_to_read_files` : bool, optional
             + Lets JavaScript in HTML opened from a file read other files on
