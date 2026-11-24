@@ -1,4 +1,7 @@
-"""Semantic browser checks for the public full-page contract."""
+"""Semantic browser checks for the public full-page contract.
+
+The tests share a browser, see `shared_browser` in conftest.py.
+"""
 
 from pathlib import Path
 import warnings
@@ -7,17 +10,26 @@ import pytest
 from PIL import Image
 
 from html2image import CaptureTooLargeError, FullPageWarning, Html2Image
+from html2image.browsers.firefox_bidi import FirefoxBiDi
 
 
-def _make_hti(browser, output_path):
-    try:
-        return Html2Image(
-            browser=browser,
-            output_path=str(output_path),
-            disable_logging=True,
-        )
-    except FileNotFoundError:
-        pytest.skip(f"{browser!r} executable not found")
+CHROME_ONLY = pytest.mark.parametrize(
+    "shared_browser", ["chrome"], indirect=True
+)
+
+# Edge runs the code of Chrome: it is only tried with one page captured in
+# tiles, and with one page captured in one go.
+WITH_EDGE = pytest.mark.parametrize(
+    "shared_browser", ["chrome", "firefox", "edge"], indirect=True
+)
+
+
+@pytest.fixture
+def hti(shared_browser, tmp_path):
+    # Pages of their own, so that no two tests load the same file.
+    return shared_browser.make_hti(
+        output_path=str(tmp_path), temp_path=str(tmp_path / "temp")
+    )
 
 
 def _responsive_cards_html(card_count=30):
@@ -37,11 +49,7 @@ def _responsive_cards_html(card_count=30):
 """
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
-def test_full_page_uses_requested_responsive_viewport(browser, tmp_path):
-    hti = _make_hti(browser, tmp_path)
+def test_full_page_uses_requested_responsive_viewport(hti):
     html = _responsive_cards_html()
 
     with hti:
@@ -66,13 +74,8 @@ def test_full_page_uses_requested_responsive_viewport(browser, tmp_path):
         assert mobile_image.height > desktop_image.height * 2
 
 
-@pytest.mark.parametrize(
-    "browser",
-    ["chrome-cdp", "edge-cdp", "firefox-bidi"],
-    ids=["chrome", "edge", "firefox"],
-)
-def test_full_page_jpeg_matches_its_extension(browser, tmp_path):
-    hti = _make_hti(browser, tmp_path)
+@WITH_EDGE
+def test_full_page_jpeg_matches_its_extension(hti):
     output = hti.screenshot(
         html_str=(
             '<body style="margin:0;height:900px;background:#30a060"></body>'
@@ -89,11 +92,7 @@ def test_full_page_jpeg_matches_its_extension(browser, tmp_path):
         assert image.size == (640, 900)
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
-def test_full_page_pixel_budget_fails_without_output(browser, tmp_path):
-    hti = _make_hti(browser, tmp_path)
+def test_full_page_pixel_budget_fails_without_output(hti, tmp_path):
     destination = Path(tmp_path) / "over-budget.png"
 
     with pytest.raises(
@@ -113,13 +112,9 @@ def test_full_page_pixel_budget_fails_without_output(browser, tmp_path):
     assert error.value.too_large == [(None, destination.name)]
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
-def test_full_page_without_doctype(browser, tmp_path):
+def test_full_page_without_doctype(hti):
     # Without a doctype, the page is rendered in quirks mode, where the
     # root element can be smaller than the page.
-    hti = _make_hti(browser, tmp_path)
     hti.add_doctype = False
     output = hti.screenshot(
         html_str='<div style="height:1500px;background:#30a060"></div>',
@@ -164,12 +159,8 @@ def _rows_with_color(path, color):
         ], rgb.size
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
-def test_full_page_fixed_element_policies(browser, tmp_path):
+def test_full_page_fixed_element_policies(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
     viewport_height = 600
     outputs = {}
 
@@ -234,13 +225,9 @@ _HARD_TO_HIDE_FIXED_ELEMENTS = {
 }
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
 @pytest.mark.parametrize("case", list(_HARD_TO_HIDE_FIXED_ELEMENTS))
-def test_full_page_auto_shows_fixed_element_once(browser, case, tmp_path):
+def test_full_page_auto_shows_fixed_element_once(case, hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     # The page does not move: no seam is left unchecked, even if an element
     # becomes fixed.
@@ -278,20 +265,14 @@ def _sticky_only_html(height=2500):
 """ % (height - 920)
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
 # The shorter page is already captured in tiles with auto and last. Chrome
 # captures the longer one in tiles in every mode.
 @pytest.mark.parametrize("height, mode", [
     (2500, "auto"), (2500, "first"), (2500, "last"), (2500, "hide"),
     (17000, "first"), (17000, "hide"),
 ])
-def test_full_page_keeps_sticky_at_its_natural_position(
-    browser, mode, height, tmp_path
-):
+def test_full_page_keeps_sticky_at_its_natural_position(mode, height, hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     output = hti.screenshot(
         html_str=_sticky_only_html(height),
@@ -327,13 +308,7 @@ def _reserved_lazy_html():
 """
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
-def test_full_page_robust_triggers_lazy_content_with_reserved_height(
-    browser, tmp_path
-):
-    hti = _make_hti(browser, tmp_path)
+def test_full_page_robust_triggers_lazy_content_with_reserved_height(hti):
     output = hti.screenshot(
         html_str=_reserved_lazy_html(),
         save_as="reserved-lazy.png",
@@ -348,8 +323,8 @@ def test_full_page_robust_triggers_lazy_content_with_reserved_height(
         assert rgb.getpixel((200, 3650)) == (255, 0, 255)
 
 
-def test_chromium_full_page_png_preserves_transparency(tmp_path):
-    hti = _make_hti("chrome-cdp", tmp_path)
+@CHROME_ONLY
+def test_chromium_full_page_png_preserves_transparency(hti):
     output = hti.screenshot(
         html_str=(
             '<body style="margin:0;height:900px;background:transparent">'
@@ -389,14 +364,10 @@ def _growing_during_tiling_html():
 """
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
 def test_full_page_follows_growth_during_tiling_and_restores_page(
-    browser, tmp_path
+    hti, tmp_path
 ):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
     destination = Path(tmp_path) / "grew-during-tiling.png"
 
     with hti:
@@ -447,13 +418,9 @@ _INLINE_STYLES_JS = (
 )
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
 @pytest.mark.parametrize("mode", ["auto", "first", "last", "hide"])
-def test_full_page_puts_the_page_back_as_it_was(browser, mode, tmp_path):
+def test_full_page_puts_the_page_back_as_it_was(mode, hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     with hti:
         hti.screenshot(
@@ -473,11 +440,8 @@ def test_full_page_puts_the_page_back_as_it_was(browser, mode, tmp_path):
     assert state == expected
 
 
-@pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
 def test_short_fixed_page_does_not_require_the_optional_stitcher(
-    browser, tmp_path, monkeypatch
+    hti, monkeypatch
 ):
     from html2image.browsers import _page_fit_common as page_fit
 
@@ -489,7 +453,6 @@ def test_short_fixed_page_does_not_require_the_optional_stitcher(
         "import_pyvips_for_stitching",
         fail_if_stitching_is_attempted,
     )
-    hti = _make_hti(browser, tmp_path)
     output = hti.screenshot(
         html_str="""<!doctype html>
         <style>
@@ -506,18 +469,6 @@ def test_short_fixed_page_does_not_require_the_optional_stitcher(
         assert image.size == (400, 600)
 
 
-TILED_BROWSERS = pytest.mark.parametrize(
-    "browser", ["chrome-cdp", "firefox-bidi"], ids=["chrome", "firefox"]
-)
-
-# Edge runs the code of Chrome: it is only tried with one page captured in
-# tiles, and with one page captured in one go.
-TILED_BROWSERS_WITH_EDGE = pytest.mark.parametrize(
-    "browser",
-    ["chrome-cdp", "edge-cdp", "firefox-bidi"],
-    ids=["chrome", "edge", "firefox"],
-)
-
 # A small fixed badge, so that the page is captured in tiles.
 _BADGE = (
     '<div style="position:fixed; bottom:0; right:0; width:20px;'
@@ -525,11 +476,8 @@ _BADGE = (
 )
 
 
-@TILED_BROWSERS
 @pytest.mark.parametrize("profile", ["fast", "balanced"])
-def test_full_page_of_an_svg_file(browser, profile, tmp_path):
-    hti = _make_hti(browser, tmp_path)
-
+def test_full_page_of_an_svg_file(profile, hti):
     output = hti.screenshot(
         other_file="./examples/star.svg",
         save_as="star.png",
@@ -543,12 +491,7 @@ def test_full_page_of_an_svg_file(browser, profile, tmp_path):
         assert image.height >= 300
 
 
-@TILED_BROWSERS
-def test_full_page_that_fits_in_the_viewport_does_not_resize_it(
-    browser, tmp_path
-):
-    hti = _make_hti(browser, tmp_path)
-
+def test_full_page_that_fits_in_the_viewport_does_not_resize_it(hti):
     output = hti.screenshot(
         html_str=(
             '<!doctype html><body style="margin:0; background:#00ff00">'
@@ -568,13 +511,11 @@ def test_full_page_that_fits_in_the_viewport_does_not_resize_it(
     assert rgb.getpixel((200, 300)) == (0, 255, 0)
 
 
-@TILED_BROWSERS
 # What is left for the last tile is shorter than the banner: after one tile
 # of 600 px, or after two.
 @pytest.mark.parametrize("height", [700, 1250])
-def test_full_page_auto_shows_a_bottom_banner_whole(browser, height, tmp_path):
+def test_full_page_auto_shows_a_bottom_banner_whole(height, hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     output = hti.screenshot(
         html_str=(
@@ -594,10 +535,8 @@ def test_full_page_auto_shows_a_bottom_banner_whole(browser, height, tmp_path):
     assert blue_rows == list(range(height - 200, height))
 
 
-@TILED_BROWSERS
-def test_tiles_stop_following_an_endless_feed(browser, tmp_path):
+def test_tiles_stop_following_an_endless_feed(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     # Never without a pixel budget: the page would grow until the memory of
     # the machine is used up, if the tiles followed it.
@@ -655,10 +594,9 @@ def _assert_bands(path, header_height=100):
             assert rgb.getpixel((10, y)) == _band_color(index), (index, y)
 
 
-@TILED_BROWSERS_WITH_EDGE
-def test_tiles_do_not_resize_the_page(browser, tmp_path):
+@WITH_EDGE
+def test_tiles_do_not_resize_the_page(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     output = hti.screenshot(
         html_str=_bands_html(
@@ -675,13 +613,9 @@ def test_tiles_do_not_resize_the_page(browser, tmp_path):
     _assert_bands(output)
 
 
-@TILED_BROWSERS
 @pytest.mark.parametrize("profile", ["fast", "balanced"])
-def test_tiles_follow_a_header_that_shrinks_when_scrolled(
-    browser, profile, tmp_path
-):
+def test_tiles_follow_a_header_that_shrinks_when_scrolled(profile, hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     output = hti.screenshot(
         html_str=_bands_html(
@@ -721,15 +655,11 @@ def _spaced_bands_html(boxes):
     )
 
 
-@TILED_BROWSERS
 # With a single box, the band above a seam is its only anchor, and the
 # bands above it are its backup anchors.
 @pytest.mark.parametrize("boxes", [4, 1])
-def test_tiles_follow_a_page_that_moves_between_its_seams(
-    browser, boxes, tmp_path
-):
+def test_tiles_follow_a_page_that_moves_between_its_seams(boxes, hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", FullPageWarning)
@@ -776,10 +706,8 @@ def _blocks_html(content, script):
     )
 
 
-@TILED_BROWSERS
-def test_tiles_warn_when_a_block_grows_above_a_seam(browser, tmp_path):
+def test_tiles_warn_when_a_block_grows_above_a_seam(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     # The block is the only anchor of the seam. It moved, but the blocks
     # above it did not: the page did not move with it.
@@ -793,10 +721,8 @@ def test_tiles_warn_when_a_block_grows_above_a_seam(browser, tmp_path):
         )
 
 
-@TILED_BROWSERS
-def test_tiles_do_not_follow_a_block_that_moves_by_itself(browser, tmp_path):
+def test_tiles_do_not_follow_a_block_that_moves_by_itself(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     # The last box of the block shares its bottom edge, and is the anchor.
     # The first one moves with the block: it does not tell that the page
@@ -827,10 +753,8 @@ _EMPTY_HTML = (
 )
 
 
-@TILED_BROWSERS
-def test_tiles_of_a_still_page_without_anchors(browser, tmp_path):
+def test_tiles_of_a_still_page_without_anchors(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", FullPageWarning)
@@ -846,10 +770,8 @@ def test_tiles_of_a_still_page_without_anchors(browser, tmp_path):
         assert image.size == (400, 4000)
 
 
-@TILED_BROWSERS
-def test_tiles_warn_when_a_page_without_anchors_grows(browser, tmp_path):
+def test_tiles_warn_when_a_page_without_anchors_grows(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
 
     with pytest.warns(FullPageWarning, match="could not be checked"):
         hti.screenshot(
@@ -864,10 +786,8 @@ def test_tiles_warn_when_a_page_without_anchors_grows(browser, tmp_path):
         )
 
 
-@TILED_BROWSERS
-def test_tiles_warn_when_a_single_column_moves(browser, tmp_path):
+def test_tiles_warn_when_a_single_column_moves(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti(browser, tmp_path)
     left = "".join(
         '<div style="display:flex; height:100px">%s</div>'
         % ('<div style="flex:1; background:rgb%s"></div>'
@@ -898,53 +818,41 @@ def test_tiles_warn_when_a_single_column_moves(browser, tmp_path):
         )
 
 
-def test_tiles_of_a_page_that_cannot_be_scrolled(tmp_path):
+def test_tiles_of_a_page_that_cannot_be_scrolled(hti):
     pytest.importorskip("pyvips")
-    hti = _make_hti("chrome-cdp", tmp_path)
-
-    output = hti.screenshot(
-        html_str=_bands_html(
-            "addEventListener('scroll', () => scrollTo(0, 0));"
-        ),
-        save_as="not-scrolled.png",
-        size=(400, 600),
-        full_page=True,
-        full_page_profile="fast",
-    )[0]
-
-    # The tiles below the viewport are captured beyond it.
-    _assert_bands(output)
-
-
-def test_firefox_stops_where_a_page_cannot_be_scrolled(tmp_path):
-    pytest.importorskip("pyvips")
-    hti = _make_hti("firefox-bidi", tmp_path)
+    page = _bands_html("addEventListener('scroll', () => scrollTo(0, 0));")
 
     # Firefox only captures what the viewport shows.
-    with pytest.warns(FullPageWarning, match="further than 600 px"):
+    if isinstance(hti.browser, FirefoxBiDi):
+        with pytest.warns(FullPageWarning, match="further than 600 px"):
+            output = hti.screenshot(
+                html_str=page,
+                save_as="not-scrolled.png",
+                size=(400, 600),
+                full_page=True,
+                full_page_profile="fast",
+            )[0]
+
+        with Image.open(output) as image:
+            rgb = image.convert("RGB")
+        assert rgb.size == (400, 600)
+        assert rgb.getpixel((10, 101)) == _band_color(0)
+        assert rgb.getpixel((10, 598)) == _band_color(4)
+    else:
         output = hti.screenshot(
-            html_str=_bands_html(
-                "addEventListener('scroll', () => scrollTo(0, 0));"
-            ),
+            html_str=page,
             save_as="not-scrolled.png",
             size=(400, 600),
             full_page=True,
             full_page_profile="fast",
         )[0]
 
-    with Image.open(output) as image:
-        rgb = image.convert("RGB")
-    assert rgb.size == (400, 600)
-    assert rgb.getpixel((10, 101)) == _band_color(0)
-    assert rgb.getpixel((10, 598)) == _band_color(4)
+        # The tiles below the viewport are captured beyond it.
+        _assert_bands(output)
 
 
-@TILED_BROWSERS
 @pytest.mark.parametrize("badge", ["", _BADGE], ids=["alone", "fixed"])
-def test_full_page_of_a_page_that_scrolls_inside_its_body(
-    browser, badge, tmp_path
-):
-    hti = _make_hti(browser, tmp_path)
+def test_full_page_of_a_page_that_scrolls_inside_its_body(badge, hti):
     blocks = "".join(
         '<div style="height:500px; background:rgb%s"></div>'
         % (_band_color(index),)
@@ -972,6 +880,9 @@ def test_full_page_of_a_page_that_scrolls_inside_its_body(
     assert rgb.getpixel((10, 550)) == _band_color(1)
 
 
+# The flags are given to the browser that Html2Image creates, so this test
+# keeps its own browser.
+@pytest.mark.usefixtures("own_browser")
 def test_tiles_with_virtual_time_budget(tmp_path):
     pytest.importorskip("pyvips")
     try:
