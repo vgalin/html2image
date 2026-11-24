@@ -265,29 +265,57 @@ def test_selector_rejects_cli_backends(tmp_path, browser):
     assert not (tmp_path / "cli.png").exists()
 
 
-# With a browser.
+# With a browser of its own. These tests come before those that share a
+# browser, so that pytest will run them before the first shared browser
+# starts: only one browser will be open at a time.
 
-BROWSERS = ["chrome", "firefox"]
-
-# Edge runs the code of Chrome: it is only tried with two of the tests.
-WITH_EDGE = pytest.mark.parametrize(
-    "hti", ["chrome", "edge", "firefox"], indirect=True
+LATE_ELEMENT = (
+    "<script>setTimeout(() => document.body.insertAdjacentHTML("
+    f"'beforeend', '{_box(top=3000)}'), 1500)</script>"
 )
 
 
-@pytest.fixture(params=BROWSERS)
-def hti(request, tmp_path):
-    browser = request.param
-    try:
-        return Html2Image(
-            browser=browser,
-            output_path=str(tmp_path / "output"),
-            temp_path=str(tmp_path / "temp"),
-            size=(800, 600),
-            disable_logging=True,
-        )
-    except FileNotFoundError:
-        pytest.skip(f"'{browser}' executable not found on this machine")
+@pytest.mark.parametrize("browser", ["chrome"])
+def test_selector_element_added_after_load(tmp_path, browser):
+    # The flags are given to the browser that Html2Image creates, so this
+    # test keeps its own browser. With --virtual-time-budget, the page runs
+    # for 5 seconds of virtual time, in much less real time, before the
+    # element is measured.
+    for flags in ([], ["--virtual-time-budget=5000"]):
+        try:
+            hti = Html2Image(
+                browser=browser,
+                output_path=str(tmp_path),
+                size=(800, 600),
+                disable_logging=True,
+                custom_flags=flags or None,
+            )
+        except FileNotFoundError:
+            pytest.skip(f"'{browser}' executable not found on this machine")
+
+        if not flags:
+            with pytest.raises(ElementNotFoundError):
+                hti.screenshot(html_str=_page(LATE_ELEMENT), selector="#t")
+        else:
+            [path] = hti.screenshot(html_str=_page(LATE_ELEMENT), selector="#t")
+            _assert_filled(path, (200, 100))
+
+
+# With a shared browser, see `shared_browser` in conftest.py.
+
+# Edge runs the code of Chrome: it is only tried with two of the tests.
+WITH_EDGE = pytest.mark.parametrize(
+    "shared_browser", ["chrome", "firefox", "edge"], indirect=True
+)
+
+
+@pytest.fixture
+def hti(shared_browser, tmp_path):
+    return shared_browser.make_hti(
+        output_path=str(tmp_path / "output"),
+        temp_path=str(tmp_path / "temp"),
+        size=(800, 600),
+    )
 
 
 @pytest.mark.parametrize("top", [
@@ -505,19 +533,8 @@ def test_selector_then_normal_screenshot_in_same_session(hti):
     assert img.getpixel((10, 200)) == WHITE
 
 
-@pytest.mark.parametrize("browser", BROWSERS)
-def test_selector_page_without_doctype(tmp_path, browser):
-    try:
-        hti = Html2Image(
-            browser=browser,
-            output_path=str(tmp_path / "output"),
-            temp_path=str(tmp_path / "temp"),
-            size=(800, 600),
-            disable_logging=True,
-            add_doctype=False,
-        )
-    except FileNotFoundError:
-        pytest.skip(f"'{browser}' executable not found on this machine")
+def test_selector_page_without_doctype(hti):
+    hti.add_doctype = False
     # Without doctype, the root element is 0 pixels high here, as nothing
     # is in the flow of the page.
     page = _page(
@@ -529,7 +546,7 @@ def test_selector_page_without_doctype(tmp_path, browser):
 
     # Without doctype, Firefox captures the elements outside of the root
     # element from the viewport, which only works if they fit in it.
-    if browser == "firefox":
+    if isinstance(hti.browser, firefox_bidi.FirefoxBiDi):
         with pytest.raises(CaptureTooLargeError) as excinfo:
             hti.screenshot(
                 html_str=page, selector=["#below", "#t", "#tall"],
@@ -549,36 +566,6 @@ def test_selector_page_without_doctype(tmp_path, browser):
     # would be under the header otherwise.
     _assert_filled(paths[0], (200, 100), BLUE)
     _assert_filled(paths[1], (200, 100))
-
-
-LATE_ELEMENT = (
-    "<script>setTimeout(() => document.body.insertAdjacentHTML("
-    f"'beforeend', '{_box(top=3000)}'), 1500)</script>"
-)
-
-
-@pytest.mark.parametrize("browser", ["chrome"])
-def test_selector_element_added_after_load(tmp_path, browser):
-    # With --virtual-time-budget, the page runs for 5 seconds of virtual
-    # time, in much less real time, before the element is measured.
-    for flags in ([], ["--virtual-time-budget=5000"]):
-        try:
-            hti = Html2Image(
-                browser=browser,
-                output_path=str(tmp_path),
-                size=(800, 600),
-                disable_logging=True,
-                custom_flags=flags or None,
-            )
-        except FileNotFoundError:
-            pytest.skip(f"'{browser}' executable not found on this machine")
-
-        if not flags:
-            with pytest.raises(ElementNotFoundError):
-                hti.screenshot(html_str=_page(LATE_ELEMENT), selector="#t")
-        else:
-            [path] = hti.screenshot(html_str=_page(LATE_ELEMENT), selector="#t")
-            _assert_filled(path, (200, 100))
 
 
 @WITH_EDGE
