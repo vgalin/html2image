@@ -115,6 +115,34 @@ def test_allow_scripts_to_read_files_flag(monkeypatch, browser, allowed):
     assert ("--allow-file-access-from-files" in commands[0]) is allowed
 
 
+@pytest.mark.parametrize("browser", ["chrome", "edge"])
+@pytest.mark.parametrize(
+    "custom_flags, on_windows, elsewhere",
+    [
+        (None, 1, 0),
+        (["--virtual-time-budget=5000"], 1, 0),
+        (["--disable-skia-graphite"], 1, 1),
+        (["--enable-skia-graphite"], 0, 0),
+    ],
+)
+def test_skia_graphite_disabled_on_windows(
+    monkeypatch, browser, custom_flags, on_windows, elsewhere
+):
+    commands = []
+
+    def fake_popen(command, **kwargs):
+        commands.append(command)
+        return FakeProcess()
+
+    hti = Html2Image(browser=browser, custom_flags=custom_flags)
+    monkeypatch.setattr(chrome_cdp.subprocess, "Popen", fake_popen)
+    hti.browser._start_chrome()
+    hti.browser.__exit__()
+
+    expected = on_windows if os.name == "nt" else elsewhere
+    assert commands[0].count("--disable-skia-graphite") == expected
+
+
 @pytest.mark.parametrize("browser", ["chrome-headless", "edge-headless"])
 @pytest.mark.parametrize("allowed", [False, True])
 def test_allow_scripts_to_read_files_flag_cli(

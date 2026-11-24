@@ -111,6 +111,10 @@ class Html2Image():
 
         - `custom_flags`: list of str or str, optional
             + Additional custom flags for the headless browser.
+            + On Windows, the ``'chrome'`` and ``'edge'`` browsers will also
+              be started with ``--disable-skia-graphite``, which keeps
+              screenshots fast with a graphics card. Add
+              ``--enable-skia-graphite`` to leave it out.
 
         - `allow_scripts_to_read_files` : bool, optional
             + Lets JavaScript in HTML opened from a file read other files on

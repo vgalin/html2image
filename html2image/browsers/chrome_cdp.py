@@ -62,6 +62,13 @@ WINDOW_FLAGS = [
     '--disable-background-timer-throttling',
 ]
 
+# On Windows, with a graphics card, Edge 158 drew pages with Skia Graphite,
+# and some screenshots took more than ten times longer, up to 25 seconds
+# for a full page of 20,000 pixels. This flag keeps Chrome and Edge on
+# Skia Ganesh, the previous drawing engine, unless the user gives
+# `--enable-skia-graphite`.
+DISABLE_GRAPHITE_FLAG = '--disable-skia-graphite'
+
 # Chrome draws a wrong image, without any error, when it captures an area
 # larger than this number of pixels, in width or in height, in one go.
 MAX_CAPTURE_SIZE = 16384
@@ -163,6 +170,11 @@ class ChromeCDP(CDPBrowser):
         ]
         if '--remote-allow-origins=*' not in launch_flags:
             launch_flags.append('--remote-allow-origins=*')
+        if os.name == 'nt' and not any(
+            flag in launch_flags
+            for flag in (DISABLE_GRAPHITE_FLAG, '--enable-skia-graphite')
+        ):
+            launch_flags.append(DISABLE_GRAPHITE_FLAG)
         if self.allow_scripts_to_read_files:
             launch_flags.append('--allow-file-access-from-files')
         if self.concurrency > 1:
