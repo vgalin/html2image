@@ -151,6 +151,9 @@ NEW_PAGE_TIMEOUT = 10
 # will fail at once, instead of trying again.
 MAX_FAILED_STARTS = 2
 
+# The shared browsers of the module that is running, see `own_browser`.
+_shared_browsers = []
+
 
 class SharedHtml2Image(Html2Image):
     """Html2Image on a shared browser: `with` will leave it open."""
@@ -308,10 +311,28 @@ def shared_browser(request):
     position of their browser in the list, pytest 9 by its name. All the
     tests of a browser will then run before the next browser starts, and
     only one shared browser will be open at a time.
+
+    A test of the module that starts its own browser uses `own_browser`.
     """
     shared = SharedBrowser(request.param)
+    _shared_browsers.append(shared)
     yield shared
+    _shared_browsers.remove(shared)
     shared.close()
+
+
+@pytest.fixture
+def own_browser():
+    """For a test that starts its own browser, in a module where the other
+    tests share one: `@pytest.mark.usefixtures("own_browser")`.
+
+    pytest can run this test while the shared browser of the tests before
+    it is still open. This browser will be closed first, so that only one
+    browser is open at a time. The next test that shares it will start it
+    again.
+    """
+    for shared in _shared_browsers:
+        shared.close()
 
 
 @pytest.hookimpl(wrapper=True)
