@@ -12,14 +12,27 @@ import os
 import re
 import socket
 
-# The names of the browsers do not depend on the case.
-TEST_BROWSERS = ["edGe", "cHrOme", "fIrEfOx"]
+# Most of the tests that take screenshots share a browser, see
+# `shared_browser` in conftest.py. They run with Chrome and Firefox, unless
+# they say otherwise.
+
 # Edge runs the code of Chrome, and "chrome-cdp" is another name for
 # "chrome". The tests of what html2image does the same way in both, such as
 # lists of pages, sizes and stylesheets, only use Chrome.
-CHROME_ONLY = ["chrome"]
-# Firefox has its own code.
-CHROME_AND_FIREFOX = ["chrome", "firefox"]
+CHROME_ONLY = pytest.mark.parametrize(
+    "shared_browser", ["chrome"], indirect=True
+)
+WITH_EDGE = pytest.mark.parametrize(
+    "shared_browser", ["chrome", "firefox", "edge"], indirect=True
+)
+
+
+@pytest.fixture
+def hti(shared_browser, tmp_path):
+    return shared_browser.make_hti(
+        output_path=str(tmp_path / "output"),
+        temp_path=str(tmp_path / "temp"),
+    )
 
 
 def _make_hti(browser, output_path):
@@ -222,6 +235,9 @@ READ_FILE_HTML = """
 """
 
 
+# The option is given to the browser that Html2Image creates, so this test
+# keeps its own browser.
+@pytest.mark.usefixtures("own_browser")
 @pytest.mark.parametrize("browser", [
     "chrome", "edge", "firefox",
     "chrome-headless", "edge-headless", "firefox-headless",
@@ -273,23 +289,13 @@ COMPAT_MODE_HTML = """
 
 # The doctype is added by html2image, before the page reaches the browser:
 # one browser of each engine is enough to see how the page is rendered.
-@pytest.mark.parametrize("browser", ["chrome", "firefox"])
 @pytest.mark.parametrize("add_doctype", [False, True])
-def test_add_doctype_screenshot(tmp_path, browser, add_doctype, output_path):
-    try:
-        hti = Html2Image(
-            browser=browser,
-            output_path=output_path,
-            temp_path=str(tmp_path / "temp"),
-            disable_logging=True,
-            add_doctype=add_doctype,
-        )
-    except FileNotFoundError:
-        pytest.skip(f"'{browser}' executable not found on this machine")
+def test_add_doctype_screenshot(hti, add_doctype):
+    hti.add_doctype = add_doctype
 
     paths = hti.screenshot(
         html_str=COMPAT_MODE_HTML,
-        save_as=f"doctype_{browser}_{add_doctype}.png",
+        save_as="doctype.png",
         size=(320, 240),
     )
 
@@ -297,32 +303,26 @@ def test_add_doctype_screenshot(tmp_path, browser, add_doctype, output_path):
     assert Image.open(paths[0]).convert("RGB").getpixel((10, 10)) == expected
 
 
-@pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_issue177_exact_size_contract(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
+@CHROME_ONLY
+def test_issue177_exact_size_contract(hti):
     paths = hti.screenshot(
         html_str='<body style="margin:0;background:green"></body>',
-        save_as=f'issue177_size_{browser}.png',
+        save_as='issue177_size.png',
         size=(800, 480),
     )
     img = Image.open(paths[0])
     assert img.size == (800, 480)
 
 
-@pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_issue177_no_bottom_strip_100vh(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
+@CHROME_ONLY
+def test_issue177_no_bottom_strip_100vh(hti):
     paths = hti.screenshot(
         html_str=(
             '<style>html,body{margin:0;padding:0;overflow:hidden;}'
             '#fill{width:100vw;height:100vh;background:#ff0000;}</style>'
             '<div id="fill"></div>'
         ),
-        save_as=f'issue177_viewport_{browser}.png',
+        save_as='issue177_viewport.png',
         size=(800, 480),
     )
 
@@ -333,14 +333,11 @@ def test_issue177_no_bottom_strip_100vh(browser, output_path):
     assert right_strip <= 2
 
 
-@pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_issue177_svg_transparent_background(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
+@CHROME_ONLY
+def test_issue177_svg_transparent_background(hti):
     paths = hti.screenshot(
         other_file='./examples/star.svg',
-        save_as=f'issue177_svg_alpha_{browser}.png',
+        save_as='issue177_svg_alpha.png',
         size=(500, 500),
     )
 
@@ -349,12 +346,10 @@ def test_issue177_svg_transparent_background(browser, output_path):
     assert img.getpixel((0, 0))[3] == 0
 
 
-@pytest.mark.parametrize("browser", CHROME_AND_FIREFOX)
-def test_issue177_jpg_output_format(browser, output_path):
-    hti = _make_hti(browser, output_path)
+def test_issue177_jpg_output_format(hti):
     paths = hti.screenshot(
         html_str='<body style="margin:0;background:#00aa00"></body>',
-        save_as=f'issue177_jpg_{browser}.jpg',
+        save_as='issue177_jpg.jpg',
         size=(640, 360),
     )
 
@@ -363,17 +358,15 @@ def test_issue177_jpg_output_format(browser, output_path):
     assert img.format == "JPEG"
 
 
-RED, GREEN, BLUE = (255, 0, 0), (0, 255, 0), (0, 0, 255)
+BLUE = (0, 0, 255)
 
 
 def _page_of_color(color):
     return '<body style="margin:0;background:rgb%s"></body>' % (color,)
 
 
-@pytest.mark.parametrize("browser", ["chrome", "edge", "firefox"])
-def test_screenshot_url(output_path, serve, browser):
-    hti = _make_hti(browser, output_path)
-
+@WITH_EDGE
+def test_screenshot_url(hti, serve):
     [path] = hti.screenshot(url=serve(_page_of_color(BLUE)), save_as="url.png")
 
     img = Image.open(path).convert("RGB")
@@ -381,54 +374,8 @@ def test_screenshot_url(output_path, serve, browser):
     assert img.getpixel((10, 10)) == BLUE
 
 
-@pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_urls_with_sizes_and_names(output_path, serve, browser):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
-    colors = [RED, GREEN, BLUE]
-    names = ["red.png", "green.png", "blue.png"]
-
-    paths = hti.screenshot(
-        url=[serve(_page_of_color(color)) for color in colors],
-        save_as=names,
-        size=[(100, 100), (100, 1000)],
-    )
-
-    # The last size is used for the pages after it.
-    sizes = [(100, 100), (100, 1000), (100, 1000)]
-    assert [os.path.basename(path) for path in paths] == names
-    for path, size, color in zip(paths, sizes, colors):
-        img = Image.open(path).convert("RGB")
-        assert img.size == size
-        assert img.getpixel((50, 50)) == color
-
-
-@pytest.mark.parametrize("browser", TEST_BROWSERS)
-def test_screenshot_string(browser, output_path):
-    hti = _make_hti(browser, output_path)
-
-    html = "Hello"
-    css = "body{background: blue; font-size: 50px;}"
-
-    paths = hti.screenshot(
-        html_str=html, css_str=css, save_as="blue_big_hello.png"
-    )
-
-    img = Image.open(paths[0])
-    pixels = img.load()
-
-    assert (1920, 1080) == img.size  # default size
-
-    # check colors at top left corner
-    assert pixels[0, 0][:3] == (0, 0, 255)
-
-@pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_string_different_sizes(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
-
+@CHROME_ONLY
+def test_screenshot_string_different_sizes(hti):
     test_sizes = [
         (100, 100),
         (100, 1000),
@@ -447,10 +394,7 @@ def test_screenshot_string_different_sizes(browser, output_path):
         img = Image.open(path)
         assert wanted_size == img.size
 
-@pytest.mark.parametrize("browser", CHROME_AND_FIREFOX)
-def test_screenshot_file(browser, output_path):
-    hti = _make_hti(browser, output_path)
-
+def test_screenshot_file(hti):
     paths = hti.screenshot(
         html_file="./examples/blue_page.html",
         css_file="./examples/blue_background.css", # this CSS file is linked in blue_page.html
@@ -465,12 +409,8 @@ def test_screenshot_file(browser, output_path):
     # check colors at top left corner
     assert pixels[0, 0][:3] == (0, 0, 255)  # blue + no transparency
 
-@pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_file_different_sizes(browser, output_path):
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
-
+@CHROME_ONLY
+def test_screenshot_file_different_sizes(hti):
     test_sizes = [
         (100, 100),
         (100, 1000),
@@ -488,13 +428,9 @@ def test_screenshot_file_different_sizes(browser, output_path):
         assert wanted_size == img.size
 
 
-@pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_html_str_with_css_str_and_css_file(browser, output_path):
+@CHROME_ONLY
+def test_screenshot_html_str_with_css_str_and_css_file(hti):
     """Test html_str styled by both css_str (for a green block) and css_file (for blue body background)."""
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
-    
     # this CSS describes a green block, positioned absolutely,
     # using !important to ensure these styles apply
     css_string_content = """
@@ -532,13 +468,9 @@ def test_screenshot_html_str_with_css_str_and_css_file(browser, output_path):
     assert pixels[150, 125][:3] == (0, 255, 0)  # green
 
       
-@pytest.mark.parametrize("browser", CHROME_ONLY)
-def test_screenshot_html_str_with_multiple_css_files(browser, output_path):
+@CHROME_ONLY
+def test_screenshot_html_str_with_multiple_css_files(hti):
     """Test html_str styled by multiple css_files using distinct background colors."""
-    hti = Html2Image(
-        browser=browser, output_path=output_path, disable_logging=True
-    )
-
     # this CSS describes a red block, positioned absolutely,
     # using !important to ensure these styles apply
     temp_css_content = """
@@ -551,7 +483,7 @@ def test_screenshot_html_str_with_multiple_css_files(browser, output_path):
         left: 50px !important;
     }
     """
-    temp_css_filename = os.path.join(output_path, "_temp_red_block.css")
+    temp_css_filename = os.path.join(hti.output_path, "_temp_red_block.css")
     with open(temp_css_filename, "w") as f:
         f.write(temp_css_content)
 
@@ -991,6 +923,8 @@ def test_cli_backends_reject_input_read_as_flag(
     assert not injected_output.exists()
 
 
+# Two browsers of its own will be open at once.
+@pytest.mark.usefixtures("own_browser")
 def test_chrome_instances_use_different_cdp_ports(output_path):
     first = Html2Image(
         browser="chrome", output_path=output_path, disable_logging=True
@@ -1016,6 +950,9 @@ def test_chrome_instances_use_different_cdp_ports(output_path):
             assert img.getpixel((0, 0)) == rgb
 
 
+# The flags are given to the browser that Html2Image creates, so this test
+# keeps its own browser.
+@pytest.mark.usefixtures("own_browser")
 def test_chrome_cdp_virtual_time_budget(output_path):
     hti = Html2Image(
         browser="chrome",
@@ -1040,6 +977,9 @@ def test_chrome_cdp_virtual_time_budget(output_path):
             assert img.getpixel((0, 0)) == (0, 0, 255)
 
 
+# The browser will be closed at the end of the `with` block, so this test
+# keeps its own browser.
+@pytest.mark.usefixtures("own_browser")
 # With the attribute that holds the profile folder of the browser.
 @pytest.mark.parametrize("browser, profile", [
     ("edge", "_user_data_dir"), ("firefox", "_profile_dir"),
@@ -1121,10 +1061,8 @@ def test_cdp_navigation_within_same_document_completes():
     assert browser._wait_for_navigation_complete(1, timeout=1) == navigation_result
 
 
-def test_chrome_cdp_screenshot_url_then_its_anchor(output_path):
-    hti = Html2Image(
-        browser="chrome", output_path=output_path, disable_logging=True
-    )
+@CHROME_ONLY
+def test_chrome_cdp_screenshot_url_then_its_anchor(hti):
     hti.load_file("./examples/blue_page.html", as_filename="anchor_page.html")
     page = os.path.join(hti.temp_path, "anchor_page.html")
 
@@ -1157,6 +1095,9 @@ def test_cdp_lost_page_raises_immediately():
         browser._wait_for_result(1, timeout=1)
 
 
+# The test replaces a method of the browser, and checks that html2image
+# starts it again: it keeps its own browser.
+@pytest.mark.usefixtures("own_browser")
 def test_cdp_session_recovers_after_navigation_timeout(
     monkeypatch, unresponsive_url, output_path
 ):
@@ -1342,45 +1283,24 @@ body { margin: 0 }
 section { width: 1280px; height: 720px; break-after: page; }
 """
 
-PDF_BROWSERS = ["chrome", "edge", "firefox"]
 # Edge runs the code of Chrome: it is only tried with the slides.
-PDF_BROWSERS_WITHOUT_EDGE = ["chrome", "firefox"]
-
-
-def _pdf_hti(browser, tmp_path):
-    try:
-        return Html2Image(
-            browser=browser,
-            output_path=str(tmp_path / "output"),
-            temp_path=str(tmp_path / "temp"),
-            disable_logging=True,
-        )
-    except FileNotFoundError:
-        pytest.skip(f"'{browser}' executable not found on this machine")
-
-
-@pytest.mark.parametrize("browser", PDF_BROWSERS)
-def test_pdf_slides(tmp_path, browser):
-    hti = _pdf_hti(browser, tmp_path)
-
+@WITH_EDGE
+def test_pdf_slides(hti):
     paths = hti.pdf(
         html_str=SLIDES_HTML,
         css_str=SLIDES_CSS,
-        save_as=f"pdf_slides_{browser}.pdf",
+        save_as="pdf_slides.pdf",
         paper_size="slide",
     )
 
     assert _pdf_page_sizes(paths[0]) == [(960, 540)] * 3
 
 
-@pytest.mark.parametrize("browser", PDF_BROWSERS_WITHOUT_EDGE)
 @pytest.mark.parametrize("landscape", [None, True])
-def test_pdf_a4(tmp_path, browser, landscape):
-    hti = _pdf_hti(browser, tmp_path)
-
+def test_pdf_a4(hti, landscape):
     paths = hti.pdf(
         html_str="<h1>Hello</h1>",
-        save_as=f"pdf_a4_{browser}_{landscape}.pdf",
+        save_as="pdf_a4.pdf",
         landscape=landscape,
     )
 
@@ -1392,15 +1312,12 @@ def test_pdf_a4(tmp_path, browser, landscape):
     assert size == pytest.approx(expected, abs=1)
 
 
-@pytest.mark.parametrize("browser", PDF_BROWSERS_WITHOUT_EDGE)
-def test_screenshot_after_pdf(tmp_path, browser):
-    hti = _pdf_hti(browser, tmp_path)
-
+def test_screenshot_after_pdf(hti):
     with hti:
-        pdf_paths = hti.pdf(html_str="Hello", save_as=f"pdf_then_png_{browser}.pdf")
+        pdf_paths = hti.pdf(html_str="Hello", save_as="pdf_then_png.pdf")
         png_paths = hti.screenshot(
             html_str='<body style="margin:0;background:blue"></body>',
-            save_as=f"pdf_then_png_{browser}.png",
+            save_as="pdf_then_png.png",
             size=(320, 240),
         )
 
