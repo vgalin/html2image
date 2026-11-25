@@ -2,7 +2,7 @@ from .browser import (
     CONNECTION_ERRORS,
     CONNECTION_LOST,
     BiDiBrowser,
-    needs_restart,
+    ConcurrentBrowser,
     read_message,
     remove_profile,
 )
@@ -17,17 +17,24 @@ from ..exceptions import (
 )
 
 import base64
+import copy
 import json
 import logging
 import os
 from pathlib import Path
+import queue
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 from urllib.parse import urlparse
 
-from websocket import WebSocketTimeoutException, create_connection
+from websocket import (
+    WebSocketConnectionClosedException,
+    WebSocketTimeoutException,
+    create_connection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +53,134 @@ CM_PER_INCH = 2.54
 MAX_CAPTURE_SIZE = 65535
 
 
-class FirefoxBiDi(BiDiBrowser):
+class _SharedConnection:
+    """The connection to Firefox of the windows of `max_concurrency`.
+
+    Firefox refuses a second connection to its session, so the windows
+    share this one. A thread will read every message, and pass each answer
+    to the window that sent the command, and each event to the window of
+    its browsing context. Each window will read its messages from its own
+    `_Channel`, as from a connection of its own.
+    """
+
+    def __init__(self, ws):
+        self._ws = ws
+        # Held while a command is numbered and sent, and while the channels
+        # are added, removed or given a message.
+        self._lock = threading.Lock()
+        self._message_id = 0
+        # The channel that waits for each answer, by message ID.
+        self._waiting = {}
+        self._channels = []
+        self._closed = False
+        ws.settimeout(None)
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def channel(self, context_id=None):
+        """Return a new channel, which will receive the answers to its
+        commands and the events of the browsing context `context_id`."""
+        channel = _Channel(self, context_id)
+        with self._lock:
+            if self._closed:
+                channel.messages.put(None)
+            else:
+                self._channels.append(channel)
+        return channel
+
+    def remove(self, channel):
+        with self._lock:
+            if channel in self._channels:
+                self._channels.remove(channel)
+
+    def send(self, channel, method, params):
+        """Send a command for `channel`, and return its ID."""
+        with self._lock:
+            if self._closed:
+                raise BrowserError(CONNECTION_LOST)
+            self._message_id += 1
+            self._waiting[self._message_id] = channel
+            payload = {
+                'id': self._message_id,
+                'method': method,
+                'params': params,
+            }
+            try:
+                self._ws.send(json.dumps(payload))
+            except CONNECTION_ERRORS as error:
+                raise BrowserError(CONNECTION_LOST) from error
+            return self._message_id
+
+    def _read(self):
+        """Pass each message to its channel, until the connection is lost
+        or closed. Each channel will then raise `BrowserError`."""
+        try:
+            while True:
+                raw = self._ws.recv()
+                message = read_message(raw)
+                with self._lock:
+                    if 'id' in message:
+                        channels = [self._waiting.pop(message['id'], None)]
+                    else:
+                        context_id = message.get('params', {}).get('context')
+                        channels = [
+                            channel for channel in self._channels
+                            if channel.context_id == context_id
+                        ]
+                    for channel in channels:
+                        if channel is not None:
+                            channel.messages.put(raw)
+        except Exception:
+            logger.debug('Stopped reading from Firefox.', exc_info=True)
+        finally:
+            with self._lock:
+                self._closed = True
+                for channel in self._channels:
+                    channel.messages.put(None)
+                self._channels = []
+
+    def close(self):
+        # The thread that reads is woken up first. The close() of the
+        # connection would wait for it, forever if Firefox stopped
+        # answering.
+        self._ws.abort()
+        self._ws.shutdown()
+
+
+class _Channel:
+    """The messages of one window, read as from a WebSocket connection, see
+    `_SharedConnection`."""
+
+    def __init__(self, connection, context_id):
+        self._connection = connection
+        self.context_id = context_id
+        # The messages as Firefox sent them, and None once the connection
+        # is lost or the channel is closed.
+        self.messages = queue.Queue()
+        self._timeout = None
+
+    def send(self, method, params):
+        return self._connection.send(self, method, params)
+
+    def settimeout(self, timeout):
+        self._timeout = timeout
+
+    def recv(self):
+        try:
+            raw = self.messages.get(timeout=self._timeout)
+        except queue.Empty:
+            raise WebSocketTimeoutException('Timed out.') from None
+        if raw is None:
+            # Left for the next calls, which will fail as well.
+            self.messages.put(None)
+            raise WebSocketConnectionClosedException(CONNECTION_LOST)
+        return raw
+
+    def close(self):
+        self._connection.remove(self)
+        self.messages.put(None)
+
+
+class FirefoxBiDi(BiDiBrowser, ConcurrentBrowser):
     """Firefox backend using the WebDriver BiDi protocol.
 
     Connects directly to Firefox's BiDi WebSocket endpoint
@@ -65,7 +199,9 @@ class FirefoxBiDi(BiDiBrowser):
         bidi_port=None,
         disable_logging=False,
         allow_scripts_to_read_files=False,
+        max_concurrency=1,
     ):
+        self._init_windows(max_concurrency)
         self.executable = executable
         if not flags:
             self.flags = []
@@ -79,6 +215,8 @@ class FirefoxBiDi(BiDiBrowser):
 
         self.proc = None
         self._ws = None
+        # With more than one window, the connection that they share.
+        self._connection = None
         self._session_id = None
         self._context_id = None
         self._profile_dir = None
@@ -148,6 +286,15 @@ class FirefoxBiDi(BiDiBrowser):
             f'user_pref("browser.download.dir", {download_dir});',
             'user_pref("toolkit.winRegisterApplicationRestart", false);',
         ]
+        if self.max_concurrency > 1:
+            # Firefox loads the pages from files in a single process by
+            # default. With several windows, a page from a file that never
+            # finished loading then blocked the pages from files of the
+            # other windows.
+            prefs.append(
+                'user_pref("dom.ipc.processCount.file", '
+                f'{self.max_concurrency});'
+            )
         Path(profile_dir, 'user.js').write_text(
             '\n'.join(prefs) + '\n', encoding='utf-8'
         )
@@ -197,6 +344,10 @@ class FirefoxBiDi(BiDiBrowser):
         )
 
     def _bidi_send(self, method, **params):
+        if isinstance(self._ws, _Channel):
+            # The commands of the windows are numbered by the connection
+            # that they share.
+            return self._ws.send(method, params)
         self._message_id += 1
         payload = {
             'id': self._message_id,
@@ -338,12 +489,45 @@ class FirefoxBiDi(BiDiBrowser):
         response = self._bidi_expect_ok(self._bidi_send('browsingContext.getTree'))
         return list(response['result'].get('contexts', []))
 
-    def _create_context(self):
+    def _create_context(self, kind='tab'):
         response = self._bidi_expect_ok(
-            self._bidi_send('browsingContext.create', type='tab'),
+            self._bidi_send('browsingContext.create', type=kind),
             timeout=20,
         )
         return str(response['result']['context'])
+
+    def _open_window(self, new_window=True):
+        """Return a copy of this object, which will capture pages in a
+        window of its own, through the shared connection.
+
+        Without `new_window`, the window is the page that Firefox opened.
+        A copy only captures pages, it never starts or stops Firefox, and
+        never uses its locks.
+        """
+        window = copy.copy(self)
+        window._windows = None
+        window._ws = self._connection.channel()
+        if new_window:
+            # A tab that is not in front would draw its page more slowly.
+            window._context_id = window._create_context('window')
+        window._ws.context_id = window._context_id
+        return window
+
+    def _close_window(self, window):
+        """Close the window of `window`, see `_replace_window()`.
+
+        Return False if Firefox did not answer.
+        """
+        try:
+            close_id = self._bidi_send(
+                'browsingContext.close', context=window._context_id
+            )
+            self._bidi_recv_until(
+                lambda message: message.get('id') == close_id, timeout=2
+            )
+        except BrowserError:
+            return False
+        return True
 
     def _set_viewport(self, width, height):
         self._bidi_expect_ok(
@@ -578,24 +762,22 @@ class FirefoxBiDi(BiDiBrowser):
         instead, see `_firefox_page_fit.capture_full_page()`.
         """
         target_url = self._normalize_input(input)
-        auto_started = self._ws is None
-        if auto_started:
-            self.__enter__()
-
-        try:
+        with self._window() as window:
             width, height = size if size else (1920, 1080)
 
-            self._set_viewport(width, height)
-            self._navigate(target_url)
+            window._set_viewport(width, height)
+            window._navigate(target_url)
             if pdf_options is not None:
-                self._print(os.path.join(output_path, output_file), pdf_options)
+                window._print(
+                    os.path.join(output_path, output_file), pdf_options
+                )
             elif elements is not None:
-                return self._capture_elements(
+                return window._capture_elements(
                     output_path, elements, selector_padding
                 )
             elif full_page:
                 _firefox_page_fit.capture_full_page(
-                    self,
+                    window,
                     output_path,
                     output_file,
                     width,
@@ -606,27 +788,38 @@ class FirefoxBiDi(BiDiBrowser):
                     max_pixels=full_page_max_pixels,
                 )
             else:
-                self._capture(os.path.join(output_path, output_file))
-        except Exception as error:
-            if not auto_started and needs_restart(error):
-                self.__exit__()
-                self.__enter__()
-            raise
-        finally:
-            if auto_started:
-                self.__exit__()
+                window._capture(os.path.join(output_path, output_file))
 
     def __enter__(self):
         """Start Firefox and establish a BiDi session."""
-        try:
-            self._connect_ws()
-            return self
-        except Exception:
-            self.__exit__()
-            raise
+        with self._lock:
+            try:
+                self._connect_ws()
+                if self.max_concurrency > 1:
+                    self._connection = _SharedConnection(self._ws)
+                    self._ws = self._connection.channel()
+                    # The first window is the page that Firefox opened.
+                    self._windows = [
+                        self._open_window(new_window=index > 0)
+                        for index in range(self.max_concurrency)
+                    ]
+                return self
+            except Exception:
+                self.__exit__()
+                raise
 
     def __exit__(self, *exc):
         """Close the BiDi session and shut down Firefox."""
+        with self._lock:
+            # The windows in use will be closed with Firefox, and their
+            # captures will fail.
+            for window in self._windows or []:
+                window._ws.close()
+            self._windows = None
+            self._stop_firefox()
+
+    def _stop_firefox(self):
+        """Close Firefox and delete its profile, see `__exit__()`."""
         if not self.disable_logging:
             logger.info(
                 'Closing Firefox BiDi instance on port %s.',
@@ -652,6 +845,11 @@ class FirefoxBiDi(BiDiBrowser):
                 self._ws = None
                 self._session_id = None
                 self._context_id = None
+
+        if self._connection:
+            # Its thread will stop reading.
+            self._connection.close()
+            self._connection = None
 
         self._shutdown_process_tree()
         self.proc = None
