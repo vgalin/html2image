@@ -231,50 +231,46 @@ class FirefoxBiDi(BiDiBrowser):
         return message
 
     def _connect_ws(self):
+        """Start Firefox, connect to its BiDi WebSocket and open a session.
+
+        The connection will be retried while Firefox starts, but not the
+        session: Firefox keeps a session when its connection closes, and
+        would refuse any new one.
+        """
         self._start_firefox()
 
         ws_url = f'ws://127.0.0.1:{self._current_port}/session'
-
-        # Try multiple connection strategies in order — Firefox version and
-        # configuration affect which combination is accepted.
-        strategies = [
-            {'suppress_origin': True, 'subprotocols': ['webDriverBidi']},
-            {'suppress_origin': True},
-            {'subprotocols': ['webDriverBidi']},
-            {},
-        ]
-
         max_retries = 40
         retry_delay = 0.5
-        last_error = None
 
         for attempt in range(max_retries):
-            for strategy in strategies:
-                try:
-                    self._ws = create_connection(ws_url, timeout=10, **strategy)
-                    logger.debug('Connected to Firefox BiDi WebSocket.')
-                    self._new_session()
-                    return
-                except Exception as error:
-                    last_error = error
-                    if self._ws:
-                        try:
-                            self._ws.close()
-                        except Exception:
-                            pass
-                        self._ws = None
-
-            if attempt < max_retries - 1:
+            try:
+                # Firefox refuses a connection that sends an Origin header,
+                # unless it was started with --remote-allow-origins.
+                self._ws = create_connection(
+                    ws_url, timeout=10, suppress_origin=True
+                )
+                break
+            except CONNECTION_ERRORS as error:
+                if self.proc.poll() is not None:
+                    raise BrowserError(
+                        f'Firefox exited with code {self.proc.returncode} '
+                        'before accepting the connection.'
+                    ) from error
+                if attempt == max_retries - 1:
+                    raise BrowserError(
+                        'Could not connect to Firefox BiDi on port '
+                        f'{self._current_port} after {max_retries} attempts.'
+                    ) from error
                 logger.debug(
-                    'BiDi connection attempt %d/%d failed. Retrying in %.1fs...',
-                    attempt + 1, max_retries, retry_delay,
+                    'BiDi connection attempt %d/%d failed: %s. '
+                    'Retrying in %.1fs...',
+                    attempt + 1, max_retries, error, retry_delay,
                 )
                 time.sleep(retry_delay)
 
-        raise BrowserError(
-            f'Could not connect to Firefox BiDi on port {self._current_port} '
-            f'after {max_retries} attempts.'
-        ) from last_error
+        logger.debug('Connected to Firefox BiDi WebSocket.')
+        self._new_session()
 
     def _new_session(self):
         status_id = self._bidi_send('session.status')
