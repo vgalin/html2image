@@ -13,7 +13,7 @@ from html2image import (
     PageLoadError,
     PageLoadTimeoutError,
 )
-from html2image.browsers import chrome_cdp, firefox_bidi
+from html2image.browsers import chrome_cdp, firefox, firefox_bidi
 from html2image.browsers.browser import needs_restart, remove_profile
 from PIL import Image
 from websocket import (
@@ -482,6 +482,31 @@ def test_firefox_downloads_go_in_the_profile(tmp_path, bidi_browser):
     assert f'user_pref("browser.download.dir", {download_dir});' in prefs
 
 
+def test_firefox_is_not_started_again_by_windows(tmp_path, bidi_browser):
+    bidi_browser._write_profile_prefs(str(tmp_path))
+
+    prefs = (tmp_path / "user.js").read_text(encoding="utf-8")
+    assert 'user_pref("toolkit.winRegisterApplicationRestart", false);' in prefs
+
+
+def test_firefox_headless_is_not_started_again_by_windows(
+    monkeypatch, tmp_path,
+):
+    monkeypatch.setattr(firefox, "find_firefox", lambda executable: "firefox")
+    prefs = []
+
+    def fake_run(command, **kwargs):
+        profile_dir = command[command.index("--profile") + 1]
+        with open(os.path.join(profile_dir, "user.js"), encoding="utf-8") as f:
+            prefs.append(f.read())
+        (tmp_path / "screenshot.png").touch()
+
+    monkeypatch.setattr(firefox.subprocess, "run", fake_run)
+    firefox.FirefoxHeadlessScreenshot().screenshot("about:blank", str(tmp_path))
+
+    assert 'user_pref("toolkit.winRegisterApplicationRestart", false);' in prefs[0]
+
+
 # Part D: net::ERR_CERT_VERIFIER_CHANGED, with which Chrome asks to retry.
 
 @pytest.mark.parametrize("navigations, error", [
@@ -597,27 +622,62 @@ def test_firefox_is_connected_to_once_it_listens(monkeypatch, bidi_browser):
     assert bidi_browser._context_id == "tab"
 
 
-@pytest.mark.parametrize("firefox_options, error, message", [
-    # Firefox keeps the session that it was too slow to open, and would
-    # refuse a new one.
-    (dict(unanswered={"session.new"}), BrowserTimeoutError, "Timed out"),
-    (
-        dict(errors={"session.new": "session not created"}),
-        BrowserError, "session not created",
-    ),
-], ids=["too slow", "refused"])
-def test_firefox_is_asked_once_for_a_session(
-    monkeypatch, bidi_browser, firefox_options, error, message,
-):
+def test_firefox_is_asked_once_for_a_session(monkeypatch, bidi_browser):
     options = _fake_start(
         monkeypatch, bidi_browser,
-        [FakeFirefox(**firefox_options), FakeFirefox()],
+        [FakeFirefox(errors={"session.new": "session not created"}),
+         FakeFirefox()],
     )
 
-    with pytest.raises(error, match=message):
+    with pytest.raises(BrowserError, match="session not created"):
         bidi_browser._connect_ws()
 
     assert len(options) == 1
+
+
+@pytest.mark.parametrize("second, error", [
+    (FakeFirefox(), None),
+    (FakeFirefox(unanswered={"session.new"}), BrowserTimeoutError),
+], ids=["second start", "too slow twice"])
+def test_firefox_that_does_not_finish_starting_is_started_again(
+    monkeypatch, bidi_browser, second, error,
+):
+    # Firefox keeps the session that it was too slow to open, and would
+    # refuse a new one: it will be closed and started again instead, once.
+    options = _fake_start(
+        monkeypatch, bidi_browser,
+        [FakeFirefox(unanswered={"session.new"}), second],
+    )
+    stops = []
+    monkeypatch.setattr(bidi_browser, "__exit__", lambda: stops.append(1))
+
+    if error:
+        with pytest.raises(error, match="Timed out"):
+            bidi_browser._connect_ws()
+    else:
+        bidi_browser._connect_ws()
+        assert bidi_browser._session_id == "session"
+
+    assert len(options) == 2
+    assert stops == [1]
+
+
+def test_firefox_that_gave_a_session_is_not_started_again(
+    monkeypatch, bidi_browser,
+):
+    # Firefox started: it is only slow, and another one would be as slow.
+    options = _fake_start(
+        monkeypatch, bidi_browser,
+        [FakeFirefox(unanswered={"browsingContext.getTree"}), FakeFirefox()],
+    )
+    stops = []
+    monkeypatch.setattr(bidi_browser, "__exit__", lambda: stops.append(1))
+
+    with pytest.raises(BrowserTimeoutError, match="Timed out"):
+        bidi_browser._connect_ws()
+
+    assert len(options) == 1
+    assert stops == []
 
 
 def test_firefox_that_exited_is_not_waited_for(monkeypatch, bidi_browser):
