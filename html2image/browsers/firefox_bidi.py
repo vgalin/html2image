@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 BIDI_TIMEOUT = 30
 
+# A Firefox that starts well answers session.new in less than a second, see
+# `_connect_ws()`.
+SESSION_TIMEOUT = 10
+
 DOWNLOAD_EVENT = 'browsingContext.downloadWillBegin'
 
 CM_PER_INCH = 2.54
@@ -233,6 +237,28 @@ class FirefoxBiDi(BiDiBrowser):
     def _connect_ws(self):
         """Start Firefox, connect to its BiDi WebSocket and open a session.
 
+        Firefox answers session.new once its first window has started.
+        Sometimes that window never finishes starting, and Firefox never
+        answers. If Firefox does not give the session in time, it will be
+        closed, and started once more, with more time to answer.
+        """
+        try:
+            self._start_session(SESSION_TIMEOUT)
+        except BrowserTimeoutError:
+            if self._session_id is not None:
+                # Firefox started, and is only slow.
+                raise
+            logger.debug(
+                'Firefox did not finish starting. Starting it again.',
+                exc_info=True,
+            )
+            self.__exit__()
+            self._start_session(BIDI_TIMEOUT)
+
+    def _start_session(self, timeout):
+        """Start Firefox, connect to its BiDi WebSocket and open a session,
+        waiting at most `timeout` seconds for it, see `_connect_ws()`.
+
         The connection will be retried while Firefox starts, but not the
         session: Firefox keeps a session when its connection closes, and
         would refuse any new one.
@@ -270,15 +296,15 @@ class FirefoxBiDi(BiDiBrowser):
                 time.sleep(retry_delay)
 
         logger.debug('Connected to Firefox BiDi WebSocket.')
-        self._new_session()
+        self._new_session(timeout)
 
-    def _new_session(self):
+    def _new_session(self, timeout):
         status_id = self._bidi_send('session.status')
         self._bidi_expect_ok(status_id, timeout=10)
 
         session_response = self._bidi_expect_ok(
             self._bidi_send('session.new', capabilities={'alwaysMatch': {}}),
-            timeout=30,
+            timeout=timeout,
         )
         self._session_id = session_response['result']['sessionId']
 
