@@ -88,8 +88,11 @@ class FirefoxHeadlessScreenshot(Browser):
         profile_dir = tempfile.mkdtemp(prefix='html2image_firefox_cli_')
         try:
             strict_origin = 'false' if self.allow_scripts_to_read_files else 'true'
+            # Firefox will not ask Windows to start it again after a restart
+            # for an update, see `FirefoxBiDi._write_profile_prefs()`.
             Path(profile_dir, 'user.js').write_text(
-                f'user_pref("security.fileuri.strict_origin_policy", {strict_origin});\n',
+                f'user_pref("security.fileuri.strict_origin_policy", {strict_origin});\n'
+                'user_pref("toolkit.winRegisterApplicationRestart", false);\n',
                 encoding='utf-8',
             )
             output_full_path = os.path.join(output_path, output_file)

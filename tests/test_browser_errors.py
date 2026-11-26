@@ -13,7 +13,7 @@ from html2image import (
     PageLoadError,
     PageLoadTimeoutError,
 )
-from html2image.browsers import chrome_cdp, firefox_bidi
+from html2image.browsers import chrome_cdp, firefox, firefox_bidi
 from html2image.browsers.browser import needs_restart, remove_profile
 from PIL import Image
 from websocket import (
@@ -480,6 +480,31 @@ def test_firefox_downloads_go_in_the_profile(tmp_path, bidi_browser):
     download_dir = json.dumps(str(tmp_path / "downloads"))
     assert 'user_pref("browser.download.folderList", 2);' in prefs
     assert f'user_pref("browser.download.dir", {download_dir});' in prefs
+
+
+def test_firefox_is_not_started_again_by_windows(tmp_path, bidi_browser):
+    bidi_browser._write_profile_prefs(str(tmp_path))
+
+    prefs = (tmp_path / "user.js").read_text(encoding="utf-8")
+    assert 'user_pref("toolkit.winRegisterApplicationRestart", false);' in prefs
+
+
+def test_firefox_headless_is_not_started_again_by_windows(
+    monkeypatch, tmp_path,
+):
+    monkeypatch.setattr(firefox, "find_firefox", lambda executable: "firefox")
+    prefs = []
+
+    def fake_run(command, **kwargs):
+        profile_dir = command[command.index("--profile") + 1]
+        with open(os.path.join(profile_dir, "user.js"), encoding="utf-8") as f:
+            prefs.append(f.read())
+        (tmp_path / "screenshot.png").touch()
+
+    monkeypatch.setattr(firefox.subprocess, "run", fake_run)
+    firefox.FirefoxHeadlessScreenshot().screenshot("about:blank", str(tmp_path))
+
+    assert 'user_pref("toolkit.winRegisterApplicationRestart", false);' in prefs[0]
 
 
 # Part D: net::ERR_CERT_VERIFIER_CHANGED, with which Chrome asks to retry.
