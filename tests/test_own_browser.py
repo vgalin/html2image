@@ -239,9 +239,10 @@ def test_page_that_cannot_be_loaded_stops_the_list(
 @pytest.mark.parametrize("browser", ["chrome", "firefox", "edge"])
 def test_page_that_acts_after_its_screenshot(browser, output_path):
     hti = _make_hti(browser, output_path)
-    # On a fresh macOS runner, the first start of a browser is slow: its
-    # first capture once ended 2.6 seconds after the page loaded. That start
-    # will happen here, before the pages below.
+    # On a fresh macOS CI runner, the first launch of a browser is slow: one
+    # first capture ended 2.6 seconds after its page loaded, after the time
+    # of the alert below. This call will launch the browser once, so that
+    # the pages below will not be the first ones it captures.
     hti.screenshot(html_str=_page_of_color(BLUE), size=(100, 100))
     pages = [
         # Opens a window, and sets an alert for 2 seconds after the page
