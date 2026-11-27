@@ -75,8 +75,11 @@ jobs:
       - name: Run tests
         # TEMPORARY, PR 218 diagnostics
         run: |
-          uv run pytest tests/test_diag_macos.py -s -p no:cacheprovider || true
-          uv run pytest --durations=25 --junitxml=test-results.xml tests/test_own_browser.py -k acts_after
+          fail=0
+          for i in $(seq 10); do
+            uv run pytest --durations=3 -p no:cacheprovider tests/test_own_browser.py -k acts_after || fail=1
+          done
+          exit $fail
 
       - name: Keep the duration of each test
         if: ${{ !cancelled() }}
