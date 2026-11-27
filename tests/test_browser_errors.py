@@ -125,12 +125,19 @@ def bidi_browser(monkeypatch):
 
 @pytest.fixture
 def restarts(monkeypatch, cdp_browser, bidi_browser):
-    """Counts the restarts of the fake browsers, which are both started."""
+    """Counts the restarts of the fake browsers, which are both started.
+
+    Their private pages are opened and closed without any message.
+    """
     count = []
     for browser in (cdp_browser, bidi_browser):
         browser._ws = FakeWebSocket()
         monkeypatch.setattr(browser, "__exit__", lambda *exc: count.append("exit"))
         monkeypatch.setattr(browser, "__enter__", lambda: count.append("enter"))
+        monkeypatch.setattr(
+            browser, "_open_private_page", lambda **options: True
+        )
+        monkeypatch.setattr(browser, "_close_page", lambda: None)
     return count
 
 

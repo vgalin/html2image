@@ -142,11 +142,30 @@ class Html2Image():
               the same time, from several threads. Each one will use
               its own browser window.
             + Only works with the 'chrome', 'edge' and 'firefox' browsers,
-              inside a `with` block. Outside one, each call will start and
-              close the browser, and the calls will run one after the other.
+              inside a `with` block. Outside one, the screenshots will be
+              taken one after the other.
             + A list given to a single call will still be captured one
               page after the other.
             + Default is 1.
+
+        - `isolate_pages` : bool, optional
+            + If True, each page will be captured as if it were opened in a
+              new private window, and will not see the cookies, cache or
+              other data left by the other pages. This is not a security
+              barrier against a malicious page, as all the pages run in the
+              same browser.
+            + If False, the pages of a list given to `screenshot()` or
+              `pdf()`, and the pages captured in the same `with` block,
+              will share the cookies, cache and other data of the browser.
+              This is a little faster, especially for pages that load the
+              same files from the web. False only works with the 'chrome',
+              'edge' and 'firefox' browsers, and raises a `ValueError` with
+              the legacy ones.
+            + If True with Firefox versions older than 124, the browser
+              will be started again for each page. In a `with` block with
+              a `max_concurrency` higher than 1, each screenshot or PDF
+              will raise `BrowserError` instead.
+            + Default is True.
 
         Raises
         ------
@@ -170,6 +189,7 @@ class Html2Image():
         allow_scripts_to_read_files=False,
         add_doctype=True,
         max_concurrency=1,
+        isolate_pages=True,
     ):
 
         if browser.lower() not in browser_map:
@@ -195,6 +215,15 @@ class Html2Image():
                 '"edge-headless" or "firefox-headless".'
             )
 
+        if not isolate_pages and not issubclass(
+            browser_class, ConcurrentBrowser
+        ):
+            raise ValueError(
+                'isolate_pages=False works with the "chrome", "edge" and '
+                '"firefox" browsers, not with "chrome-headless", '
+                '"edge-headless" or "firefox-headless".'
+            )
+
         if issubclass(browser_class, CDPBrowser):
             cdp_kwargs = {}
             if browser_cdp_port is not None:
@@ -205,6 +234,7 @@ class Html2Image():
                 disable_logging=disable_logging,
                 allow_scripts_to_read_files=allow_scripts_to_read_files,
                 max_concurrency=max_concurrency,
+                isolate_pages=isolate_pages,
                 **cdp_kwargs,
             )
         elif issubclass(browser_class, BiDiBrowser):
@@ -217,6 +247,7 @@ class Html2Image():
                 disable_logging=disable_logging,
                 allow_scripts_to_read_files=allow_scripts_to_read_files,
                 max_concurrency=max_concurrency,
+                isolate_pages=isolate_pages,
                 **bidi_kwargs,
             )
         else:
@@ -352,15 +383,26 @@ class Html2Image():
         `temp_path` directory, and removes the file at the end, unless
         `keep_temp_files` is set.
 
-        The name is `filename`, unless a call in progress is using it.
-        Then it is `filename` with a part that no other call will use, so
-        that calls made at the same time never write the same file. The
+        The name is `filename`, unless a call in progress is using it, or
+        the pages share a tab of Firefox (`isolate_pages=False`). Then it
+        is `filename` with a part that no other page will use. Calls made
+        at the same time will never write the same file. Without
+        `allow_scripts_to_read_files`, each page will also be an origin of
+        its own for Firefox, which could otherwise draw it with the
+        `<style>` sheets of a page loaded before it from the same file. The
         file stays in `temp_path`, so that a page can use the other files
         loaded there.
         """
         folder = os.path.realpath(self.temp_path)
+        shared_firefox_tab = (
+            isinstance(self.browser, firefox_bidi.FirefoxBiDi)
+            and not self.browser.isolate_pages
+        )
         with _shared_file_lock:
-            if os.path.join(folder, filename).lower() in _temp_files_in_use:
+            if (
+                shared_firefox_tab
+                or os.path.join(folder, filename).lower() in _temp_files_in_use
+            ):
                 name, extension = os.path.splitext(filename)
                 handle, path = tempfile.mkstemp(
                     suffix=extension, prefix=name + '_', dir=folder,
@@ -1194,51 +1236,53 @@ class Html2Image():
             url_options = dict(browser_options, full_page_profile='balanced')
             browser_options = dict(browser_options, full_page_profile='fast')
 
-        for html in html_strings:
-            names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
-            current_size = sizes.pop(0)
+        # The pages will be captured with one browser, see `kept_open()`.
+        with self.browser.kept_open():
+            for html in html_strings:
+                names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
+                current_size = sizes.pop(0)
 
-            base_name, _ = os.path.splitext(names[0])
+                base_name, _ = os.path.splitext(names[0])
 
-            content = Html2Image._prepare_html_string(
-                html, css_style_string, self.add_doctype
-            )
+                content = Html2Image._prepare_html_string(
+                    html, css_style_string, self.add_doctype
+                )
 
-            with self._temp_file(base_name + '.html') as html_filename:
-                self.load_str(content=content, as_filename=html_filename)
-                page_results.append(self._screenshot_page(
-                    os.path.join(self.temp_path, html_filename),
-                    names, current_size, selectors, selector_padding,
-                    browser_options,
-                ))
-
-        for screenshot_target in html_files + other_files:
-
-            names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
-            current_size = sizes.pop(0)
-
-            if os.path.isfile(screenshot_target):
-                filename = os.path.basename(screenshot_target)
-                with self._temp_file(filename) as temp_filename:
-                    self.load_file(
-                        src=screenshot_target, as_filename=temp_filename
-                    )
+                with self._temp_file(base_name + '.html') as html_filename:
+                    self.load_str(content=content, as_filename=html_filename)
                     page_results.append(self._screenshot_page(
-                        os.path.join(self.temp_path, temp_filename),
+                        os.path.join(self.temp_path, html_filename),
                         names, current_size, selectors, selector_padding,
                         browser_options,
                     ))
-            else:
-                raise FileNotFoundError(screenshot_target)
 
-        for target_url in urls:
-            names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
-            current_size = sizes.pop(0)
+            for screenshot_target in html_files + other_files:
 
-            page_results.append(self._screenshot_page(
-                target_url, names, current_size, selectors, selector_padding,
-                url_options,
-            ))
+                names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
+                current_size = sizes.pop(0)
+
+                if os.path.isfile(screenshot_target):
+                    filename = os.path.basename(screenshot_target)
+                    with self._temp_file(filename) as temp_filename:
+                        self.load_file(
+                            src=screenshot_target, as_filename=temp_filename
+                        )
+                        page_results.append(self._screenshot_page(
+                            os.path.join(self.temp_path, temp_filename),
+                            names, current_size, selectors, selector_padding,
+                            browser_options,
+                        ))
+                else:
+                    raise FileNotFoundError(screenshot_target)
+
+            for target_url in urls:
+                names = [save_as_filenames.pop(0) for _ in range(images_per_page)]
+                current_size = sizes.pop(0)
+
+                page_results.append(self._screenshot_page(
+                    target_url, names, current_size, selectors, selector_padding,
+                    url_options,
+                ))
 
         screenshot_paths, missing, too_large, errors = [], [], [], []
         for paths, page_missing, page_too_large, page_errors in page_results:

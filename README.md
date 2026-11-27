@@ -91,6 +91,7 @@ Multiple arguments can be passed to the constructor:
 -   `allow_scripts_to_read_files` : Lets JavaScript in your HTML read other files from your disk. Off by default, as most pages don't need it. Read [Reading local files from JavaScript](#reading-local-files-from-javascript) before turning it on.
 -   `add_doctype` : Start the pages built from `html_str` with `<!DOCTYPE html>`, so that browsers render them like any modern web page. html2image 2.x left it out, and browsers then fell back to an old compatibility mode. If your screenshots look different since version 3.0, pass False to get the old rendering back. Default is True.
 -   `max_concurrency` : Maximum number of screenshots or PDFs that can be made at the same time, from several threads. Only works with the `chrome`, `edge` and `firefox` browsers, inside a `with` block. Default is 1. See [Taking screenshots at the same time](#taking-screenshots-at-the-same-time).
+-   `isolate_pages` : Capture each page as if it were opened in a new private window, so that it will not see the cookies, cache or other data left by the other pages. Pass False to let the pages share them, which is a little faster, especially for pages of the same site. False only works with the `chrome`, `edge` and `firefox` browsers. Default is True. See [Sharing cookies and cache between pages](#sharing-cookies-and-cache-between-pages).
 
 Example:
 ```python
@@ -526,15 +527,41 @@ with Html2Image(max_concurrency=3) as hti:
 ```
 
 - *It only works with the `chrome` (default), `edge` and `firefox` browsers. Any other browser raises a `ValueError` if `max_concurrency` is not 1.*
-- *It only has an effect inside a `with` block. Outside one, each call will start and close the browser, and calls will run one after the other.*
+- *It only has an effect inside a `with` block. Outside one, the screenshots will be taken one after the other.*
 - *A list given to a single call will still be captured one page after the other. Make one call per page instead.*
 - *Give each screenshot its own `save_as` name, or they will overwrite each other.*
 - *Do not use two different `css_file` with the same file name at the same time. Pages will load a style sheet by its name, so one page could get the other's.*
 - *Separate processes, such as two programs or the workers of a web server, should each use their own `temp_path`. Screenshots of one process will never share a temporary page, but those of two processes could.*
-- *The windows share cookies and cache.*
+- *By default, pages captured at the same time will not share cookies or cache. See [Sharing cookies and cache between pages](#sharing-cookies-and-cache-between-pages).*
 - *If a page blocks its window, for example with a script that never ends, its screenshot will fail and the window will be replaced. The other screenshots will go on.*
 - *If the browser itself stops, for example after a crash, the screenshots in progress will fail and the next ones will use a new browser.*
 - *Leaving the `with` block will close the browser at once. Screenshots still in progress in other threads will fail with `BrowserError`.*
+
+### Sharing cookies and cache between pages
+
+By default, each page will be captured as if it were opened in a new private window. It will not see the cookies, cache or other data left by the other pages, so what one page leaves in the browser will not change the screenshot of another.
+
+With `isolate_pages=False`, the pages will share the cookies, cache and other data of the browser, as if you opened them one after the other in the same tab. This will be the case for the pages of a list given to one `screenshot()` or `pdf()` call, and for all the pages captured in the same `with` block. Outside a `with` block, the browser will be closed at the end of each call, so a call will share nothing with the earlier ones.
+
+Sharing the cache can be faster when you capture several pages of the same site: the files they have in common, such as fonts, style sheets and images, can be taken from the cache instead of being downloaded again. For example, these three pages of the same site will share their cache:
+
+```python
+hti = Html2Image(isolate_pages=False)
+hti.screenshot(
+    url=[
+        'https://example.com/',
+        'https://example.com/about',
+        'https://example.com/contact',
+    ],
+    save_as=['home.png', 'about.png', 'contact.png'],
+)
+```
+
+*N.B.:*
+- *`isolate_pages=False` raises a `ValueError` with the legacy `chrome-headless`, `edge-headless` and `firefox-headless` browsers, which start the browser again for each image.*
+- *With `isolate_pages=False`, the browser may reuse an old copy of a page, or of a file such as an image, from its cache, even if it has changed on the site since a previous screenshot.*
+- *With `isolate_pages=False` and a `max_concurrency` higher than 1, the windows will share their cookies and cache too. Whether a page sees the cookies of another one captured at the same time will depend on which one is loaded first.*
+- *`isolate_pages=True` is not a security barrier against a malicious page: all the pages still run in the same browser.*
 
 ### Reading local files from JavaScript
 
@@ -585,7 +612,7 @@ Any other error, such as a `BrowserError`, still stops the loop.
 
 Within a `with` block, the browser will be restarted after a `BrowserError`, a `PageLoadTimeoutError` or an unexpected error, so the next screenshot will start afresh. After the other html2image exceptions, such as `PageLoadError`, and after wrong arguments, it will keep running as it was.
 
-A URL that starts a download will raise `PageLoadError`, and the file will not be saved in your Downloads folder. With Firefox, this needs Firefox 144 or later: older versions will save an image of the previous page instead.
+A URL that starts a download will raise `PageLoadError`, and the file will not be saved in your Downloads folder. With Firefox, this needs Firefox 144 or later: older versions will save an image of a blank page, or of the previous page, instead.
 
 `BrowserNotFoundError` is also a `FileNotFoundError`, so an `except FileNotFoundError` written for html2image 2.x keeps working. `BrowserTimeoutError` and `PageLoadTimeoutError` are also `TimeoutError`, Python's usual exception for anything that took too long.
 

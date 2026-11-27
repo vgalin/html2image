@@ -520,8 +520,12 @@ def test_selector_does_not_restart_browser(hti):
         assert hti.browser._ws is websocket
 
 
-def test_selector_then_normal_screenshot_in_same_session(hti):
+# With isolate_pages=False, the second screenshot will be taken in the same
+# tab.
+@pytest.mark.parametrize("isolate_pages", [True, False])
+def test_selector_then_normal_screenshot_in_same_session(hti, isolate_pages):
     page = _page(FIXED_HEADER, LONG_PAGE, _box(top=3000, height=2000))
+    hti.browser.isolate_pages = isolate_pages
 
     with hti:
         hti.screenshot(html_str=page, selector="#t", save_as="cropped.png")

@@ -248,7 +248,9 @@ class SharedBrowser:
         except FileNotFoundError:
             pytest.skip(f"'{self.name}' executable not found on this machine")
         if SHARED:
+            isolate_pages = hti.browser.isolate_pages
             hti.browser = self._ready_browser()
+            hti.browser.isolate_pages = isolate_pages
         return hti
 
     def _ready_browser(self):
