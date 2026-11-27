@@ -78,9 +78,9 @@ class ChromeCDP(CDPBrowser, ConcurrentBrowser):
         self, executable=None, flags=None,
         print_command=False, cdp_port=None,
         disable_logging=False, allow_scripts_to_read_files=False,
-        max_concurrency=1,
+        max_concurrency=1, isolate_pages=True,
     ):
-        self._init_windows(max_concurrency)
+        self._init_windows(max_concurrency, isolate_pages)
         self.executable = executable
         if not flags:
             self.flags = [
@@ -97,6 +97,8 @@ class ChromeCDP(CDPBrowser, ConcurrentBrowser):
         self._ws = None  # Websocket connection
         self._session_id = None  # CDP session ID from Target.attachToTarget
         self._target_id = None  # Page the session is attached to
+        # Private context of the page, see `_open_private_page()`.
+        self._browser_context_id = None
         self.proc = None  # Headless browser Popen object
         self._user_data_dir = None
         self._current_port = None
@@ -284,16 +286,17 @@ class ChromeCDP(CDPBrowser, ConcurrentBrowser):
             None,
         )
 
-    def _deny_downloads(self):
+    def _deny_downloads(self, **context):
         """Keep Chrome from saving the files that a URL downloads.
 
         By default, Chrome would save them in the user's Downloads folder.
+        Without `browserContextId`, this applies to the pages that are not
+        in a private context.
         """
         try:
-            deny_id = self.cdp_send(
-                'Browser.setDownloadBehavior', behavior='deny'
+            self._send_to_browser(
+                'Browser.setDownloadBehavior', behavior='deny', **context
             )
-            self._wait_for_result(deny_id)
         except BrowserError:
             logger.debug('Could not keep Chrome from saving downloads.')
 
@@ -354,22 +357,93 @@ class ChromeCDP(CDPBrowser, ConcurrentBrowser):
         window = copy.copy(self)
         window._ws = window._session_id = window._windows = None
         window._connect_ws(new_window)
+        # The page of the window, whichever page it takes a screenshot in.
+        window._window_target_id = window._target_id
         return window
 
     def _close_window(self, window):
-        """Close the page target of `window`, see `_replace_window()`.
+        """Close the page target of `window`, and the private context of
+        its screenshot, see `_replace_window()`.
 
         Return False if Chrome did not answer.
         """
         try:
             requests.put(
                 f'http://127.0.0.1:{self._current_port}/json/close/'
-                f'{window._target_id}',
+                f'{window._window_target_id}',
                 timeout=2,
             )
-        except requests.RequestException:
+            if window._browser_context_id:
+                self._send_to_browser(
+                    'Target.disposeBrowserContext',
+                    browserContextId=window._browser_context_id,
+                )
+        except (requests.RequestException, BrowserError):
             return False
         return True
+
+    def _open_private_page(self, new_window=False, blank_start_page=False):
+        """Open a page in a new private context, which has its own
+        cookies, storage and cache, and attach to it, see
+        `ConcurrentBrowser._page()`.
+
+        The page will always be in a new window, whatever `new_window`:
+        Chrome cannot open a tab in a context that has no window yet. With
+        `blank_start_page`, the page attached to before, which Chrome opened
+        when it started, will first be left blank: its page will stop
+        running, and Chrome will always keep a page.
+        """
+        if blank_start_page:
+            self._leave_page()
+        context = self._send_to_browser('Target.createBrowserContext')
+        self._browser_context_id = context['browserContextId']
+        self._deny_downloads(browserContextId=self._browser_context_id)
+        self._target_id = self._send_to_browser(
+            'Target.createTarget',
+            url='about:blank',
+            browserContextId=self._browser_context_id,
+            newWindow=True,
+        )['targetId']
+        self._session_id = self._send_to_browser(
+            'Target.attachToTarget', targetId=self._target_id, flatten=True
+        )['sessionId']
+        return True
+
+    def _close_page(self):
+        """Close the page, with its private context, see
+        `ConcurrentBrowser._page()`."""
+        context, self._browser_context_id = self._browser_context_id, None
+        self._target_id = self._session_id = None
+        self._send_to_browser(
+            'Target.disposeBrowserContext', browserContextId=context
+        )
+
+    def _leave_page(self):
+        """Leave the page blank, so that it stops running, see
+        `ConcurrentBrowser._page()`.
+
+        With `isolate_pages=False`, an alert that it showed after its
+        screenshot would otherwise block the next one for 30 seconds. The
+        tab will keep the cookies, the storage and the name of its window.
+        """
+        self._wait_for_result(
+            self.cdp_send('Page.navigate', url='about:blank')
+        )
+
+    def _send_to_browser(self, method, **params):
+        """Send a command to Chrome itself, not to the page, and return
+        its result.
+
+        The messages of the pages are ignored until the answer comes, among
+        which those of a page that is being closed.
+        """
+        session_id, self._session_id = self._session_id, None
+        try:
+            return self._wait_for_result(
+                self.cdp_send(method, **params)
+            )['result']
+        finally:
+            self._session_id = session_id
 
     @property
     def ws(self):
@@ -464,10 +538,8 @@ class ChromeCDP(CDPBrowser, ConcurrentBrowser):
             self.ws.settimeout(None)
 
     def _message_matches_current_session(self, message):
-        """Return True if the message belongs to the active CDP session."""
-        if not self._session_id:
-            return True
-
+        """Return True if the message belongs to the active CDP session,
+        or, without one, to Chrome itself."""
         return message.get('sessionId') == self._session_id
 
     def _wait_for_navigation_complete(self, nav_id, timeout=CDP_TIMEOUT):
@@ -913,3 +985,5 @@ class ChromeCDP(CDPBrowser, ConcurrentBrowser):
         self.proc = None
         self._current_port = None
         self._browser_pid = None
+        self._browser_context_id = None
+        self._start_page_used = False

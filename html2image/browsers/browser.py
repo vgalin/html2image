@@ -113,6 +113,16 @@ class Browser(ABC):
     def disable_logging(self):
         pass
 
+    @contextlib.contextmanager
+    def kept_open(self):
+        """Keep the browser open between the screenshots taken inside, see
+        `ConcurrentBrowser.kept_open()`.
+
+        The other browsers take each screenshot with a command of its own,
+        which starts and closes the browser.
+        """
+        yield
+
 
 class ConcurrentBrowser(Browser):
     """A web browser that can take `max_concurrency` screenshots at the same
@@ -120,10 +130,14 @@ class ConcurrentBrowser(Browser):
 
     The browser class connects to the browser with `_connect_ws()`, which
     starts it if needed, and opens and closes a window with `_open_window()`
-    and `_close_window()`.
+    and `_close_window()`. It opens and closes the page of a screenshot, in
+    a private context of its own, with `_open_private_page()` and
+    `_close_page()`. `_open_private_page()` returns False if the browser
+    cannot open one. With `isolate_pages=False`, it cleans up the tab that
+    the pages share after each screenshot, with `_leave_page()`.
     """
 
-    def _init_windows(self, max_concurrency):
+    def _init_windows(self, max_concurrency, isolate_pages=True):
         """Check `max_concurrency` and create the locks, see `_window()`."""
         if not isinstance(max_concurrency, int) or max_concurrency < 1:
             raise ValueError(
@@ -131,6 +145,13 @@ class ConcurrentBrowser(Browser):
                 f'got {max_concurrency!r}.'
             )
         self.max_concurrency = max_concurrency
+        self.isolate_pages = isolate_pages
+        # The calls in progress outside of a `with` block, see
+        # `kept_open()`.
+        self._calls = 0
+        # Whether a screenshot used the page that the browser opened when
+        # it started, see `_page()`.
+        self._start_page_used = False
         # At most `max_concurrency` captures at once, and, with more than one,
         # the windows that are not in use, see `_window()`.
         self._slots = threading.Semaphore(max_concurrency)
@@ -153,6 +174,27 @@ class ConcurrentBrowser(Browser):
         self._lock = threading.RLock()
 
     @contextlib.contextmanager
+    def kept_open(self):
+        """Keep the browser open between the screenshots taken inside.
+
+        Outside of a `with` block, the first screenshot will start the
+        browser, and the browser will be closed once no call is in progress.
+        Inside one, nothing changes.
+        """
+        with self._lock:
+            counted = self._ws is None or self._calls > 0
+            if counted:
+                self._calls += 1
+        try:
+            yield
+        finally:
+            if counted:
+                with self._lock:
+                    self._calls -= 1
+                    if not self._calls and self._ws is not None:
+                        self.__exit__()
+
+    @contextlib.contextmanager
     def _window(self):
         """Yield the object that will load and capture a page, see
         `screenshot()`.
@@ -166,26 +208,32 @@ class ConcurrentBrowser(Browser):
             with self._lock:
                 windows = self._windows
                 if windows is None:
-                    auto_started = self._ws is None
+                    started = self._ws is None
                     try:
-                        if auto_started:
+                        if started:
                             # The browser will only be started for this
                             # call, without the other windows.
                             self._connect_ws()
-                        yield self
+                        with self._page(self, use_start_page=started):
+                            yield self
                     except Exception as error:
-                        if not auto_started and needs_restart(error):
+                        if needs_restart(error) and self._calls:
+                            # The call stops there, and the browser will
+                            # not be needed again.
+                            self.__exit__()
+                        elif needs_restart(error) and not started:
                             self.__exit__()
                             self.__enter__()
                         raise
                     finally:
-                        if auto_started:
+                        if started and not self._calls:
                             self.__exit__()
                     return
                 window = windows.pop()
 
             try:
-                yield window
+                with self._page(window):
+                    yield window
             except Exception as error:
                 if needs_restart(error):
                     window = self._replace_window(windows, window)
@@ -198,6 +246,63 @@ class ConcurrentBrowser(Browser):
                         # The browser was closed or restarted during the
                         # capture.
                         window._ws.close()
+
+    @contextlib.contextmanager
+    def _page(self, browser, use_start_page=False):
+        """Open the page in which `browser` will take a screenshot, and
+        close it after the screenshot, see `_window()`.
+
+        With `isolate_pages`, the page will be in a new private context,
+        unless `use_start_page`: the page that the browser opened when it
+        started is just as new. That page will be left blank by the next
+        page, and closed with the browser: a call of one page will then cost
+        nothing more, and the browser will always keep a page. With
+        `isolate_pages=False`, the pages will all be loaded in the same tab,
+        and `_leave_page()` will clean it up after each screenshot.
+        """
+        if not self.isolate_pages:
+            finish = browser._leave_page
+        elif use_start_page:
+            self._start_page_used = True
+            yield
+            return
+        else:
+            blank_start_page = browser is self and self._start_page_used
+            if not browser._open_private_page(
+                new_window=browser is not self,
+                blank_start_page=blank_start_page,
+            ):
+                # Firefox before version 124 cannot open one.
+                if browser is not self:
+                    raise BrowserError(
+                        'Firefox 124 or later is needed to take screenshots '
+                        'in several windows with isolate_pages=True.'
+                    )
+                # The browser is started again instead, with a page just as
+                # new.
+                self.__exit__()
+                self._connect_ws()
+                self._start_page_used = True
+                yield
+                return
+            if blank_start_page:
+                self._start_page_used = False
+            finish = browser._close_page
+        broken = False
+        try:
+            yield
+        except Exception as error:
+            # The browser will be closed, restarted or replaced, with the
+            # page.
+            broken = needs_restart(error)
+            raise
+        finally:
+            if not broken:
+                try:
+                    finish()
+                except BrowserError:
+                    # The next page will be loaded all the same.
+                    logger.debug('Could not close the page.', exc_info=True)
 
     def _replace_window(self, windows, window):
         """Return the window that will replace `window`, after an error that

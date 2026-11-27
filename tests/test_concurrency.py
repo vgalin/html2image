@@ -235,8 +235,12 @@ def test_captures_at_the_same_time(tmp_path, browser, kind):
 
 
 @pytest.mark.parametrize("browser", BROWSERS)
-def test_every_window_draws_its_page(tmp_path, browser):
+def test_every_window_draws_its_page(tmp_path, browser, monkeypatch):
     hti = _make_hti(browser, tmp_path)
+    # The windows will keep their pages after the screenshots, to be read.
+    # They are copies of the browser, made when the `with` block starts.
+    hti.browser.isolate_pages = False
+    monkeypatch.setattr(hti.browser, "_leave_page", lambda: None)
 
     with hti:
         _capture_all(hti, COLORS[:MAX_CONCURRENCY], "loaded")

@@ -365,10 +365,13 @@ def _growing_during_tiling_html():
 
 
 def test_full_page_follows_growth_during_tiling_and_restores_page(
-    hti, tmp_path
+    hti, tmp_path, monkeypatch
 ):
     pytest.importorskip("pyvips")
     destination = Path(tmp_path) / "grew-during-tiling.png"
+    # The page will stay in its tab after its screenshot, to be read.
+    hti.browser.isolate_pages = False
+    monkeypatch.setattr(hti.browser, "_leave_page", lambda: None)
 
     with hti:
         hti.screenshot(
@@ -419,8 +422,11 @@ _INLINE_STYLES_JS = (
 
 
 @pytest.mark.parametrize("mode", ["auto", "first", "last", "hide"])
-def test_full_page_puts_the_page_back_as_it_was(mode, hti):
+def test_full_page_puts_the_page_back_as_it_was(mode, hti, monkeypatch):
     pytest.importorskip("pyvips")
+    # The page will stay in its tab after its screenshot, to be read.
+    hti.browser.isolate_pages = False
+    monkeypatch.setattr(hti.browser, "_leave_page", lambda: None)
 
     with hti:
         hti.screenshot(

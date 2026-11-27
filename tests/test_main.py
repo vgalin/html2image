@@ -953,12 +953,14 @@ def test_chrome_instances_use_different_cdp_ports(output_path):
 # The flags are given to the browser that Html2Image creates, so this test
 # keeps its own browser.
 @pytest.mark.usefixtures("own_browser")
-def test_chrome_cdp_virtual_time_budget(output_path):
+@pytest.mark.parametrize("isolate_pages", [True, False])
+def test_chrome_cdp_virtual_time_budget(output_path, isolate_pages):
     hti = Html2Image(
         browser="chrome",
         output_path=output_path,
         disable_logging=True,
         custom_flags=["--virtual-time-budget=5000", "--hide-scrollbars"],
+        isolate_pages=isolate_pages,
     )
     html = (
         '<body style="margin:0;background:red"><script>'
@@ -1062,9 +1064,12 @@ def test_cdp_navigation_within_same_document_completes():
 
 
 @CHROME_ONLY
-def test_chrome_cdp_screenshot_url_then_its_anchor(hti):
+# With isolate_pages=False, the anchors will be loaded in the same tab.
+@pytest.mark.parametrize("isolate_pages", [True, False])
+def test_chrome_cdp_screenshot_url_then_its_anchor(hti, isolate_pages):
     hti.load_file("./examples/blue_page.html", as_filename="anchor_page.html")
     page = os.path.join(hti.temp_path, "anchor_page.html")
+    hti.browser.isolate_pages = isolate_pages
 
     with hti:
         user_data_dir = hti.browser._user_data_dir
@@ -1312,7 +1317,12 @@ def test_pdf_a4(hti, landscape):
     assert size == pytest.approx(expected, abs=1)
 
 
-def test_screenshot_after_pdf(hti):
+# With isolate_pages=False, the screenshot will be taken in the same tab as
+# the PDF.
+@pytest.mark.parametrize("isolate_pages", [True, False])
+def test_screenshot_after_pdf(hti, isolate_pages):
+    hti.browser.isolate_pages = isolate_pages
+
     with hti:
         pdf_paths = hti.pdf(html_str="Hello", save_as="pdf_then_png.pdf")
         png_paths = hti.screenshot(
