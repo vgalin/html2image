@@ -20,7 +20,9 @@ from typing import List
 
 from html2image.browsers import chrome, chrome_cdp, edge, edge_cdp, firefox, firefox_bidi
 from html2image.browsers import _page_fit_common as page_fit
-from html2image.browsers.browser import Browser, CDPBrowser, BiDiBrowser
+from html2image.browsers.browser import (
+    Browser, CDPBrowser, BiDiBrowser, ConcurrentBrowser,
+)
 from html2image.exceptions import CaptureTooLargeError, ElementNotFoundError
 
 
@@ -139,9 +141,9 @@ class Html2Image():
             + Maximum number of screenshots or PDFs that can be made at
               the same time, from several threads. Each one will use
               its own browser window.
-            + Only works with the 'chrome' and 'edge' browsers, inside a
-              `with` block. Outside one, each call will start and close
-              the browser, and the calls will run one after the other.
+            + Only works with the 'chrome', 'edge' and 'firefox' browsers,
+              inside a `with` block. Outside one, each call will start and
+              close the browser, and the calls will run one after the other.
             + A list given to a single call will still be captured one
               page after the other.
             + Default is 1.
@@ -184,11 +186,13 @@ class Html2Image():
 
         browser_class = browser_map[browser.lower()]
 
-        if max_concurrency != 1 and not issubclass(browser_class, CDPBrowser):
+        if max_concurrency != 1 and not issubclass(
+            browser_class, ConcurrentBrowser
+        ):
             raise ValueError(
-                'max_concurrency works with the "chrome" and "edge" browsers, '
-                'not with "chrome-headless", "edge-headless", "firefox" or '
-                '"firefox-headless".'
+                'max_concurrency works with the "chrome", "edge" and '
+                '"firefox" browsers, not with "chrome-headless", '
+                '"edge-headless" or "firefox-headless".'
             )
 
         if issubclass(browser_class, CDPBrowser):
@@ -212,6 +216,7 @@ class Html2Image():
                 flags=custom_flags,
                 disable_logging=disable_logging,
                 allow_scripts_to_read_files=allow_scripts_to_read_files,
+                max_concurrency=max_concurrency,
                 **bidi_kwargs,
             )
         else:

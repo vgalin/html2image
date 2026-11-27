@@ -5,24 +5,33 @@ The tests that start a browser skip if it is not found on the current
 machine. They only open local pages.
 """
 
-from html2image import Html2Image, BrowserError, PageLoadTimeoutError
-from html2image.browsers import chrome_cdp
+from html2image import (
+    Html2Image, BrowserError, PageLoadError, PageLoadTimeoutError,
+)
+from html2image.browsers import chrome_cdp, firefox_bidi
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
+from websocket import WebSocketConnectionClosedException, create_connection
 
+import base64
+import contextlib
 import copy
+import hashlib
+import json
 import os
 import pickle
 import pytest
+import queue
 import requests
 import shutil
 import signal
+import socket
 import threading
 import time
 
 # Edge runs the code of Chrome. It is only tried where the result depends on
 # the browser itself: how it draws its windows, and how it is lost or closed.
-BROWSERS = ["chrome", "edge"]
+BROWSERS = ["chrome", "firefox", "edge"]
 
 MAX_CONCURRENCY = 3
 
@@ -143,10 +152,23 @@ def _capture_all(hti, colors, prefix, kind="window"):
 
 def _pages(hti):
     """Returns the URLs of the pages open in the browser of `hti`."""
+    browser = hti.browser
+    if isinstance(browser, firefox_bidi.FirefoxBiDi):
+        # No other thread will read the answer at the same time.
+        with browser._lock:
+            return [context["url"] for context in browser._get_tree()]
     targets = requests.get(
-        f"http://127.0.0.1:{hti.browser._current_port}/json/list", timeout=5
+        f"http://127.0.0.1:{browser._current_port}/json/list", timeout=5
     ).json()
     return [target["url"] for target in targets if target["type"] == "page"]
+
+
+def _pid(hti):
+    """Returns the process ID of the browser of `hti`."""
+    browser = hti.browser
+    if isinstance(browser, firefox_bidi.FirefoxBiDi):
+        return browser.proc.pid
+    return browser._browser_pid
 
 
 def _loaded(hti, *names):
@@ -157,7 +179,8 @@ def _loaded(hti, *names):
 
 
 def _answers(port):
-    """Returns True if a browser answers on `port`."""
+    """Returns True if a browser answers on `port`. Firefox answers this
+    request with an error, but answers it."""
     try:
         requests.get(f"http://127.0.0.1:{port}/json/version", timeout=5)
     except requests.ConnectionError:
@@ -192,7 +215,9 @@ class _Call(threading.Thread):
 # Edge is tried with the capture in tiles, the only one that waits for each
 # window to draw its page.
 @pytest.mark.parametrize("browser, kind", [
-    *(("chrome", kind) for kind in CAPTURES), ("edge", "full_page_tiles"),
+    *(("chrome", kind) for kind in CAPTURES),
+    *(("firefox", kind) for kind in CAPTURES),
+    ("edge", "full_page_tiles"),
 ])
 def test_captures_at_the_same_time(tmp_path, browser, kind):
     if kind == "full_page_tiles":
@@ -200,12 +225,12 @@ def test_captures_at_the_same_time(tmp_path, browser, kind):
     hti = _make_hti(browser, tmp_path)
 
     with hti:
-        pid = hti.browser._browser_pid
+        pid = _pid(hti)
         assert len(_pages(hti)) == MAX_CONCURRENCY
 
         _capture_all(hti, COLORS, kind, kind)
 
-        assert hti.browser._browser_pid == pid
+        assert _pid(hti) == pid
         assert len(_pages(hti)) == MAX_CONCURRENCY
 
 
@@ -226,7 +251,7 @@ def test_every_window_draws_its_page(tmp_path, browser):
     assert all(state["drawn"] for state in states), states
 
 
-@pytest.mark.parametrize("browser", ["chrome"])
+@pytest.mark.parametrize("browser", ["chrome", "firefox"])
 def test_blocked_window_is_replaced(monkeypatch, tmp_path, browser):
     # The blocked page will not load within this time.
     wait_for_navigation = chrome_cdp.ChromeCDP._wait_for_navigation_complete
@@ -234,10 +259,11 @@ def test_blocked_window_is_replaced(monkeypatch, tmp_path, browser):
         chrome_cdp.ChromeCDP, "_wait_for_navigation_complete",
         lambda self, nav_id: wait_for_navigation(self, nav_id, timeout=6),
     )
+    monkeypatch.setattr(firefox_bidi, "BIDI_TIMEOUT", 6)
     hti = _make_hti(browser, tmp_path)
 
     with hti:
-        pid = hti.browser._browser_pid
+        pid = _pid(hti)
         blocked = _Call(
             hti.screenshot, html_str=BLOCKED_PAGE, save_as="blocked.png"
         )
@@ -253,7 +279,7 @@ def test_blocked_window_is_replaced(monkeypatch, tmp_path, browser):
         assert len(_pages(hti)) == MAX_CONCURRENCY
 
         _capture_all(hti, COLORS[:MAX_CONCURRENCY], "after")
-        assert hti.browser._browser_pid == pid
+        assert _pid(hti) == pid
 
 
 @pytest.mark.parametrize("browser", BROWSERS)
@@ -261,7 +287,7 @@ def test_lost_browser_is_restarted(tmp_path, browser):
     hti = _make_hti(browser, tmp_path)
 
     with hti:
-        pid = hti.browser._browser_pid
+        pid = _pid(hti)
         port = hti.browser._current_port
         os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
         _wait_until(lambda: not _answers(port))
@@ -269,11 +295,11 @@ def test_lost_browser_is_restarted(tmp_path, browser):
         with pytest.raises(BrowserError):
             hti.screenshot(html_str=_solid_page(BLACK), save_as="lost.png")
 
-        new_pid = hti.browser._browser_pid
+        new_pid = _pid(hti)
         assert new_pid != pid
         assert len(_pages(hti)) == MAX_CONCURRENCY
         _capture_all(hti, COLORS, "after")
-        assert hti.browser._browser_pid == new_pid
+        assert _pid(hti) == new_pid
 
 
 @pytest.mark.parametrize("browser", BROWSERS)
@@ -554,11 +580,16 @@ def test_css_file_is_only_written_again_if_it_changed(monkeypatch, tmp_path):
 @pytest.mark.parametrize("copy_of", [
     copy.deepcopy, lambda hti: pickle.loads(pickle.dumps(hti)),
 ], ids=["deepcopy", "pickle"])
+@pytest.mark.parametrize("browser", ["chrome", "firefox"])
 def test_objects_can_be_copied(
-    monkeypatch, tmp_path, copy_of, max_concurrency,
+    monkeypatch, tmp_path, browser, copy_of, max_concurrency
 ):
     monkeypatch.setattr(chrome_cdp, "find_chrome", lambda executable: "c")
-    hti = Html2Image(temp_path=str(tmp_path), max_concurrency=max_concurrency)
+    monkeypatch.setattr(firefox_bidi, "find_firefox", lambda executable: "f")
+    hti = Html2Image(
+        browser=browser, temp_path=str(tmp_path),
+        max_concurrency=max_concurrency,
+    )
 
     browser = copy_of(hti).browser
 
@@ -571,20 +602,20 @@ def test_objects_can_be_copied(
     assert not browser._slots.acquire(blocking=False)
 
 
-@pytest.mark.parametrize("browser", ["chrome"])
+@pytest.mark.parametrize("browser", ["chrome", "firefox"])
 def test_calls_without_with(tmp_path, browser):
     hti = _make_hti(browser, tmp_path)
 
     _capture_all(hti, COLORS[:2], "alone")
 
     assert hti.browser._ws is None
-    assert hti.browser._user_data_dir is None
+    assert hti.browser.proc is None
 
 
 @pytest.mark.parametrize("browser", [
-    "chrome-headless", "edge-headless", "firefox", "firefox-headless",
+    "chrome-headless", "edge-headless", "firefox-headless",
 ])
-def test_max_concurrency_needs_chrome_or_edge(browser):
+def test_max_concurrency_needs_chrome_edge_or_firefox(browser):
     with pytest.raises(ValueError, match="max_concurrency works with"):
         Html2Image(browser=browser, max_concurrency=2)
 
@@ -623,9 +654,264 @@ def test_window_flags_only_with_several_windows(monkeypatch, max_concurrency):
         assert added == [max_concurrency > 1] * len(added), command
 
 
+@pytest.mark.parametrize("max_concurrency", [1, MAX_CONCURRENCY])
+def test_file_processes_only_with_several_windows(
+    monkeypatch, tmp_path, max_concurrency
+):
+    monkeypatch.setattr(firefox_bidi, "find_firefox", lambda executable: "f")
+    browser = firefox_bidi.FirefoxBiDi(max_concurrency=max_concurrency)
+
+    browser._write_profile_prefs(str(tmp_path))
+
+    prefs = (tmp_path / "user.js").read_text(encoding="utf-8")
+    added = f'user_pref("dom.ipc.processCount.file", {max_concurrency});'
+    assert (added in prefs) == (max_concurrency > 1)
+    assert ("processCount" in prefs) == (max_concurrency > 1)
+
+
 @pytest.mark.parametrize("max_concurrency", [0, -1, 2.5, None])
-def test_max_concurrency_is_checked(max_concurrency):
+@pytest.mark.parametrize("browser_class", [
+    chrome_cdp.ChromeCDP, firefox_bidi.FirefoxBiDi,
+])
+def test_max_concurrency_is_checked(browser_class, max_concurrency):
     with pytest.raises(
         ValueError, match="max_concurrency should be 1 or more",
     ):
-        chrome_cdp.ChromeCDP(max_concurrency=max_concurrency)
+        browser_class(max_concurrency=max_concurrency)
+
+
+class FakeFirefoxConnection:
+    """The connection that the windows of Firefox share, on which the test
+    plays Firefox: it reads the commands, and sends answers and events."""
+
+    def __init__(self):
+        self.commands = queue.Queue()
+        self.messages = queue.Queue()
+
+    def settimeout(self, timeout):
+        pass
+
+    def send(self, payload):
+        self.commands.put(json.loads(payload))
+
+    def recv(self):
+        message = self.messages.get()
+        if isinstance(message, Exception):
+            raise message
+        return json.dumps(message)
+
+    def close(self):
+        self.messages.put(WebSocketConnectionClosedException("closed"))
+
+    def command(self):
+        """Returns the next command sent by a window."""
+        return self.commands.get(timeout=5)
+
+    def answer(self, command, result):
+        self.messages.put(
+            {"type": "success", "id": command["id"], "result": result}
+        )
+
+
+@pytest.fixture
+def firefox():
+    connection = FakeFirefoxConnection()
+    yield connection
+    # Ends the thread that reads the messages.
+    connection.close()
+
+
+def _firefox_with_windows(monkeypatch, firefox):
+    """Returns a FirefoxBiDi object whose windows, "first" and "second",
+    share the connection `firefox`."""
+    monkeypatch.setattr(firefox_bidi, "find_firefox", lambda executable: "f")
+    browser = firefox_bidi.FirefoxBiDi(max_concurrency=2)
+    browser._connection = firefox_bidi._SharedConnection(firefox)
+    browser._ws = browser._connection.channel()
+    browser._context_id = "first"
+    browser._downloads_reported = True
+    first = browser._open_window(new_window=False)
+    with ThreadPoolExecutor(1) as executor:
+        opening = executor.submit(browser._open_window)
+        command = firefox.command()
+        assert command["method"] == "browsingContext.create"
+        assert command["params"] == {"type": "window"}
+        firefox.answer(command, {"context": "second"})
+        second = opening.result(timeout=5)
+    return browser, first, second
+
+
+def test_windows_share_one_connection(monkeypatch, firefox):
+    browser, first, second = _firefox_with_windows(monkeypatch, firefox)
+
+    with ThreadPoolExecutor(2) as executor:
+        navigations = [
+            executor.submit(window._navigate, "http://127.0.0.1:1/")
+            for window in (first, second)
+        ]
+        commands = {}
+        for _ in range(2):
+            command = firefox.command()
+            commands[command["params"]["context"]] = command
+        # Firefox reports a download in the second window, and answers
+        # this window first.
+        firefox.messages.put({
+            "type": "event",
+            "method": firefox_bidi.DOWNLOAD_EVENT,
+            "params": {"context": "second", "navigation": "other"},
+        })
+        for context in ["second", "first"]:
+            firefox.answer(commands[context], {"navigation": context})
+        # Each window then asks for the status of Firefox.
+        for _ in range(2):
+            command = firefox.command()
+            assert command["method"] == "session.status"
+            firefox.answer(command, {"ready": False})
+
+        navigations[0].result(timeout=5)
+        with pytest.raises(PageLoadError, match="started a download"):
+            navigations[1].result(timeout=5)
+
+    # Each command had a number of its own.
+    numbers = [command["id"] for command in commands.values()]
+    assert len(set(numbers)) == len(numbers)
+
+
+def test_lost_connection_fails_every_window(monkeypatch, firefox):
+    browser, first, second = _firefox_with_windows(monkeypatch, firefox)
+
+    with ThreadPoolExecutor(2) as executor:
+        waits = [
+            executor.submit(window._get_tree) for window in (first, second)
+        ]
+        for _ in range(2):
+            firefox.command()
+        firefox.messages.put(ConnectionResetError(10054, "Connection reset"))
+
+        for wait in waits:
+            with pytest.raises(BrowserError, match="connection .* was lost"):
+                wait.result(timeout=5)
+
+    # The next commands fail at once, as with a connection of their own.
+    with pytest.raises(BrowserError, match="connection .* was lost"):
+        first._get_tree()
+    assert not browser._close_window(second)
+
+
+def test_closed_window_fails_at_once(monkeypatch, firefox):
+    browser, first, second = _firefox_with_windows(monkeypatch, firefox)
+
+    with ThreadPoolExecutor(1) as executor:
+        wait = executor.submit(first._get_tree)
+        firefox.command()
+        first._ws.close()
+
+        with pytest.raises(BrowserError, match="connection .* was lost"):
+            wait.result(timeout=5)
+
+    # The other window goes on.
+    with ThreadPoolExecutor(1) as executor:
+        wait = executor.submit(second._get_tree)
+        firefox.answer(firefox.command(), {"contexts": [{"context": "x"}]})
+        assert wait.result(timeout=5) == [{"context": "x"}]
+
+
+@contextlib.contextmanager
+def _silent_firefox(answer=None):
+    """Yields a WebSocket connection to a local server that sends nothing
+    once connected, as a Firefox that stopped answering.
+
+    With `answer`, the server first sends it, once it receives a command.
+    """
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    clients = []
+
+    def accept():
+        client, _ = server.accept()
+        clients.append(client)
+        request = client.recv(4096).decode()
+        key = next(
+            line.split(":", 1)[1].strip() for line in request.split("\r\n")
+            if line.lower().startswith("sec-websocket-key")
+        )
+        accepted = base64.b64encode(hashlib.sha1(
+            (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()
+        ).digest()).decode()
+        client.sendall((
+            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+            f"Connection: Upgrade\r\nSec-WebSocket-Accept: {accepted}\r\n\r\n"
+        ).encode())
+        if answer is not None and client.recv(4096):
+            # A short text message, as a single WebSocket frame.
+            text = json.dumps(answer).encode()
+            client.sendall(bytes([0x81, len(text)]) + text)
+
+    threading.Thread(target=accept, daemon=True).start()
+    port = server.getsockname()[1]
+    try:
+        yield create_connection(f"ws://127.0.0.1:{port}/", timeout=5)
+    finally:
+        for client in clients:
+            client.close()
+        server.close()
+
+
+def test_shared_connection_closes_while_firefox_is_silent():
+    with _silent_firefox() as ws:
+        connection = firefox_bidi._SharedConnection(ws)
+        channel = connection.channel()
+        waiting = _Call(channel.recv)
+
+        closing = _Call(connection.close)
+
+        closing.join(5)
+        assert not closing.is_alive()
+        waiting.join(5)
+        assert isinstance(waiting.error, WebSocketConnectionClosedException)
+        with pytest.raises(BrowserError, match="connection .* was lost"):
+            connection.send(channel, "session.status", {})
+
+
+class _ExitedProcess:
+    """Stands for the process of Firefox, so that no process is stopped."""
+
+    def poll(self):
+        return 0
+
+    def wait(self, timeout=None):
+        return 0
+
+
+def test_exit_returns_while_firefox_is_silent(monkeypatch, tmp_path):
+    monkeypatch.setattr(firefox_bidi, "find_firefox", lambda executable: "f")
+    browser = firefox_bidi.FirefoxBiDi(max_concurrency=2, disable_logging=True)
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    # Firefox will answer browser.close, the first command on the shared
+    # connection, but will never close this connection.
+    closed = {"type": "success", "id": 1, "result": {}}
+
+    with _silent_firefox(answer=closed) as ws:
+        # As inside a `with` block, with a window in use, which waits for
+        # an answer.
+        browser.proc = _ExitedProcess()
+        browser._profile_dir = str(profile)
+        browser._connection = firefox_bidi._SharedConnection(ws)
+        browser._ws = browser._connection.channel()
+        browser._context_id = "first"
+        window = browser._open_window(new_window=False)
+        browser._windows = []
+        capture = _Call(
+            window._bidi_recv_until, predicate=lambda message: False
+        )
+
+        exiting = _Call(browser.__exit__)
+
+        exiting.join(5)
+        assert not exiting.is_alive()
+        assert exiting.error is None
+        capture.join(5)
+        assert isinstance(capture.error, BrowserError)
+    assert not profile.exists()

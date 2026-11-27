@@ -2,7 +2,7 @@ from .browser import (
     CONNECTION_ERRORS,
     CONNECTION_LOST,
     CDPBrowser,
-    needs_restart,
+    ConcurrentBrowser,
     read_message,
     remove_profile,
 )
@@ -17,7 +17,6 @@ from ..exceptions import (
 )
 
 import base64
-import contextlib
 import copy
 import json
 import logging
@@ -26,7 +25,6 @@ from pathlib import Path
 import socket
 import subprocess
 import tempfile
-import threading
 import time
 from urllib.parse import urlparse
 
@@ -74,7 +72,7 @@ DISABLE_GRAPHITE_FLAG = '--disable-skia-graphite'
 MAX_CAPTURE_SIZE = 16384
 
 
-class ChromeCDP(CDPBrowser):
+class ChromeCDP(CDPBrowser, ConcurrentBrowser):
 
     def __init__(
         self, executable=None, flags=None,
@@ -82,11 +80,7 @@ class ChromeCDP(CDPBrowser):
         disable_logging=False, allow_scripts_to_read_files=False,
         max_concurrency=1,
     ):
-        if not isinstance(max_concurrency, int) or max_concurrency < 1:
-            raise ValueError(
-                'max_concurrency should be 1 or more, '
-                f'got {max_concurrency!r}.'
-            )
+        self._init_windows(max_concurrency)
         self.executable = executable
         if not flags:
             self.flags = [
@@ -99,17 +93,10 @@ class ChromeCDP(CDPBrowser):
         self.cdp_port = cdp_port
         self._disable_logging = disable_logging
         self.allow_scripts_to_read_files = allow_scripts_to_read_files
-        self.max_concurrency = max_concurrency
 
         self._ws = None  # Websocket connection
         self._session_id = None  # CDP session ID from Target.attachToTarget
         self._target_id = None  # Page the session is attached to
-        # At most `max_concurrency` captures at once, and, with more than one,
-        # the windows that are not in use, see `_window()`.
-        self._slots = threading.Semaphore(max_concurrency)
-        self._windows = None
-        # Held while Chrome starts or stops, and while a window is taken.
-        self._lock = threading.RLock()
         self.proc = None  # Headless browser Popen object
         self._user_data_dir = None
         self._current_port = None
@@ -355,19 +342,6 @@ class ChromeCDP(CDPBrowser):
 
         logger.debug('Attached with sessionId: %s', self._session_id)
 
-    def __getstate__(self):
-        """Return the attributes to copy or pickle, without the locks,
-        which cannot be copied. The copy will get its own.
-        """
-        state = self.__dict__.copy()
-        del state['_slots'], state['_lock']
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self._slots = threading.Semaphore(self.max_concurrency)
-        self._lock = threading.RLock()
-
     def _open_window(self, new_window=True):
         """Return a copy of this object, with its own WebSocket connection
         to Chrome, attached to a window of its own.
@@ -382,86 +356,20 @@ class ChromeCDP(CDPBrowser):
         window._connect_ws(new_window)
         return window
 
-    def _close_target(self, target_id):
-        """Close the page target `target_id`.
+    def _close_window(self, window):
+        """Close the page target of `window`, see `_replace_window()`.
 
         Return False if Chrome did not answer.
         """
         try:
             requests.put(
                 f'http://127.0.0.1:{self._current_port}/json/close/'
-                f'{target_id}',
+                f'{window._target_id}',
                 timeout=2,
             )
         except requests.RequestException:
             return False
         return True
-
-    @contextlib.contextmanager
-    def _window(self):
-        """Yield the object that will load and capture a page, see
-        `screenshot()`.
-
-        With `max_concurrency=1`, or if Chrome was not started with `with`, it
-        is this object, and the calls will run one after the other, as
-        before. Otherwise, it is a window that no other call is using.
-        """
-        with self._slots:
-            with self._lock:
-                windows = self._windows
-                if windows is None:
-                    auto_started = self._ws is None
-                    try:
-                        if auto_started:
-                            # Chrome will only be started for this call,
-                            # without the other windows.
-                            self._connect_ws()
-                        yield self
-                    except Exception as error:
-                        if not auto_started and needs_restart(error):
-                            self.__exit__()
-                            self.__enter__()
-                        raise
-                    finally:
-                        if auto_started:
-                            self.__exit__()
-                    return
-                window = windows.pop()
-
-            try:
-                yield window
-            except Exception as error:
-                if needs_restart(error):
-                    window = self._replace_window(windows, window)
-                raise
-            finally:
-                with self._lock:
-                    if windows is self._windows:
-                        windows.append(window)
-                    else:
-                        # Chrome was closed or restarted during the capture.
-                        window._ws.close()
-
-    def _replace_window(self, windows, window):
-        """Return the window that will replace `window`, after an error that
-        may have left it unusable.
-
-        If Chrome still answers, only the window will be replaced. If not,
-        Chrome will be restarted, unless it was already closed or restarted
-        during the capture.
-        """
-        with self._lock:
-            if windows is not self._windows:
-                return window
-            if self._close_target(window._target_id):
-                window._ws.close()
-                try:
-                    return self._open_window()
-                except BrowserError:
-                    logger.debug('Could not open a window.', exc_info=True)
-            self.__exit__()
-            self.__enter__()
-            return window
 
     @property
     def ws(self):
