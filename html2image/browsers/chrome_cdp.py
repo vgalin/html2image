@@ -897,7 +897,6 @@ class ChromeCDP(CDPBrowser, ConcurrentBrowser):
     def __enter__(self):
         """Start a headless Chrome instance with CDP enabled."""
         with self._lock:
-            self._start_chrome()
             try:
                 self._connect_ws()
                 if self.max_concurrency > 1:
