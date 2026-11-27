@@ -76,6 +76,17 @@ jobs:
           microsoft-edge --headless=new --dump-dom about:blank > /dev/null
           firefox --headless --screenshot "$RUNNER_TEMP/warmup.png" about:blank
 
+      # On Windows and macOS, the browsers are not in the PATH, and on
+      # Windows, PowerShell would not wait for chrome.exe to exit before the
+      # tests start. The script finds the browsers the same way as the
+      # tests, and waits for each one to save a screenshot. If it fails, it
+      # writes a warning, and the tests still run.
+      - name: Warm up the browsers
+        if: runner.os != 'Linux'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: uv run python .github/warm_up_browsers.py
+
       # pytest lists the 25 slowest tests at the end of the run. The duration
       # of each test will be kept with the run, in test-results.xml.
       - name: Run tests
