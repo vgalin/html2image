@@ -35,13 +35,13 @@ BLUE_PAGE = '<body style="margin:0;background:rgb(0,0,255)"></body>'
 GREEN_SLOW = GREEN_SLOW.replace("1000", "3000")
 
 VARIANTS = {
-    "fixed": (first(POPUP + alert(2000)), None),
-    "fixed_no_alert": (first(POPUP), None),
+    "popup_only": (first(POPUP), None),
+    "alert_15s": (first(POPUP + alert(15000)), None),
 }
 
 CASES = [
-    ("edge", "fixed", 0), ("edge", "fixed", 1), ("chrome", "fixed", 0),
-    ("edge", "fixed_no_alert", 0), ("chrome", "fixed_no_alert", 0),
+    ("edge", "popup_only", 0), ("edge", "alert_15s", 0),
+    ("chrome", "popup_only", 0),
 ]
 
 
