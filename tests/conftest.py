@@ -140,7 +140,7 @@ SHARED = os.environ.get("H2I_TEST_SHARED_BROWSER") != "0"
 # needs one of them keeps its own browser.
 LAUNCH_OPTIONS = {
     "browser_executable", "browser_cdp_port", "browser_bidi_port",
-    "custom_flags", "allow_scripts_to_read_files", "concurrency",
+    "custom_flags", "allow_scripts_to_read_files", "max_concurrency",
 }
 
 # A browser that does not open a new page within this number of seconds

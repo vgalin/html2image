@@ -80,11 +80,12 @@ class ChromeCDP(CDPBrowser):
         self, executable=None, flags=None,
         print_command=False, cdp_port=None,
         disable_logging=False, allow_scripts_to_read_files=False,
-        concurrency=1,
+        max_concurrency=1,
     ):
-        if not isinstance(concurrency, int) or concurrency < 1:
+        if not isinstance(max_concurrency, int) or max_concurrency < 1:
             raise ValueError(
-                f'concurrency should be 1 or more, got {concurrency!r}.'
+                'max_concurrency should be 1 or more, '
+                f'got {max_concurrency!r}.'
             )
         self.executable = executable
         if not flags:
@@ -98,14 +99,14 @@ class ChromeCDP(CDPBrowser):
         self.cdp_port = cdp_port
         self._disable_logging = disable_logging
         self.allow_scripts_to_read_files = allow_scripts_to_read_files
-        self.concurrency = concurrency
+        self.max_concurrency = max_concurrency
 
         self._ws = None  # Websocket connection
         self._session_id = None  # CDP session ID from Target.attachToTarget
         self._target_id = None  # Page the session is attached to
-        # At most `concurrency` captures at once, and, with more than one,
+        # At most `max_concurrency` captures at once, and, with more than one,
         # the windows that are not in use, see `_window()`.
-        self._slots = threading.Semaphore(concurrency)
+        self._slots = threading.Semaphore(max_concurrency)
         self._windows = None
         # Held while Chrome starts or stops, and while a window is taken.
         self._lock = threading.RLock()
@@ -177,7 +178,7 @@ class ChromeCDP(CDPBrowser):
             launch_flags.append(DISABLE_GRAPHITE_FLAG)
         if self.allow_scripts_to_read_files:
             launch_flags.append('--allow-file-access-from-files')
-        if self.concurrency > 1:
+        if self.max_concurrency > 1:
             launch_flags += [
                 flag for flag in WINDOW_FLAGS if flag not in launch_flags
             ]
@@ -364,7 +365,7 @@ class ChromeCDP(CDPBrowser):
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self._slots = threading.Semaphore(self.concurrency)
+        self._slots = threading.Semaphore(self.max_concurrency)
         self._lock = threading.RLock()
 
     def _open_window(self, new_window=True):
@@ -401,7 +402,7 @@ class ChromeCDP(CDPBrowser):
         """Yield the object that will load and capture a page, see
         `screenshot()`.
 
-        With `concurrency=1`, or if Chrome was not started with `with`, it
+        With `max_concurrency=1`, or if Chrome was not started with `with`, it
         is this object, and the calls will run one after the other, as
         before. Otherwise, it is a window that no other call is using.
         """
@@ -919,11 +920,11 @@ class ChromeCDP(CDPBrowser):
             self._start_chrome()
             try:
                 self._connect_ws()
-                if self.concurrency > 1:
+                if self.max_concurrency > 1:
                     # The first window is the page that Chrome opened.
                     self._windows = [
                         self._open_window(new_window=index > 0)
-                        for index in range(self.concurrency)
+                        for index in range(self.max_concurrency)
                     ]
                 return self
             except Exception:
