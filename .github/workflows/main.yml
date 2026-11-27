@@ -34,14 +34,8 @@ jobs:
       matrix:
         # Oldest and newest supported Python on every OS,
         # versions in between on Ubuntu only.
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest]  # TEMPORARY, PR 218 diagnostics
         python-version: ["3.9", "3.15"]
-        include:
-          - {os: ubuntu-latest, python-version: "3.10"}
-          - {os: ubuntu-latest, python-version: "3.11"}
-          - {os: ubuntu-latest, python-version: "3.12"}
-          - {os: ubuntu-latest, python-version: "3.13"}
-          - {os: ubuntu-latest, python-version: "3.14"}
     runs-on: ${{ matrix.os }}
     # The same tests can take twice as long from one run to another on
     # macOS, depending on the runner.
@@ -79,7 +73,10 @@ jobs:
       # pytest lists the 25 slowest tests at the end of the run. The duration
       # of each test will be kept with the run, in test-results.xml.
       - name: Run tests
-        run: uv run pytest --durations=25 --junitxml=test-results.xml
+        # TEMPORARY, PR 218 diagnostics
+        run: |
+          uv run pytest tests/test_diag_macos.py -s -p no:cacheprovider || true
+          uv run pytest --durations=25 --junitxml=test-results.xml tests/test_own_browser.py -k acts_after
 
       - name: Keep the duration of each test
         if: ${{ !cancelled() }}
