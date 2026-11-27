@@ -240,13 +240,14 @@ def test_page_that_cannot_be_loaded_stops_the_list(
 def test_page_that_acts_after_its_screenshot(browser, output_path):
     hti = _make_hti(browser, output_path)
     pages = [
-        # Opens a window, and will show an alert 2 seconds after it loaded:
-        # after its screenshot, even on a slow machine. An alert shown
-        # before the end of the capture would block it.
+        # Opens a window, and sets an alert for 2 seconds after the page
+        # loaded, well after its screenshot even on a slow machine. An alert
+        # shown before the end of the page's own capture would block it.
         '<body style="margin:0;background:rgb%s"><script>onload = () => {'
         " window.open('about:blank', '_blank', 'width=200,height=200');"
         " setTimeout(() => alert('still there'), 2000) }</script>" % (RED,),
-        # Takes 3 s to load, while the alert would show.
+        # Takes 3 seconds to load. The alert of the first page would show
+        # meanwhile, if that page were still running.
         '<body style="margin:0;background:rgb%s"><script>'
         "const end = Date.now() + 3000; while (Date.now() < end) {}"
         "</script>" % (GREEN,),
