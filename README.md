@@ -562,7 +562,6 @@ hti.screenshot(
 - *With `isolate_pages=False`, the browser may reuse an old copy of a page, or of a file such as an image, from its cache, even if it has changed on the site since a previous screenshot.*
 - *With `isolate_pages=False` and a `max_concurrency` higher than 1, the windows will share their cookies and cache too. Whether a page sees the cookies of another one captured at the same time will depend on which one is loaded first.*
 - *`isolate_pages=True` is not a security barrier against a malicious page: all the pages still run in the same browser.*
-- *Firefox versions older than 124 cannot open these private windows. With `isolate_pages=True`, Firefox will then be started again for each page, which is slower. In a `with` block with a `max_concurrency` higher than 1, each screenshot or PDF will raise `BrowserError` instead. Pass `isolate_pages=False` to avoid both.*
 
 ### Reading local files from JavaScript
 
