@@ -90,7 +90,7 @@ Multiple arguments can be passed to the constructor:
 -   `disable_logging` : Suppress stdout/stderr logs generated in the console by underlying browsers. 
 -   `allow_scripts_to_read_files` : Lets JavaScript in your HTML read other files from your disk. Off by default, as most pages don't need it. Read [Reading local files from JavaScript](#reading-local-files-from-javascript) before turning it on.
 -   `add_doctype` : Start the pages built from `html_str` with `<!DOCTYPE html>`, so that browsers render them like any modern web page. html2image 2.x left it out, and browsers then fell back to an old compatibility mode. If your screenshots look different since version 3.0, pass False to get the old rendering back. Default is True.
--   `concurrency` : Number of screenshots that can be taken at the same time, from several threads. Only works with the `chrome` and `edge` browsers, inside a `with` block. Default is 1. See [Taking screenshots at the same time](#taking-screenshots-at-the-same-time).
+-   `max_concurrency` : Maximum number of screenshots or PDFs that can be made at the same time, from several threads. Only works with the `chrome` and `edge` browsers, inside a `with` block. Default is 1. See [Taking screenshots at the same time](#taking-screenshots-at-the-same-time).
 
 Example:
 ```python
@@ -504,7 +504,7 @@ hti = Html2Image(browser='firefox', browser_bidi_port=9333)
 
 ### Taking screenshots at the same time
 
-`concurrency` lets several threads take screenshots at the same time with one `Html2Image` object. The browser will open that many windows. Each screenshot will use a free window, or wait for one.
+`max_concurrency` lets several threads take screenshots or save PDFs at the same time with one `Html2Image` object. The browser will open that many windows. Each screenshot or PDF will use a free window, or wait for one.
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
@@ -516,7 +516,7 @@ pages = {
     'w3_org.png': 'https://www.w3.org',
 }
 
-with Html2Image(concurrency=3) as hti:
+with Html2Image(max_concurrency=3) as hti:
     with ThreadPoolExecutor(3) as executor:
         futures = [
             executor.submit(hti.screenshot, url=url, save_as=name)
@@ -525,7 +525,7 @@ with Html2Image(concurrency=3) as hti:
     results = [future.result() for future in futures]
 ```
 
-- *It only works with the `chrome` (default) and `edge` browsers. Any other browser raises a `ValueError` if `concurrency` is not 1.*
+- *It only works with the `chrome` (default) and `edge` browsers. Any other browser raises a `ValueError` if `max_concurrency` is not 1.*
 - *It only has an effect inside a `with` block. Outside one, each call will start and close the browser, and calls will run one after the other.*
 - *A list given to a single call will still be captured one page after the other. Make one call per page instead.*
 - *Give each screenshot its own `save_as` name, or they will overwrite each other.*

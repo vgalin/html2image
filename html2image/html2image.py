@@ -135,10 +135,10 @@ class Html2Image():
               some layouts.
             + Default is True.
 
-        - `concurrency` : int, optional
-            + Number of screenshots that can be taken at the same time,
-              from several threads. Each one will use its own browser
-              window.
+        - `max_concurrency` : int, optional
+            + Maximum number of screenshots or PDFs that can be made at
+              the same time, from several threads. Each one will use
+              its own browser window.
             + Only works with the 'chrome' and 'edge' browsers, inside a
               `with` block. Outside one, each call will start and close
               the browser, and the calls will run one after the other.
@@ -167,7 +167,7 @@ class Html2Image():
         disable_logging=False,
         allow_scripts_to_read_files=False,
         add_doctype=True,
-        concurrency=1,
+        max_concurrency=1,
     ):
 
         if browser.lower() not in browser_map:
@@ -184,9 +184,9 @@ class Html2Image():
 
         browser_class = browser_map[browser.lower()]
 
-        if concurrency != 1 and not issubclass(browser_class, CDPBrowser):
+        if max_concurrency != 1 and not issubclass(browser_class, CDPBrowser):
             raise ValueError(
-                'concurrency works with the "chrome" and "edge" browsers, '
+                'max_concurrency works with the "chrome" and "edge" browsers, '
                 'not with "chrome-headless", "edge-headless", "firefox" or '
                 '"firefox-headless".'
             )
@@ -200,7 +200,7 @@ class Html2Image():
                 flags=custom_flags,
                 disable_logging=disable_logging,
                 allow_scripts_to_read_files=allow_scripts_to_read_files,
-                concurrency=concurrency,
+                max_concurrency=max_concurrency,
                 **cdp_kwargs,
             )
         elif issubclass(browser_class, BiDiBrowser):

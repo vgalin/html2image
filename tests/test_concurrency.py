@@ -1,4 +1,4 @@
-"""Tests of the `concurrency` option: captures run at the same time from
+"""Tests of the `max_concurrency` option: captures run at the same time from
 several threads, each in its own window of the same browser.
 
 The tests that start a browser skip if it is not found on the current
@@ -24,7 +24,7 @@ import time
 # the browser itself: how it draws its windows, and how it is lost or closed.
 BROWSERS = ["chrome", "edge"]
 
-CONCURRENCY = 3
+MAX_CONCURRENCY = 3
 
 SIZE = (320, 240)
 
@@ -109,7 +109,7 @@ CAPTURES = {
 }
 
 
-def _make_hti(browser, tmp_path, concurrency=CONCURRENCY):
+def _make_hti(browser, tmp_path, max_concurrency=MAX_CONCURRENCY):
     try:
         return Html2Image(
             browser=browser,
@@ -117,7 +117,7 @@ def _make_hti(browser, tmp_path, concurrency=CONCURRENCY):
             temp_path=str(tmp_path / "temp"),
             size=SIZE,
             disable_logging=True,
-            concurrency=concurrency,
+            max_concurrency=max_concurrency,
         )
     except FileNotFoundError:
         pytest.skip(f"'{browser}' executable not found on this machine")
@@ -201,12 +201,12 @@ def test_captures_at_the_same_time(tmp_path, browser, kind):
 
     with hti:
         pid = hti.browser._browser_pid
-        assert len(_pages(hti)) == CONCURRENCY
+        assert len(_pages(hti)) == MAX_CONCURRENCY
 
         _capture_all(hti, COLORS, kind, kind)
 
         assert hti.browser._browser_pid == pid
-        assert len(_pages(hti)) == CONCURRENCY
+        assert len(_pages(hti)) == MAX_CONCURRENCY
 
 
 @pytest.mark.parametrize("browser", BROWSERS)
@@ -214,10 +214,10 @@ def test_every_window_draws_its_page(tmp_path, browser):
     hti = _make_hti(browser, tmp_path)
 
     with hti:
-        _capture_all(hti, COLORS[:CONCURRENCY], "loaded")
+        _capture_all(hti, COLORS[:MAX_CONCURRENCY], "loaded")
         windows = hti.browser._windows
-        assert len(windows) == CONCURRENCY
-        with ThreadPoolExecutor(CONCURRENCY) as executor:
+        assert len(windows) == MAX_CONCURRENCY
+        with ThreadPoolExecutor(MAX_CONCURRENCY) as executor:
             states = list(executor.map(
                 lambda window: window._evaluate(DRAWN_JS), windows
             ))
@@ -250,9 +250,9 @@ def test_blocked_window_is_replaced(monkeypatch, tmp_path, browser):
         blocked.join()
         assert isinstance(blocked.error, PageLoadTimeoutError)
         _wait_until(lambda: not _loaded(hti, "blocked"))
-        assert len(_pages(hti)) == CONCURRENCY
+        assert len(_pages(hti)) == MAX_CONCURRENCY
 
-        _capture_all(hti, COLORS[:CONCURRENCY], "after")
+        _capture_all(hti, COLORS[:MAX_CONCURRENCY], "after")
         assert hti.browser._browser_pid == pid
 
 
@@ -271,7 +271,7 @@ def test_lost_browser_is_restarted(tmp_path, browser):
 
         new_pid = hti.browser._browser_pid
         assert new_pid != pid
-        assert len(_pages(hti)) == CONCURRENCY
+        assert len(_pages(hti)) == MAX_CONCURRENCY
         _capture_all(hti, COLORS, "after")
         assert hti.browser._browser_pid == new_pid
 
@@ -301,10 +301,12 @@ def test_exit_during_captures(tmp_path, browser):
     assert not _answers(port)
 
 
-@pytest.mark.parametrize("concurrency", [1, CONCURRENCY])
+@pytest.mark.parametrize("max_concurrency", [1, MAX_CONCURRENCY])
 @pytest.mark.parametrize("browser", ["chrome"])
-def test_temp_files_of_calls_at_the_same_time(tmp_path, browser, concurrency):
-    hti = _make_hti(browser, tmp_path, concurrency)
+def test_temp_files_of_calls_at_the_same_time(
+    tmp_path, browser, max_concurrency,
+):
+    hti = _make_hti(browser, tmp_path, max_concurrency)
     colors = COLORS[:4]
     # The files are copied in the same folder, and their color comes from
     # a stylesheet loaded there by each call.
@@ -548,21 +550,23 @@ def test_css_file_is_only_written_again_if_it_changed(monkeypatch, tmp_path):
     assert (tmp_path / "temp" / "style.css").read_text() == "p { color: blue }"
 
 
-@pytest.mark.parametrize("concurrency", [1, CONCURRENCY])
+@pytest.mark.parametrize("max_concurrency", [1, MAX_CONCURRENCY])
 @pytest.mark.parametrize("copy_of", [
     copy.deepcopy, lambda hti: pickle.loads(pickle.dumps(hti)),
 ], ids=["deepcopy", "pickle"])
-def test_objects_can_be_copied(monkeypatch, tmp_path, copy_of, concurrency):
+def test_objects_can_be_copied(
+    monkeypatch, tmp_path, copy_of, max_concurrency,
+):
     monkeypatch.setattr(chrome_cdp, "find_chrome", lambda executable: "c")
-    hti = Html2Image(temp_path=str(tmp_path), concurrency=concurrency)
+    hti = Html2Image(temp_path=str(tmp_path), max_concurrency=max_concurrency)
 
     browser = copy_of(hti).browser
 
-    assert browser.concurrency == concurrency
+    assert browser.max_concurrency == max_concurrency
     assert browser._lock is not hti.browser._lock
-    # The copy can take `concurrency` screenshots at once, as the original.
+    # The copy can take `max_concurrency` screenshots at once, as the original.
     assert all(
-        browser._slots.acquire(blocking=False) for _ in range(concurrency)
+        browser._slots.acquire(blocking=False) for _ in range(max_concurrency)
     )
     assert not browser._slots.acquire(blocking=False)
 
@@ -580,13 +584,13 @@ def test_calls_without_with(tmp_path, browser):
 @pytest.mark.parametrize("browser", [
     "chrome-headless", "edge-headless", "firefox", "firefox-headless",
 ])
-def test_concurrency_needs_chrome_or_edge(browser):
-    with pytest.raises(ValueError, match="concurrency works with"):
-        Html2Image(browser=browser, concurrency=2)
+def test_max_concurrency_needs_chrome_or_edge(browser):
+    with pytest.raises(ValueError, match="max_concurrency works with"):
+        Html2Image(browser=browser, max_concurrency=2)
 
 
-@pytest.mark.parametrize("concurrency", [1, CONCURRENCY])
-def test_window_flags_only_with_several_windows(monkeypatch, concurrency):
+@pytest.mark.parametrize("max_concurrency", [1, MAX_CONCURRENCY])
+def test_window_flags_only_with_several_windows(monkeypatch, max_concurrency):
     monkeypatch.setattr(chrome_cdp, "find_chrome", lambda executable: "c")
     commands = []
 
@@ -599,12 +603,12 @@ def test_window_flags_only_with_several_windows(monkeypatch, concurrency):
         return Exited()
 
     monkeypatch.setattr(chrome_cdp.subprocess, "Popen", popen)
-    replaced = chrome_cdp.ChromeCDP(concurrency=concurrency)
+    replaced = chrome_cdp.ChromeCDP(max_concurrency=max_concurrency)
     replaced.flags = ["--mute-audio"]
     browsers = [
-        Html2Image(concurrency=concurrency).browser,
+        Html2Image(max_concurrency=max_concurrency).browser,
         Html2Image(
-            custom_flags=["--mute-audio"], concurrency=concurrency
+            custom_flags=["--mute-audio"], max_concurrency=max_concurrency
         ).browser,
         replaced,
     ]
@@ -616,10 +620,12 @@ def test_window_flags_only_with_several_windows(monkeypatch, concurrency):
     assert len(commands) == len(browsers)
     for command in commands:
         added = [flag in command for flag in chrome_cdp.WINDOW_FLAGS]
-        assert added == [concurrency > 1] * len(added), command
+        assert added == [max_concurrency > 1] * len(added), command
 
 
-@pytest.mark.parametrize("concurrency", [0, -1, 2.5, None])
-def test_concurrency_is_checked(concurrency):
-    with pytest.raises(ValueError, match="concurrency should be 1 or more"):
-        chrome_cdp.ChromeCDP(concurrency=concurrency)
+@pytest.mark.parametrize("max_concurrency", [0, -1, 2.5, None])
+def test_max_concurrency_is_checked(max_concurrency):
+    with pytest.raises(
+        ValueError, match="max_concurrency should be 1 or more",
+    ):
+        chrome_cdp.ChromeCDP(max_concurrency=max_concurrency)
