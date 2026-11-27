@@ -239,10 +239,14 @@ def test_page_that_cannot_be_loaded_stops_the_list(
 @pytest.mark.parametrize("browser", ["chrome", "firefox", "edge"])
 def test_page_that_acts_after_its_screenshot(browser, output_path):
     hti = _make_hti(browser, output_path)
+    # On a fresh macOS runner, the first start of a browser is slow: its
+    # first capture once ended 2.6 seconds after the page loaded. That start
+    # will happen here, before the pages below.
+    hti.screenshot(html_str=_page_of_color(BLUE), size=(100, 100))
     pages = [
         # Opens a window, and sets an alert for 2 seconds after the page
-        # loaded, well after its screenshot even on a slow machine. An alert
-        # shown before the end of the page's own capture would block it.
+        # loaded, after its screenshot. An alert shown before the end of the
+        # page's own capture would block it.
         '<body style="margin:0;background:rgb%s"><script>onload = () => {'
         " window.open('about:blank', '_blank', 'width=200,height=200');"
         " setTimeout(() => alert('still there'), 2000) }</script>" % (RED,),
