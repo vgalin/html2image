@@ -697,6 +697,22 @@ def test_browser_without_private_pages(
     assert hti.browser._ws is None
 
 
+@pytest.mark.parametrize("browser", ["chrome", "firefox"])
+def test_windows_without_private_pages(browser, tmp_path, serve, monkeypatch):
+    hti = _real_hti(browser, tmp_path, max_concurrency=2)
+    # The windows are copies of the browser, made in the `with` block.
+    monkeypatch.setattr(
+        hti.browser, "_open_private_page", lambda **options: False
+    )
+
+    # As with Firefox before version 124, a window cannot start the browser
+    # again for each page, since the other windows use it.
+    with hti:
+        with pytest.raises(BrowserError, match="Firefox 124 or later"):
+            hti.screenshot(url=serve(SHOW_STATE), save_as="show.png")
+        assert not os.path.exists(os.path.join(hti.output_path, "show.png"))
+
+
 @pytest.mark.parametrize("browser", BROWSERS)
 def test_download_in_a_private_window_is_refused(
     browser, tmp_path, download_url

@@ -149,14 +149,22 @@ class Html2Image():
             + Default is 1.
 
         - `isolate_pages` : bool, optional
-            + If True, each page will be loaded as in a new private window.
-              It will not see the cookies, storage or cache left by the
-              pages before it, in a list, in a `with` block or with
-              `max_concurrency`.
-            + If False, the pages of a call, or of a `with` block, will be
-              loaded in the same tab, and share them. This is faster,
-              especially for pages that load the same files from the web.
-              Only works with the 'chrome', 'edge' and 'firefox' browsers.
+            + If True, each page will be captured as if it were opened in a
+              new private window, and will not see the cookies, cache or
+              other data left by the other pages. This is not a security
+              barrier against a malicious page, as all the pages run in the
+              same browser.
+            + If False, the pages of a list given to `screenshot()` or
+              `pdf()`, and the pages captured in the same `with` block,
+              will share the cookies, cache and other data of the browser.
+              This is a little faster, especially for pages that load the
+              same files from the web. False only works with the 'chrome',
+              'edge' and 'firefox' browsers, and raises a `ValueError` with
+              the legacy ones.
+            + If True with Firefox versions older than 124, the browser
+              will be started again for each page. In a `with` block with
+              a `max_concurrency` higher than 1, each screenshot or PDF
+              will raise `BrowserError` instead.
             + Default is True.
 
         Raises
