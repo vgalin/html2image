@@ -480,6 +480,29 @@ def test_profile_files_that_stay_open_are_left(monkeypatch, tmp_path):
     assert attempts[-1] is True
 
 
+def test_chrome_that_fails_to_launch_is_launched_again(
+    monkeypatch, tmp_path, cdp_browser,
+):
+    # Its profile is created first, in the temporary directory.
+    monkeypatch.setattr(chrome_cdp.tempfile, "tempdir", str(tmp_path))
+    launches = []
+
+    def popen(command, **kwargs):
+        launches.append(command)
+        raise OSError("cannot start")
+
+    monkeypatch.setattr(chrome_cdp.subprocess, "Popen", popen)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+
+    for _ in range(2):
+        with pytest.raises(OSError, match="cannot start"):
+            cdp_browser.__enter__()
+
+        assert cdp_browser._user_data_dir is None
+        assert list(tmp_path.iterdir()) == []
+    assert len(launches) == 2
+
+
 def test_firefox_downloads_go_in_the_profile(tmp_path, bidi_browser):
     bidi_browser._write_profile_prefs(str(tmp_path))
 
